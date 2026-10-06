@@ -8,6 +8,7 @@ use glam::Vec2;
 use crate::frame::Frame;
 use crate::hit::{Hit, HitTestSource};
 use crate::input::{Hand, InputId, InputSource};
+use crate::light::{LightEstimate, LightProbe};
 use crate::plane::Plane;
 use crate::space::{Pose, ReferenceSpace, SpaceKind};
 use crate::target::ImageMeta;
@@ -390,6 +391,22 @@ pub trait Session: Any {
         out: &mut Vec<Hit>,
     ) -> Result<(), Error> {
         out.clear();
+        Ok(())
+    }
+
+    /// Ask for a probe of the room's light, which is WebXR's `requestLightProbe`.
+    ///
+    /// A handle the way a hit-test source is, and for the same reason: a runtime makes one asynchronously. The
+    /// estimate it gives is in the runtime's own probe space, which is not one of this session's - see
+    /// [`LightEstimate`].
+    fn light_probe(&mut self) -> Result<LightProbe, Error> {
+        Err(Error::Unsupported("light estimation".into()))
+    }
+
+    /// Fill in what the room's light is this frame, from a probe. Zero with no estimate, which is a scene lit
+    /// by nothing rather than by a guess.
+    fn light(&mut self, _probe: LightProbe, out: &mut LightEstimate) -> Result<(), Error> {
+        *out = LightEstimate::default();
         Ok(())
     }
 

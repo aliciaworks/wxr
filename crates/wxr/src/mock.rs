@@ -428,6 +428,21 @@ mod tests {
     }
 
     #[test]
+    fn a_backend_without_light_estimation_says_so() {
+        let mut session = running();
+        assert!(matches!(session.light_probe(), Err(Error::Unsupported(_))));
+        // And a light nobody estimated is no light, not the last frame's.
+        let mut light = crate::LightEstimate {
+            primary_intensity: Vec3::X,
+            ..Default::default()
+        };
+        session
+            .light(crate::LightProbe::new(0), &mut light)
+            .expect("no estimate is not an error");
+        assert_eq!(light.primary_intensity, Vec3::ZERO);
+    }
+
+    #[test]
     fn a_backend_without_hit_testing_says_so() {
         let mut session = running();
         let space = session.space(SpaceKind::LocalFloor).expect("a floor");

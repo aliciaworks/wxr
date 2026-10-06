@@ -45,7 +45,9 @@ compositor have to agree on, because a compositor that reprojects a frame with d
 of the picture.
 
 AR is the other half of what WebXR has: `Plane` and `Session::planes` are the surfaces a runtime has detected,
-and `HitTestSource` and `Session::hits` are where a ray out of a space lands on them. Both are asked for by
+`HitTestSource` and `Session::hits` are where a ray out of a space lands on them, and `LightProbe` and
+`LightEstimate` are the room's light - nine spherical-harmonic coefficients and a primary light, so a virtual
+object is lit by the room rather than by a guess. Both are asked for by
 `SessionMode::ImmersiveAr` - a runtime told the session is drawn over the world is the one that offers them -
 and both are WebXR's alone today, because OpenXR's are extensions the crate leaves as raw pointers and Apple's
 are behind a header that is not to hand.

@@ -28,6 +28,7 @@ pub use glam;
 pub mod frame;
 pub mod hit;
 pub mod input;
+pub mod light;
 pub mod mock;
 pub mod plane;
 pub mod session;
@@ -39,6 +40,7 @@ pub use hit::{Hit, HitTestSource};
 pub use input::{
     Axes, Buttons, Hand, HandJoint, Handedness, InputId, InputSource, Joint, TargetRayMode,
 };
+pub use light::{LightEstimate, LightProbe};
 pub use plane::{Plane, PlaneOrientation};
 pub use session::{
     Backend, Blend, Error, Event, Presentation, Session, SessionMode, State, Visibility,

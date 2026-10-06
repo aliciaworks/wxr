@@ -51,6 +51,7 @@ mod gpu;
 mod hit;
 mod import;
 mod input;
+mod light;
 mod planes;
 
 pub use import::Images;
@@ -143,9 +144,10 @@ impl wxr::Backend for WebXr {
         // them - and as optional, because a browser that will not grant them is a session with no table in it
         // rather than no session.
         if mode == wxr::SessionMode::ImmersiveAr {
-            // The two the world-understanding modules need, and only in the session that has a world.
+            // What the world-understanding modules need, and only in the session that has a world.
             optional.push(JsValue::from_str("plane-detection"));
             optional.push(JsValue::from_str("hit-test"));
+            optional.push(JsValue::from_str("light-estimation"));
         }
         init.set_optional_features(&optional);
         let requested = self
@@ -291,6 +293,8 @@ pub struct WebXrSession {
     planes: planes::Ids,
     /// The hit-test sources this session has asked for, each empty until the browser answers.
     hit_sources: Vec<Rc<RefCell<hit::Slot>>>,
+    /// The light probes this session has asked for, each empty until the browser answers.
+    light_probes: Vec<Rc<RefCell<light::Slot>>>,
     /// Reference-space `reset` events, which arrive on a space rather than on the session and are passed on
     /// from here.
     reset: Rc<RefCell<VecDeque<wxr::Event>>>,
@@ -327,6 +331,7 @@ impl WebXrSession {
             input: None,
             planes: planes::Ids::default(),
             hit_sources: Vec::new(),
+            light_probes: Vec::new(),
             reset: Rc::new(RefCell::new(VecDeque::new())),
             located: 0,
             device: Some(device),
@@ -979,6 +984,37 @@ impl wxr::Session for WebXrSession {
             return Ok(());
         };
         hit::results(&frame, &source, &base, out);
+        Ok(())
+    }
+
+    fn light_probe(&mut self) -> Result<wxr::LightProbe, wxr::Error> {
+        let Some(session) = self.inner.borrow().session.clone() else {
+            return Err(wxr::Error::Unavailable(
+                "the session has not started yet".into(),
+            ));
+        };
+        let slot = Rc::new(RefCell::new(light::Slot::default()));
+        light::request(&session, slot.clone());
+        self.light_probes.push(slot);
+        Ok(wxr::LightProbe::new((self.light_probes.len() - 1) as u32))
+    }
+
+    fn light(
+        &mut self,
+        probe: wxr::LightProbe,
+        out: &mut wxr::LightEstimate,
+    ) -> Result<(), wxr::Error> {
+        *out = wxr::LightEstimate::default();
+        let Some(slot) = self.light_probes.get(probe.id() as usize) else {
+            return Ok(());
+        };
+        let Some(probe) = slot.borrow().probe() else {
+            return Ok(());
+        };
+        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
+            return Ok(());
+        };
+        light::estimate(&frame, &probe, out);
         Ok(())
     }
 
