@@ -7,8 +7,10 @@
 //! The trap in this file is the depth range. wgpu, Vulkan, D3D12 and Metal put it in `0..w`; OpenGL and
 //! WebGL put it in `-w..w`, and **WebXR reports the second**. A projection taken from a browser and handed
 //! to wgpu unaltered is an eye whose depth is half off - which looks like a scene that is all clipped, or
-//! all drawn, depending on where the near plane landed. [`from_gl`] is the one matrix that fixes it, and
-//! [`angles`] is the way back, which is also what a backend that reports a matrix has to use.
+//! all drawn, depending on where the near plane landed. [`from_gl`] is the one matrix that fixes it,
+//! [`angles`] is the way back, and [`Depth::Reverse`] is the third arrangement a platform can insist on.
+//! CompositorServices is that platform: a pass drawn into a visionOS drawable uses reverse-Z or its depth is
+//! the wrong way round, which is why the convention is named here rather than left to whoever draws.
 
 use wxr::FieldOfView;
 use wxr::glam::{Mat4, Vec3};
@@ -21,6 +23,10 @@ pub enum Depth {
     ZeroToOne,
     /// `-w..w`: OpenGL, WebGL, and therefore WebXR.
     MinusOneToOne,
+    /// `1..0`: nearer is larger. Reverse-Z, which is what a float depth buffer wants for its precision and
+    /// what visionOS's compositor requires outright - a pass drawn into a `CompositorServices` drawable has
+    /// to use it, and its own `cp_drawable_compute_projection` agrees.
+    Reverse,
 }
 
 /// A projection from a field of view, for a camera that looks down its own `-Z`.
@@ -47,6 +53,10 @@ pub fn perspective(fov: FieldOfView, near: f32, far: f32, depth: Depth) -> Mat4 
     let (z_scale, z_offset) = match depth {
         Depth::ZeroToOne => (far / (near - far), far * near / (near - far)),
         Depth::MinusOneToOne => ((far + near) / (near - far), 2.0 * far * near / (near - far)),
+        // The same two planes, met from the other end: the near plane at one and the far at zero. Solving
+        // `-near * scale + offset = near` and `-far * scale + offset = 0` gives these, and it is the only
+        // difference reverse-Z has.
+        Depth::Reverse => (near / (far - near), far * near / (far - near)),
     };
 
     Mat4::from_cols_array(&[
@@ -114,14 +124,20 @@ pub fn view(pose: wxr::Pose) -> Mat4 {
     pose.transform().inverse().into()
 }
 
-/// A pose from a view matrix: the way back from [`view`], and the one a runtime that reports a matrix
-/// instead of a place has to hand over.
-///
-/// A camera's view matrix is its pose inverted, so this inverts and then decomposes - which is exact for
-/// the rigid transforms a runtime reports, and is why the scale the decomposition also produces is the one
-/// part that is dropped.
+/// A pose from a view matrix: the way back from [`view`], and the one a runtime that reports a camera
+/// matrix instead of a place has to hand over.
 pub fn pose_from_view(transform: Mat4) -> wxr::Pose {
-    let (_, orientation, position) = transform.inverse().to_scale_rotation_translation();
+    pose_from_transform(transform.inverse())
+}
+
+/// A pose from a transform that already is one.
+///
+/// The difference from [`pose_from_view`] is one inversion, and it matters: a view matrix is a camera's pose
+/// *inverted*, and a runtime that reports an eye's place in device space - CompositorServices'
+/// `cp_view_get_transform`, which Apple's guide calls `deviceFromView` - has already done the inversion for
+/// us. Inverting that one again would put every eye behind the wearer.
+pub fn pose_from_transform(transform: Mat4) -> wxr::Pose {
+    let (_, orientation, position) = transform.to_scale_rotation_translation();
     wxr::Pose {
         position,
         orientation: orientation.normalize(),
@@ -265,6 +281,34 @@ mod tests {
                 (back.orientation * axis).abs_diff_eq(pose.orientation * axis, 1e-5),
                 "{axis:?}: {back:?}"
             );
+        }
+    }
+
+    #[test]
+    fn a_transform_that_is_already_a_pose_is_not_inverted_again() {
+        // The distinction that matters for CompositorServices: `deviceFromView` is a place, not a camera
+        // matrix, so it goes through here and not through `pose_from_view`. An eye a hand's width to the
+        // left has to come back a hand's width to the left.
+        let eye = wxr::Pose {
+            position: Vec3::new(-0.031, 0.0, 0.0),
+            orientation: wxr::glam::Quat::from_rotation_y(0.1),
+        };
+        let back = pose_from_transform(eye.transform().into());
+        assert!(back.position.abs_diff_eq(eye.position, 1e-5), "{back:?}");
+        // And the other way round would put it on the wrong side, which is what this is guarding.
+        assert!(pose_from_view(eye.transform().into()).position.x > 0.0);
+    }
+
+    #[test]
+    fn a_reverse_projection_puts_the_near_plane_at_one() {
+        // visionOS's convention, and the one thing it has to do: the same two planes, met from the other
+        // end. A nearest thing in the near plane has to be the largest value the buffer can hold.
+        let fov = FieldOfView::symmetric(FRAC_PI_2, FRAC_PI_2);
+        let (near, far) = (0.5_f32, 20.0_f32);
+        let matrix = perspective(fov, near, far, Depth::Reverse);
+        for (distance, expected) in [(near, 1.0), (far, 0.0)] {
+            let clip = matrix * wxr::glam::Vec4::new(0.0, 0.0, -distance, 1.0);
+            assert!(close(clip.z / clip.w, expected), "{distance}: {clip:?}");
         }
     }
 }

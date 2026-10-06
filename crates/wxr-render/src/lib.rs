@@ -13,7 +13,8 @@ pub mod projection;
 pub mod scene;
 
 pub use projection::{
-    Depth, angles, angles_from_tangents, forward, from_gl, perspective, pose_from_view, view,
+    Depth, angles, angles_from_tangents, forward, from_gl, perspective, pose_from_transform,
+    pose_from_view, view,
 };
 
 use wxr::ImageMeta;
