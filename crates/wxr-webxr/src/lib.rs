@@ -49,6 +49,7 @@
 
 mod gpu;
 mod import;
+mod input;
 
 pub use import::Images;
 
@@ -237,6 +238,10 @@ pub struct WebXrSession {
     state: wxr::State,
     /// Whether the session is being shown, which is the browser's own `visibilityState`.
     visibility: wxr::Visibility,
+    /// The sources this session has seen, so an id from a frame and an id from an event are the same answer.
+    sources: input::Sources,
+    /// The subscription to the session's six input events, once there is a session to subscribe to.
+    input: Option<input::Events>,
     /// The views the frame located, for the layer the compositor would be given.
     located: usize,
     /// The device the app made, kept because a WebXR/WebGPU session needs it: the binding that hands out the
@@ -263,6 +268,8 @@ impl WebXrSession {
             spaces: Vec::new(),
             state: wxr::State::Connecting,
             visibility: wxr::Visibility::Hidden,
+            sources: input::Sources::new(),
+            input: None,
             located: 0,
             device: Some(device),
             gpu: None,
@@ -381,6 +388,10 @@ impl wxr::Session for WebXrSession {
             session.set_onend(Some(on_end.as_ref().unchecked_ref()));
             self.on_end = Some(on_end);
 
+            // Subscribed to here because a session is the only thing that can have the events, and this is the
+            // only moment there is one to ask.
+            self.input = Some(input::Events::new(&session, &self.sources));
+
             self.inner.borrow_mut().session = Some(session);
             self.request_frame();
         }
@@ -395,6 +406,14 @@ impl wxr::Session for WebXrSession {
                 self.lost = true;
                 return Some(wxr::Event::Lost);
             }
+        }
+
+        // A press the browser has already delivered is news before any tally of what is showing: it happened,
+        // and the frame loop reading it a rung later would be a frame loop acting on the wrong frame.
+        if let Some(events) = &self.input
+            && let Some(event) = events.poll()
+        {
+            return Some(event);
         }
 
         // Two axes, and each is news once: the session arriving or not being here yet is the lifecycle, and
@@ -596,9 +615,9 @@ impl wxr::Session for WebXrSession {
         // fourth, and the stick's two axes after the touchpad's. A profile that does not follow it is a
         // profile this reads the wrong way - which is a thing the gamepad's own `mapping` says, and a thing
         // to handle the day one shows up.
-        let sources = session.input_sources();
-        for index in 0..sources.length() {
-            let Some(source) = sources.get(index) else {
+        let held = session.input_sources();
+        for index in 0..held.length() {
+            let Some(source) = held.get(index) else {
                 continue;
             };
             let handedness = match source.handedness() {
@@ -633,7 +652,11 @@ impl wxr::Session for WebXrSession {
             // untracked: it has a direction, and the direction is the whole of it.
             let tracked = grip.is_some() || aim.is_some();
             out.push(wxr::InputSource {
+                // The same map the event handlers use, so a frame and an event name the same source the same
+                // way - which is the whole reason the core has an id where WebXR has an object.
+                id: self.sources.id(&source),
                 handedness,
+                target_ray_mode: input::target_ray_mode(&source),
                 grip: grip
                     .map(|pose| transform(pose.transform()))
                     .unwrap_or(wxr::Pose::IDENTITY),

@@ -15,6 +15,8 @@
 //! and the space is located against the reference space the caller asked in. `locate_space` and `getPose`
 //! are the same call in two specifications, which is not a coincidence - they describe the same hardware.
 
+use std::collections::VecDeque;
+
 use openxr as xr;
 
 use crate::Error;
@@ -25,9 +27,14 @@ pub struct Hands {
     /// together, and splitting a game's inputs into several would be inventing a decision nobody is making.
     set: xr::ActionSet,
     hands: Vec<Hand>,
+    /// The press and squeeze edges the last `read` found, waiting to be polled.
+    pending: VecDeque<wxr::Event>,
 }
 
 struct Hand {
+    /// Which hand this is in the core's terms: the index it was declared at, because OpenXR has no other name
+    /// for one - a path is a `/user/hand/left` string rather than a number.
+    id: wxr::InputId,
     handedness: wxr::Handedness,
     /// `/user/hand/left` or `/user/hand/right`: which physical hand everything below is read for.
     path: xr::Path,
@@ -42,6 +49,9 @@ struct Hand {
     menu: xr::Action<bool>,
     trigger: xr::Action<f32>,
     thumbstick: xr::Action<xr::Vector2f>,
+    /// What the boolean actions were the last time they were read, so a press is an edge and not a state.
+    select_was: bool,
+    squeeze_was: bool,
 }
 
 impl Hands {
@@ -52,10 +62,13 @@ impl Hands {
             .map_err(|error| Error::runtime("create the action set", error))?;
 
         let mut hands = Vec::new();
-        for (handedness, side) in [
+        for (index, (handedness, side)) in [
             (wxr::Handedness::Left, "left"),
             (wxr::Handedness::Right, "right"),
-        ] {
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let path = instance
                 .string_to_path(&format!("/user/hand/{side}"))
                 .map_err(|error| Error::runtime("name a hand", error))?;
@@ -91,6 +104,7 @@ impl Hands {
                 )
             };
             hands.push(Hand {
+                id: wxr::InputId::new(index as u32),
                 handedness,
                 path,
                 grip_action,
@@ -117,10 +131,16 @@ impl Hands {
                         &[path],
                     )
                     .map_err(|error| Error::runtime("create an action", error))?,
+                select_was: false,
+                squeeze_was: false,
             });
         }
 
-        let hands = Self { set, hands };
+        let hands = Self {
+            set,
+            hands,
+            pending: VecDeque::new(),
+        };
         hands.suggest(instance);
         session
             .attach_action_sets(&[&hands.set])
@@ -224,13 +244,16 @@ impl Hands {
 
     /// Where the hands are and what they are doing, in the space given.
     pub fn read(
-        &self,
+        &mut self,
         session: &xr::Session<xr::Vulkan>,
         base: &xr::Space,
         time: xr::Time,
         out: &mut Vec<wxr::InputSource>,
     ) {
-        for hand in &self.hands {
+        // The edges this frame is a rising or falling side of, collected here and queued at the end: the hands
+        // are borrowed for the loop below, and `pending` cannot be borrowed at the same time.
+        let mut edges = Vec::new();
+        for hand in &mut self.hands {
             let grip = hand.grip.locate(base, time).ok();
             let aim = hand.aim.locate(base, time).ok();
             let pose = |location: &Option<xr::SpaceLocation>| {
@@ -252,21 +275,53 @@ impl Hands {
                 })
             };
 
-            let boolean = |action: &xr::Action<bool>| {
+            let boolean = |action: &xr::Action<bool>, path: xr::Path| {
                 action
-                    .state::<_>(session, hand.path)
+                    .state::<_>(session, path)
                     .map(|state| state.current_state)
                     .unwrap_or(false)
             };
+            let select = boolean(&hand.select, hand.path);
+            let squeeze = boolean(&hand.squeeze, hand.path);
+
+            // OpenXR hands a boolean's state out once a frame, so a press is a change from what it was - and
+            // that is the whole of what it takes to make the events a browser makes for itself.
+            if select != hand.select_was {
+                hand.select_was = select;
+                edges.push(if select {
+                    wxr::Event::SelectStart(hand.id)
+                } else {
+                    wxr::Event::SelectEnd(hand.id)
+                });
+                if !select {
+                    edges.push(wxr::Event::Select(hand.id));
+                }
+            }
+            if squeeze != hand.squeeze_was {
+                hand.squeeze_was = squeeze;
+                edges.push(if squeeze {
+                    wxr::Event::SqueezeStart(hand.id)
+                } else {
+                    wxr::Event::SqueezeEnd(hand.id)
+                });
+                if !squeeze {
+                    edges.push(wxr::Event::Squeeze(hand.id));
+                }
+            }
+
             out.push(wxr::InputSource {
+                id: hand.id,
                 handedness: hand.handedness,
+                // A pose action is a tracked pointer by definition: OpenXR has no gaze or screen ray to be one
+                // of the other modes with.
+                target_ray_mode: wxr::TargetRayMode::TrackedPointer,
                 grip: pose(&grip),
                 aim: pose(&aim),
                 tracked: tracked(&grip) || tracked(&aim),
                 buttons: wxr::Buttons {
-                    select: boolean(&hand.select),
-                    squeeze: boolean(&hand.squeeze),
-                    menu: boolean(&hand.menu),
+                    select,
+                    squeeze,
+                    menu: boolean(&hand.menu, hand.path),
                 },
                 axes: wxr::Axes {
                     trigger: hand
@@ -284,6 +339,16 @@ impl Hands {
                 },
             });
         }
+
+        self.pending.extend(edges);
+    }
+
+    /// A press or a squeeze the last frame made an edge of, oldest first.
+    ///
+    /// Read from here rather than returned by `read`, because a frame's snapshot and a session's events are two
+    /// channels even when one platform's state is the source of both.
+    pub fn poll(&mut self) -> Option<wxr::Event> {
+        self.pending.pop_front()
     }
 }
 

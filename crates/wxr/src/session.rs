@@ -4,7 +4,7 @@ use std::any::Any;
 use std::time::Duration;
 
 use crate::frame::Frame;
-use crate::input::InputSource;
+use crate::input::{InputId, InputSource};
 use crate::space::{ReferenceSpace, SpaceKind};
 use crate::target::ImageMeta;
 
@@ -90,6 +90,19 @@ pub enum Event {
     ExitRequested,
     /// The set of inputs changed. What the inputs then *are* is a frame's business.
     InputsChanged,
+    /// The primary action started on a source. WebXR's `selectstart`.
+    SelectStart(InputId),
+    /// It finished. WebXR's `selectend`.
+    SelectEnd(InputId),
+    /// A selection completed: the press and the release both happened. WebXR's `select`, and it follows the
+    /// `SelectEnd` of the same source.
+    Select(InputId),
+    /// The grip closed. WebXR's `squeezestart`.
+    SqueezeStart(InputId),
+    /// It opened. WebXR's `squeezeend`.
+    SqueezeEnd(InputId),
+    /// A squeeze completed. WebXR's `squeeze`.
+    Squeeze(InputId),
     /// The session is gone and cannot be resumed.
     Lost,
 }

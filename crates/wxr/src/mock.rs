@@ -11,6 +11,7 @@ use std::time::Duration;
 use glam::{Quat, Vec3};
 
 use crate::frame::{Eye, FieldOfView, Frame, FrameState, View, Viewport};
+use crate::input::{Axes, Buttons, Handedness, InputId, InputSource, TargetRayMode};
 use crate::session::{Backend, Error, Event, Presentation, Session, State, Visibility};
 use crate::space::{Pose, ReferenceSpace, SpaceKind};
 use crate::target::{ColorFormat, Extent2d, ImageMeta};
@@ -226,6 +227,33 @@ impl Session for MockSession {
         Ok(())
     }
 
+    fn inputs(&mut self, _space: ReferenceSpace, out: &mut Vec<InputSource>) -> Result<(), Error> {
+        // Two controllers, because a mock's job is to be *a* session rather than a plausible one - and because
+        // two is what makes an id worth having: an event has to be able to say which.
+        for (id, handedness, x) in [
+            (0u32, Handedness::Left, -0.2f32),
+            (1u32, Handedness::Right, 0.2f32),
+        ] {
+            out.push(InputSource {
+                id: InputId::new(id),
+                handedness,
+                target_ray_mode: TargetRayMode::TrackedPointer,
+                grip: Pose {
+                    position: Vec3::new(x, 1.0, 0.0),
+                    orientation: Quat::IDENTITY,
+                },
+                aim: Pose {
+                    position: Vec3::new(x, 1.0, -0.5),
+                    orientation: Quat::IDENTITY,
+                },
+                tracked: true,
+                buttons: Buttons::default(),
+                axes: Axes::default(),
+            });
+        }
+        Ok(())
+    }
+
     fn end(&mut self, _frame: &mut Frame) -> Result<(), Error> {
         Ok(())
     }
@@ -235,6 +263,16 @@ impl MockSession {
     /// How many frames have been begun, so a test can tell the loop ran.
     pub fn frames(&self) -> u64 {
         self.frames
+    }
+
+    /// Pretend the primary action was pressed and released on `id`.
+    ///
+    /// A real runtime makes these events out of a controller; a test needs them without one, and they are the
+    /// whole shape a game reacts to - a start, an end, and the selection that completed.
+    pub fn press(&mut self, id: InputId) {
+        self.pending.push_back(Event::SelectStart(id));
+        self.pending.push_back(Event::SelectEnd(id));
+        self.pending.push_back(Event::Select(id));
     }
 }
 
@@ -304,6 +342,28 @@ mod tests {
             .expect("the mock is this backend");
         mutable.poll();
         assert_eq!(session.state(), State::Ready);
+    }
+
+    #[test]
+    fn a_press_is_a_start_an_end_and_a_selection() {
+        let mut session = running();
+        let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+        let mut sources = Vec::new();
+        session.inputs(space, &mut sources).unwrap();
+        assert_eq!(sources.len(), 2);
+        assert_eq!(sources[0].id, InputId::new(0));
+        assert_eq!(sources[0].handedness, Handedness::Left);
+        assert_eq!(sources[1].id, InputId::new(1));
+        assert_eq!(sources[0].target_ray_mode, TargetRayMode::TrackedPointer);
+
+        let id = sources[1].id;
+        // Nothing else is news, so the three below are the press and only the press.
+        while session.poll().is_some() {}
+        session.press(id);
+        assert_eq!(session.poll(), Some(Event::SelectStart(id)));
+        assert_eq!(session.poll(), Some(Event::SelectEnd(id)));
+        assert_eq!(session.poll(), Some(Event::Select(id)));
+        assert_eq!(session.poll(), None);
     }
 
     #[test]

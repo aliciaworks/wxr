@@ -9,6 +9,10 @@
 //! subtracted is small - a main button, a grip, a stick, and how far a trigger is pulled - so that is what
 //! this says, and nothing more. A game that needs the rest needs the platform, and the platform is one
 //! `cfg` away.
+//!
+//! What a source *does* is the other half, and it is not a snapshot: a press begins, ends, and counts as a
+//! selection, and those are events on the session rather than fields on a source. WebXR draws the line there,
+//! and it is the right one - a frame tells you where the hands are, and a session tells you what they did.
 
 use crate::space::Pose;
 
@@ -20,6 +24,47 @@ pub enum Handedness {
     /// A runtime that does not say, or a source that is not a hand - a gaze cursor, a tracker.
     #[default]
     Unknown,
+}
+
+/// What a source is aimed by, which is WebXR's `XRTargetRayMode`.
+///
+/// It says how the ray a source points with was made, not what the source is - a controller and an articulated
+/// hand are both tracked pointers - and it is what a game asks before it draws one: a gaze ray comes from the
+/// head and has no place of its own, a screen ray comes from a touch, and a transient ray is a tap that is over
+/// by the time it is read.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum TargetRayMode {
+    /// Tracked in space and held or worn: a controller, a tracked stylus, a hand.
+    #[default]
+    TrackedPointer,
+    /// Pointed by looking, with the ray at the head.
+    Gaze,
+    /// A touch on a flat screen, in a session that is not immersive. The ray is where the finger is.
+    Screen,
+    /// A tap that exists for the moment it is read, with nothing left to track afterwards.
+    TransientPointer,
+}
+
+/// Which source an event is about.
+///
+/// WebXR names a source by the object it is, which a Rust value cannot: an event arrives with a source in it,
+/// and two sources compared by value are two poses compared. So the core carries the backend's own identity
+/// instead - stable for as long as the source exists, and meaningful only to the backend that handed it out.
+/// It is the same kind of concession as [`crate::State::Connecting`]: a fact a synchronous API has to spell out
+/// and a promise does not.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
+pub struct InputId(u32);
+
+impl InputId {
+    /// A backend's own name for a source.
+    pub fn new(id: u32) -> Self {
+        Self(id)
+    }
+
+    /// The number the backend made it from.
+    pub fn get(self) -> u32 {
+        self.0
+    }
 }
 
 /// The buttons every one of the three has, under whatever name.
@@ -46,7 +91,11 @@ pub struct Axes {
 /// One thing the user is holding, as far as this frame knows.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct InputSource {
+    /// The backend's own identity for this source, so an event can say which one it is about.
+    pub id: InputId,
     pub handedness: Handedness,
+    /// How the source is aimed, which is not what it is: a controller and a hand are both tracked pointers.
+    pub target_ray_mode: TargetRayMode,
     /// In whichever reference space the sources were asked for.
     ///
     /// Two poses and not one, because a controller is one thing with two places on it: a grip is where it is

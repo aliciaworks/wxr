@@ -28,6 +28,11 @@ at the end that somebody presents. That is the whole of it, and it is **WebXR's*
 is the only one of the three that is a specification rather than a vendor's API - OpenXR and the Apple APIs
 each describe a superset in their own terms, so the smallest of the three is the one the other two reduce to.
 
+A session is also a stream of events - a press on a source, a squeeze, the session going away - and that is
+**WebXR's** vocabulary too, down to the names: `selectstart`, `selectend`, `select` and their three squeeze
+siblings, because what a source *does* is not in a frame, it happens between them. A source is named by an id
+the backend hands out, which WebXR does with the object itself and a Rust value cannot.
+
 Three things the core deliberately does not know:
 
 **What a graphics API is.** `Session::Image` is an associated type. OpenXR's images are Vulkan or D3D12

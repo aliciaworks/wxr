@@ -352,6 +352,14 @@ impl wxr::Session for OpenXrSession {
     }
 
     fn poll(&mut self) -> Option<wxr::Event> {
+        // The press edges the last frame produced come first: they are this crate's own, and waiting for the
+        // runtime to get round to an instance event to report them would be a delay with no cause.
+        if let Some(hands) = self.hands.as_mut()
+            && let Some(event) = hands.poll()
+        {
+            return Some(event);
+        }
+
         // Events come off the instance, one at a time, and a state change is the one a frame loop acts on.
         // The rest - an interaction profile changing, an event lost - are the runtime's business for now,
         // and skipping them is better than inventing a mapping for them.
@@ -556,7 +564,7 @@ impl wxr::Session for OpenXrSession {
         space: wxr::ReferenceSpace,
         out: &mut Vec<wxr::InputSource>,
     ) -> Result<(), wxr::Error> {
-        let Some(hands) = &self.hands else {
+        let Some(hands) = self.hands.as_mut() else {
             return Ok(());
         };
         let Some(reference) = self.spaces.get(space.id() as usize) else {

@@ -483,10 +483,14 @@ impl wxr::Session for AppleSession {
             _ => Mat4::IDENTITY,
         };
 
-        for (handedness, transform, tracked) in arkit.hands() {
+        for (index, (handedness, transform, tracked)) in arkit.hands().into_iter().enumerate() {
             let pose = wxr_render::pose_from_transform(origin * transform);
             out.push(wxr::InputSource {
+                id: wxr::InputId::new(index as u32),
                 handedness,
+                // A palm ray is a tracked pointer like any other; the C surface has no gaze or screen ray to
+                // make.
+                target_ray_mode: wxr::TargetRayMode::TrackedPointer,
                 // A hand here is a place and an orientation, and that is all the C API gives - the skeleton
                 // is the Swift API's, so there is no fingertip to aim from and no pinch to read. Grip and
                 // aim are therefore the same pose, and the pose's own orientation is the palm's direction:
@@ -496,7 +500,7 @@ impl wxr::Session for AppleSession {
                 tracked,
                 // And no buttons at all, which is not a gap: a hand has none. The core's buttons are the
                 // intersection of the three platforms, and this is the platform where the intersection is
-                // empty.
+                // empty - so there are no press events here either, because there is nothing to press.
                 buttons: wxr::Buttons::default(),
                 axes: wxr::Axes::default(),
             });

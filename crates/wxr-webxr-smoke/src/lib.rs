@@ -56,6 +56,8 @@ struct Board {
     /// The last lifecycle reported, and the last visibility, so a rung of either ladder is news once.
     state: wxr::State,
     visibility: wxr::Visibility,
+    /// Whether the inputs have been reported, so a controller is news once rather than every frame.
+    input_said: bool,
 }
 
 #[wasm_bindgen(start)]
@@ -124,6 +126,7 @@ async fn setup() {
         ticks: 0,
         state: wxr::State::default(),
         visibility: wxr::Visibility::default(),
+        input_said: false,
     }));
     let ticking = board.clone();
     let interval: Rc<RefCell<Option<i32>>> = Rc::new(RefCell::new(None));
@@ -217,6 +220,27 @@ fn tick(board: &mut Board) {
             view.image,
         ));
     }
+    // The sources, which are the frame's half of input: where the hands are and how they are aimed. What they
+    // *do* arrives as events above, because that is where WebXR puts it.
+    let mut sources = Vec::new();
+    if let Err(error) = board.session.inputs(space, &mut sources) {
+        say(&format!("inputs failed: {error}"));
+    }
+    if !board.input_said && !sources.is_empty() {
+        board.input_said = true;
+        for source in &sources {
+            say(&format!(
+                "  {:?} hand, {:?}, id {}, aiming from ({:.3}, {:.3}, {:.3})",
+                source.handedness,
+                source.target_ray_mode,
+                source.id.get(),
+                source.aim.position.x,
+                source.aim.position.y,
+                source.aim.position.z,
+            ));
+        }
+    }
+
     if let Err(error) = board.session.end(&mut board.frame) {
         say(&format!("end failed: {error}"));
     }
