@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use crate::frame::Frame;
 use crate::input::{InputId, InputSource};
-use crate::space::{ReferenceSpace, SpaceKind};
+use crate::space::{Pose, ReferenceSpace, SpaceKind};
 use crate::target::ImageMeta;
 
 /// What the session's lifecycle is: the smallest thing a synchronous API needs and a promise does not.
@@ -267,6 +267,21 @@ pub trait Session: Any {
     /// than quietly handing back a worse one - a scene that asked to stand on the floor and got a head
     /// origin is a scene floating at eye height.
     fn space(&mut self, kind: SpaceKind) -> Result<ReferenceSpace, Error>;
+
+    /// A space at `offset` inside `space`, for content that belongs to a place rather than to a room.
+    ///
+    /// This is WebXR's `getOffsetReferenceSpace`, and it is how a scene anchors something: a panel on a wall, a
+    /// model on a table, a point the app decided is "here". The offset is expressed in `space`, so what comes
+    /// back moves with it - a space off a controller follows the controller, and one off the floor stays put.
+    ///
+    /// A backend makes this out of what it already has: OpenXR a reference space of the same type with a pose
+    /// inside it, WebXR the browser's own offset space, and a compositor platform a transform it applies where
+    /// it would have applied the one it had.
+    fn offset_space(
+        &mut self,
+        space: ReferenceSpace,
+        offset: Pose,
+    ) -> Result<ReferenceSpace, Error>;
 
     /// Begin a frame. Fills in the predicted display time and what the caller should do with it.
     fn begin(&mut self, now: Duration, out: &mut Frame) -> Result<(), Error>;

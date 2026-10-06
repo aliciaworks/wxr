@@ -60,7 +60,9 @@ use std::time::Duration;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{XrFrame, XrReferenceSpace, XrReferenceSpaceType, XrSession, XrSessionMode};
+use web_sys::{
+    XrFrame, XrReferenceSpace, XrReferenceSpaceType, XrRigidTransform, XrSession, XrSessionMode,
+};
 
 use wxr::glam::{Quat, Vec3};
 
@@ -204,6 +206,26 @@ struct Inner {
     frame: Option<(XrFrame, Duration)>,
 }
 
+/// A reference space, which the browser hands over as a promise rather than as an object.
+///
+/// The promise is kept while it is pending because an offset space is made *from* another one and has to wait
+/// for the same answer - which is the only reason this is not just an `Option`.
+#[derive(Default)]
+struct Space {
+    space: Option<XrReferenceSpace>,
+    promise: Option<js_sys::Promise>,
+}
+
+impl Space {
+    /// A space that is here.
+    fn resolved(space: XrReferenceSpace) -> Self {
+        Self {
+            space: Some(space),
+            promise: None,
+        }
+    }
+}
+
 /// One of the frame's images: the colour texture, and the depth buffer the layer gave with it.
 ///
 /// They are one thing here because the compositor hands them over as one - both come from the same sub-image -
@@ -234,7 +256,7 @@ pub struct WebXrSession {
     /// Whether `Lost` has been said, so that the end of a session is news once.
     lost: bool,
     /// Spaces, each a slot: the request is a promise, so a space exists a frame or two after it is asked for.
-    spaces: Vec<Rc<RefCell<Option<XrReferenceSpace>>>>,
+    spaces: Vec<Rc<RefCell<Space>>>,
     state: wxr::State,
     /// Whether the session is being shown, which is the browser's own `visibilityState`.
     visibility: wxr::Visibility,
@@ -513,23 +535,61 @@ impl wxr::Session for WebXrSession {
                 "the session has not started yet".into(),
             ));
         };
-        let slot = Rc::new(RefCell::new(None));
         let promise: js_sys::Promise = session
             .request_reference_space(reference_space_type(kind))
             .unchecked_into();
+        let slot = Rc::new(RefCell::new(Space {
+            space: None,
+            promise: Some(promise.clone()),
+        }));
 
         let fill = slot.clone();
         wasm_bindgen_futures::spawn_local(async move {
             if let Ok(value) = JsFuture::from(promise).await
                 && let Ok(space) = value.dyn_into::<XrReferenceSpace>()
             {
-                *fill.borrow_mut() = Some(space);
+                *fill.borrow_mut() = Space::resolved(space);
             }
         });
 
         self.spaces.push(slot);
         Ok(wxr::ReferenceSpace::new(
             kind,
+            (self.spaces.len() - 1) as u32,
+        ))
+    }
+
+    fn offset_space(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        offset: wxr::Pose,
+    ) -> Result<wxr::ReferenceSpace, wxr::Error> {
+        let Some(base) = self.spaces.get(space.id() as usize).cloned() else {
+            return Err(wxr::Error::NoSpace(space.kind));
+        };
+        let resolved = base.borrow().space.clone();
+        let pending = base.borrow().promise.clone();
+        let slot = Rc::new(RefCell::new(Space::default()));
+        // The base may still be a promise, and an offset of a space that is not here yet is not here yet
+        // either - so the same promise is waited on, which is why a slot keeps it.
+        if let Some(base) = resolved {
+            *slot.borrow_mut() = Space::resolved(offset_reference_space(&base, offset)?);
+        } else if let Some(promise) = pending {
+            let fill = slot.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Ok(value) = JsFuture::from(promise).await
+                    && let Ok(base) = value.dyn_into::<XrReferenceSpace>()
+                    && let Ok(offset) = offset_reference_space(&base, offset)
+                {
+                    *fill.borrow_mut() = Space::resolved(offset);
+                }
+            });
+        } else {
+            return Err(wxr::Error::NoSpace(space.kind));
+        }
+        self.spaces.push(slot);
+        Ok(wxr::ReferenceSpace::new(
+            space.kind,
             (self.spaces.len() - 1) as u32,
         ))
     }
@@ -561,7 +621,7 @@ impl wxr::Session for WebXrSession {
         let Some(reference) = self
             .spaces
             .get(space.id() as usize)
-            .and_then(|slot| slot.borrow().clone())
+            .and_then(|slot| slot.borrow().space.clone())
         else {
             // The space is still a promise, which is not an error: it is one or two frames of a session
             // that just started.
@@ -635,7 +695,7 @@ impl wxr::Session for WebXrSession {
         let Some(reference) = self
             .spaces
             .get(space.id() as usize)
-            .and_then(|slot| slot.borrow().clone())
+            .and_then(|slot| slot.borrow().space.clone())
         else {
             return Ok(());
         };
@@ -732,6 +792,33 @@ fn reference_space_type(kind: wxr::SpaceKind) -> XrReferenceSpaceType {
         // WebXR's unbounded space is a first-class one, which is the other way round from OpenXR.
         wxr::SpaceKind::Unbounded => XrReferenceSpaceType::Unbounded,
     }
+}
+
+/// A space at `offset` inside `base`, which is WebXR's `getOffsetReferenceSpace`.
+fn offset_reference_space(
+    base: &XrReferenceSpace,
+    offset: wxr::Pose,
+) -> Result<XrReferenceSpace, wxr::Error> {
+    let transform = rigid(offset)?;
+    Ok(base.get_offset_reference_space(&transform))
+}
+
+/// The core's pose as the browser's rigid transform.
+///
+/// A position is a point and a quaternion one with four coordinates, which is the shape the constructor asks
+/// for - the constructor, because an `XRRigidTransform` has no setters worth using.
+fn rigid(pose: wxr::Pose) -> Result<XrRigidTransform, wxr::Error> {
+    let position = web_sys::DomPointInit::new();
+    position.set_x(pose.position.x as f64);
+    position.set_y(pose.position.y as f64);
+    position.set_z(pose.position.z as f64);
+    let orientation = web_sys::DomPointInit::new();
+    orientation.set_x(pose.orientation.x as f64);
+    orientation.set_y(pose.orientation.y as f64);
+    orientation.set_z(pose.orientation.z as f64);
+    orientation.set_w(pose.orientation.w as f64);
+    XrRigidTransform::new_with_position_and_orientation(&position, &orientation)
+        .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))
 }
 
 /// A transform in the core's terms.

@@ -45,8 +45,10 @@ web-sys = { version = "0.3", features = [
     "XrHandedness",
     "Gamepad",
     "GamepadButton",
-    # `XrRigidTransform` reports its position and orientation as DOM points.
+    # `XrRigidTransform` reports its position and orientation as DOM points, and takes them the same way when
+    # one is made - which is how an offset reference space is asked for.
     "DomPoint",
+    "DomPointInit",
     "DomPointReadOnly",
     "Event",
 ] }

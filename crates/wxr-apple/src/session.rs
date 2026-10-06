@@ -129,7 +129,9 @@ pub struct AppleSession {
     /// What `poll` reported last, on both axes, so that a state the layer is simply still in is not news
     /// twice.
     reported: (wxr::State, wxr::Visibility),
-    spaces: u32,
+    /// Where each space sits inside the one it was made from, oldest first: a space at a place in the room is
+    /// this much transform, and an offset of an offset has to add up.
+    spaces: Vec<wxr::Pose>,
 }
 
 impl AppleSession {
@@ -155,7 +157,7 @@ impl AppleSession {
             origin: None,
             predicted: Duration::ZERO,
             reported: (wxr::State::Ready, wxr::Visibility::Hidden),
-            spaces: 0,
+            spaces: Vec::new(),
         }
     }
 
@@ -182,6 +184,24 @@ impl AppleSession {
     /// same reason everything else here is a backend.
     pub fn depth(&self) -> wxr_render::Depth {
         wxr_render::Depth::Reverse
+    }
+
+    /// The transform from device space into the space the caller asked for.
+    ///
+    /// ARKit's origin is the `Local` space and device space is identity otherwise, and a space made by
+    /// `offset_space` is that one seen from a pose inside it - so this is where an offset becomes a transform,
+    /// and there is exactly one place it has to be right.
+    fn space_origin(&self, space: wxr::ReferenceSpace) -> Mat4 {
+        let base = match (space.kind, self.origin) {
+            (wxr::SpaceKind::Local, Some(origin)) => origin,
+            _ => Mat4::IDENTITY,
+        };
+        let offset = self
+            .spaces
+            .get(space.id() as usize)
+            .copied()
+            .unwrap_or_default();
+        Mat4::from(offset.transform()).inverse() * base
     }
 
     /// What the layer is doing, as the two things a session can be: here or not, and shown or not.
@@ -325,8 +345,26 @@ impl wxr::Session for AppleSession {
             (wxr::SpaceKind::Local, Some(arkit)) if arkit.is_world_tracked() => {}
             _ => return Err(wxr::Error::NoSpace(kind)),
         }
-        self.spaces += 1;
-        Ok(wxr::ReferenceSpace::new(kind, self.spaces))
+        self.spaces.push(wxr::Pose::IDENTITY);
+        Ok(wxr::ReferenceSpace::new(
+            kind,
+            (self.spaces.len() - 1) as u32,
+        ))
+    }
+
+    fn offset_space(
+        &mut self,
+        base: wxr::ReferenceSpace,
+        offset: wxr::Pose,
+    ) -> Result<wxr::ReferenceSpace, wxr::Error> {
+        let Some(inside) = self.spaces.get(base.id() as usize).copied() else {
+            return Err(wxr::Error::NoSpace(base.kind));
+        };
+        self.spaces.push(inside.then(offset));
+        Ok(wxr::ReferenceSpace::new(
+            base.kind,
+            (self.spaces.len() - 1) as u32,
+        ))
     }
 
     fn begin(&mut self, _now: Duration, out: &mut wxr::Frame) -> Result<(), wxr::Error> {
@@ -410,14 +448,9 @@ impl wxr::Session for AppleSession {
         if self.drawable.is_null() {
             return Ok(());
         }
-        // ARKit's origin, when the caller asked for the space that has one. Everything else is device space,
-        // which is the identity here: the eye transforms are already relative to the wearer.
-        let origin = match (space.kind, self.origin) {
-            (wxr::SpaceKind::Local, Some(origin)) => origin,
-            _ => Mat4::IDENTITY,
-        };
-        // The head is the device itself, and `origin` is where the device is: the transform the eyes are placed
-        // within, with no eye in it.
+        // The space itself, and then the head in it: the eye transforms are already relative to the wearer, so
+        // the viewer is the space's own origin and the eyes hang off it.
+        let origin = self.space_origin(space);
         out.viewer = wxr_render::pose_from_transform(origin);
 
         // SAFETY: the drawable is this frame's and is live until `end`. Every index below is below the view
@@ -480,12 +513,8 @@ impl wxr::Session for AppleSession {
         let Some(arkit) = &self.arkit else {
             return Ok(());
         };
-        // The same choice the views make: ARKit's origin when the caller asked for the space that has one,
-        // and device space otherwise.
-        let origin = match (space.kind, self.origin) {
-            (wxr::SpaceKind::Local, Some(origin)) => origin,
-            _ => Mat4::IDENTITY,
-        };
+        // The same space the views are expressed in, for the same reason.
+        let origin = self.space_origin(space);
 
         for (index, (handedness, transform, tracked)) in arkit.hands().into_iter().enumerate() {
             let pose = wxr_render::pose_from_transform(origin * transform);

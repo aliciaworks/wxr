@@ -207,6 +207,9 @@ pub struct OpenXrSession {
     extent: wxr::Extent2d,
     blend: xr::EnvironmentBlendMode,
     spaces: Vec<xr::Space>,
+    /// Where each of `spaces` sits inside its kind, because an offset space is the kind's origin moved - and an
+    /// offset of an offset has to add up.
+    offsets: Vec<wxr::Pose>,
     /// The viewer's own space, whose one job is the head pose: OpenXR reports where the eyes are and not where
     /// the wearer is, and `VIEW` is the single reference space that is the wearer.
     view: xr::Space,
@@ -335,6 +338,7 @@ impl OpenXrSession {
             extent,
             blend: backend.blend,
             spaces: Vec::new(),
+            offsets: Vec::new(),
             view,
             located: Vec::new(),
             state: wxr::State::Ready,
@@ -469,8 +473,32 @@ impl wxr::Session for OpenXrSession {
             .create_reference_space(reference_space(kind), xr::Posef::IDENTITY)
             .map_err(|_| wxr::Error::NoSpace(kind))?;
         self.spaces.push(space);
+        self.offsets.push(wxr::Pose::IDENTITY);
         Ok(wxr::ReferenceSpace::new(
             kind,
+            (self.spaces.len() - 1) as u32,
+        ))
+    }
+
+    fn offset_space(
+        &mut self,
+        base: wxr::ReferenceSpace,
+        offset: wxr::Pose,
+    ) -> Result<wxr::ReferenceSpace, wxr::Error> {
+        if self.spaces.get(base.id() as usize).is_none() {
+            return Err(wxr::Error::NoSpace(base.kind));
+        }
+        // A reference space here is a type and a pose inside it, so an offset of one is that pose composed with
+        // this one - and the result is a space of the same type, which is what keeps it tracking the room.
+        let inside = self.offsets[base.id() as usize].then(offset);
+        let space = self
+            .session
+            .create_reference_space(reference_space(base.kind), posef(inside))
+            .map_err(|_| wxr::Error::NoSpace(base.kind))?;
+        self.spaces.push(space);
+        self.offsets.push(inside);
+        Ok(wxr::ReferenceSpace::new(
+            base.kind,
             (self.spaces.len() - 1) as u32,
         ))
     }
@@ -655,6 +683,23 @@ fn reference_space(kind: wxr::SpaceKind) -> xr::ReferenceSpaceType {
         // An unbounded space is an extension; a runtime without it has `LOCAL`, and a caller that asked for
         // unbounded has got the space it asked for as closely as it exists.
         wxr::SpaceKind::Unbounded => xr::ReferenceSpaceType::LOCAL,
+    }
+}
+
+/// The core's pose as OpenXR's, which is the direction an offset space is made in.
+fn posef(pose: wxr::Pose) -> xr::Posef {
+    xr::Posef {
+        orientation: xr::Quaternionf {
+            x: pose.orientation.x,
+            y: pose.orientation.y,
+            z: pose.orientation.z,
+            w: pose.orientation.w,
+        },
+        position: xr::Vector3f {
+            x: pose.position.x,
+            y: pose.position.y,
+            z: pose.position.z,
+        },
     }
 }
 

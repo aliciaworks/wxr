@@ -153,6 +153,17 @@ impl Session for MockSession {
         Ok(ReferenceSpace::new(kind, self.spaces))
     }
 
+    fn offset_space(
+        &mut self,
+        space: ReferenceSpace,
+        _offset: Pose,
+    ) -> Result<ReferenceSpace, Error> {
+        // Every mock space is the same place, so an offset one is a second name for it - which is enough to
+        // hold one, and holding one is the thing a caller is testing.
+        self.spaces += 1;
+        Ok(ReferenceSpace::new(space.kind, self.spaces))
+    }
+
     fn begin(&mut self, now: Duration, out: &mut Frame) -> Result<(), Error> {
         self.frames += 1;
         // Three, like a swapchain, so that an image is reused before long and a cached one would be visibly
@@ -367,6 +378,24 @@ mod tests {
         assert_eq!(session.poll(), Some(Event::SelectEnd(id)));
         assert_eq!(session.poll(), Some(Event::Select(id)));
         assert_eq!(session.poll(), None);
+    }
+
+    #[test]
+    fn a_space_can_be_offset_from_another() {
+        let mut session = running();
+        let floor = session.space(SpaceKind::LocalFloor).expect("a floor");
+        let table = session
+            .offset_space(
+                floor,
+                Pose {
+                    position: Vec3::new(0.0, 0.75, 0.0),
+                    orientation: Quat::IDENTITY,
+                },
+            )
+            .expect("an offset space");
+        // Same kind, different handle: the offset is a new space that follows the one it was made from.
+        assert_eq!(table.kind, floor.kind);
+        assert_ne!(table.id(), floor.id());
     }
 
     #[test]
