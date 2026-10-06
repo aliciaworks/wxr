@@ -151,10 +151,31 @@ impl OpenXr {
     }
 }
 
-/// `VK_FORMAT_R8G8B8A8_SRGB`: eight bits each and sRGB-encoded, the format every compositor must accept. A
-/// headset wants more than eight bits, and that is a thing to add together with the tone map that makes it
-/// usable rather than a format to ask for and hope for.
-pub(crate) const RGBA8_SRGB: u32 = 43;
+/// What a Vulkan swapchain format is in the core's terms.
+///
+/// This is the one place the three backends differ on colour: WebXR and a compositor platform hand a format
+/// over, and OpenXR is the one that makes the app *choose* from what the runtime offers. So the choice is made
+/// by name, through `ash`'s constants rather than a magic number, and reported as what it is.
+///
+/// Eight bits first, because that is what every compositor must accept. A headset wants more than eight bits,
+/// and that is a thing to add together with the tone map that makes it usable rather than a format to ask for
+/// and hope for - so `Rgba16Float` is nameable here, and picking it is a decision for an app rather than a
+/// default.
+fn color_format(format: u32) -> wxr::ColorFormat {
+    match format {
+        f if f == ash::vk::Format::R8G8B8A8_SRGB.as_raw() as u32 => wxr::ColorFormat::Rgba8Srgb,
+        f if f == ash::vk::Format::R8G8B8A8_UNORM.as_raw() as u32 => wxr::ColorFormat::Rgba8Unorm,
+        f if f == ash::vk::Format::B8G8R8A8_SRGB.as_raw() as u32 => wxr::ColorFormat::Bgra8Srgb,
+        f if f == ash::vk::Format::B8G8R8A8_UNORM.as_raw() as u32 => wxr::ColorFormat::Bgra8Unorm,
+        f if f == ash::vk::Format::R16G16B16A16_SFLOAT.as_raw() as u32 => {
+            wxr::ColorFormat::Rgba16Float
+        }
+        f if f == ash::vk::Format::A2B10G10R10_UNORM_PACK32.as_raw() as u32 => {
+            wxr::ColorFormat::Rgb10a2Unorm
+        }
+        _ => wxr::ColorFormat::Unknown,
+    }
+}
 
 impl wxr::Backend for OpenXr {
     type Device = Device;
@@ -208,6 +229,9 @@ pub struct OpenXrSession {
     /// integer. The renderer wraps these; the core carries them.
     images: Vec<u64>,
     extent: wxr::Extent2d,
+    /// What the swapchain's images are. This backend chooses it from what the runtime offers, so it is the one
+    /// that has to report it - and the renderer builds its pipeline from the answer.
+    color: wxr::ColorFormat,
     blend: xr::EnvironmentBlendMode,
     spaces: Vec<xr::Space>,
     /// Where each of `spaces` sits inside its kind, because an offset space is the kind's origin moved - and an
@@ -286,12 +310,22 @@ impl OpenXrSession {
         let formats = session
             .enumerate_swapchain_formats()
             .map_err(|error| Error::runtime("enumerate swapchain formats", error))?;
+        // sRGB 8-bit first, because every compositor must accept it; failing that, the first format this core
+        // can *name*, because a format it cannot name is a frame it will not draw; and only then whatever is
+        // left, which is reported as `Unknown` rather than as a plausible lie about what the pixels mean.
         let format = formats
             .iter()
-            .find(|format| **format == RGBA8_SRGB)
-            .or_else(|| formats.first())
             .copied()
+            .find(|format| *format == ash::vk::Format::R8G8B8A8_SRGB.as_raw() as u32)
+            .or_else(|| {
+                formats
+                    .iter()
+                    .copied()
+                    .find(|format| color_format(*format) != wxr::ColorFormat::Unknown)
+            })
+            .or_else(|| formats.first().copied())
             .ok_or_else(|| Error::Unsupported("the runtime offers no swapchain format".into()))?;
+        let color = color_format(format);
 
         let extent = backend.recommended_extent();
         let swapchain = session
@@ -341,6 +375,7 @@ impl OpenXrSession {
             images,
             hands,
             extent,
+            color,
             blend: backend.blend,
             spaces: Vec::new(),
             offsets: Vec::new(),
@@ -478,7 +513,7 @@ impl wxr::Session for OpenXrSession {
 
     fn images(&self) -> wxr::ImageMeta {
         wxr::ImageMeta {
-            format: wxr::ColorFormat::Rgba8Srgb,
+            format: self.color,
             extent: self.extent,
             layers: 2,
         }
