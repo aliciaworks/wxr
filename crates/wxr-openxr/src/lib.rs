@@ -389,6 +389,16 @@ impl wxr::Session for OpenXrSession {
         }
     }
 
+    /// What the display shows behind the picture, which the runtime said when the session was made.
+    fn blend(&self) -> wxr::Blend {
+        match self.blend {
+            xr::EnvironmentBlendMode::OPAQUE => wxr::Blend::Opaque,
+            xr::EnvironmentBlendMode::ADDITIVE => wxr::Blend::Additive,
+            xr::EnvironmentBlendMode::ALPHA_BLEND => wxr::Blend::AlphaBlend,
+            _ => wxr::Blend::Opaque,
+        }
+    }
+
     fn images(&self) -> wxr::ImageMeta {
         wxr::ImageMeta {
             format: wxr::ColorFormat::Rgba8Srgb,

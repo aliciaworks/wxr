@@ -260,6 +260,14 @@ mod tests {
     }
 
     #[test]
+    fn a_mock_says_nothing_about_the_display_and_that_is_opaque() {
+        // The default in the trait, and the right assumption: a session that does not say is one that fills
+        // the display, which is what both ways of presenting into one do.
+        let session = running();
+        assert_eq!(session.blend(), crate::Blend::Opaque);
+    }
+
+    #[test]
     fn a_space_without_a_floor_is_refused_rather_than_downgraded() {
         let mut session = running();
         assert!(matches!(

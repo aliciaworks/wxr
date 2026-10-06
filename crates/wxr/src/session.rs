@@ -77,6 +77,24 @@ pub enum Presentation {
     Scene,
 }
 
+/// What the display shows behind the picture.
+///
+/// WebXR's `environmentBlendMode`, and it is in the core for the reason the core is WebXR's vocabulary at all:
+/// it changes how a scene has to be drawn, not how a platform is. An opaque display is a screen; an additive
+/// one adds the picture to what is already there, so black is see-through and the background is not the app's
+/// to fill; an alpha-blending one mixes the two, which is what makes the alpha channel a decision. A renderer
+/// that does not know which it is drawing into guesses about the background.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Blend {
+    /// The picture replaces what is behind it. Every fully immersive headset.
+    #[default]
+    Opaque,
+    /// The picture is added to the world: black is nothing.
+    Additive,
+    /// The picture is mixed with the world, so the alpha channel means something.
+    AlphaBlend,
+}
+
 /// What went wrong.
 ///
 /// Strings rather than platform error types, because the core would otherwise have to depend on every
@@ -125,6 +143,14 @@ pub trait Session {
     /// a row can matter in the order they happened - `Visible` then `ExitRequested` is a session that ran
     /// and stopped.
     fn poll(&mut self) -> Option<Event>;
+
+    /// What the display shows behind the picture.
+    ///
+    /// `Opaque` by default, because a session that does not say is a session that fills the display - which is
+    /// what both ways of presenting into one do.
+    fn blend(&self) -> Blend {
+        Blend::Opaque
+    }
 
     /// The shape of every image this session presents.
     fn images(&self) -> ImageMeta;

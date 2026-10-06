@@ -110,6 +110,9 @@ pub struct AppleSession {
     /// The near and far planes the app draws with, which the compositor is told each frame so that it can
     /// reproject with the depth buffer. `None` until an app says - see `set_depth_range`.
     depth_range: Option<(f32, f32)>,
+    /// What the display shows behind the picture, told by the app rather than by the compositor - see
+    /// `set_blend`.
+    blend: wxr::Blend,
     /// ARKit, when it came up. `None` means every pose is relative to the wearer's head and there are no
     /// hands.
     arkit: Option<ArKit>,
@@ -144,6 +147,7 @@ impl AppleSession {
             drawable: std::ptr::null_mut(),
             textures: Vec::new(),
             depth_range: None,
+            blend: wxr::Blend::Opaque,
             // Tracking that will not start is a head-locked scene, not a session that failed.
             arkit: ArKit::new(),
             configured,
@@ -152,6 +156,16 @@ impl AppleSession {
             reported: wxr::State::Synchronized,
             spaces: 0,
         }
+    }
+
+    /// Tell the session what the display is showing behind the picture.
+    ///
+    /// The compositor does not say: whether the space mixes with the room is the app's choice of immersion
+    /// style, made in Swift, and nothing in the C surface reports it back. So the app that chose says, and the
+    /// default until it does is opaque - a fully immersive space, which is what a `CompositorLayer` is unless
+    /// somebody asked for otherwise.
+    pub fn set_blend(&mut self, blend: wxr::Blend) {
+        self.blend = blend;
     }
 
     /// The near and far planes the scene draws with.
@@ -249,6 +263,10 @@ impl wxr::Session for AppleSession {
         }
         self.reported = state;
         Some(wxr::Event::StateChanged(state))
+    }
+
+    fn blend(&self) -> wxr::Blend {
+        self.blend
     }
 
     fn images(&self) -> wxr::ImageMeta {

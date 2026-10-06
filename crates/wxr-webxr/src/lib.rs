@@ -52,7 +52,7 @@ mod import;
 
 pub use import::Images;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -157,6 +157,19 @@ pub enum Error {
     NoXr,
 }
 
+impl Drop for WebXrSession {
+    /// End the browser's session when this one is dropped.
+    ///
+    /// A WebXR session belongs to the browser, and without this it keeps it - and the display it holds - until
+    /// the page goes away. Dropping the handle is how an app says it is finished, so this is where the browser
+    /// is told.
+    fn drop(&mut self) {
+        if let Some(session) = self.inner.borrow().session.clone() {
+            let _ = session.end();
+        }
+    }
+}
+
 /// A browser's visibility state in the core's terms.
 ///
 /// `visible` is a session that is showing, which is the core's `Visible` and the point at which an app may
@@ -217,6 +230,12 @@ pub struct WebXrSession {
     /// The animation callback, kept alive for as long as the session is: a closure that is dropped is a
     /// closure the browser stops calling.
     callback: Option<Closure<dyn FnMut(f64, XrFrame)>>,
+    /// The `end` handler's flag, and the handler itself - same reason as the callback: a closure that is
+    /// dropped is a closure the browser stops calling.
+    ended: Rc<Cell<bool>>,
+    on_end: Option<Closure<dyn FnMut()>>,
+    /// Whether `Lost` has been said, so that the end of a session is news once.
+    lost: bool,
     /// Spaces, each a slot: the request is a promise, so a space exists a frame or two after it is asked for.
     spaces: Vec<Rc<RefCell<Option<XrReferenceSpace>>>>,
     state: wxr::State,
@@ -240,6 +259,9 @@ impl WebXrSession {
             inner: Rc::new(RefCell::new(Inner::default())),
             connect,
             callback: None,
+            ended: Rc::new(Cell::new(false)),
+            on_end: None,
+            lost: false,
             spaces: Vec::new(),
             state: wxr::State::Connecting,
             located: 0,
@@ -347,8 +369,28 @@ impl wxr::Session for WebXrSession {
             // Before the frame loop starts, because a WebGPU-compatible session with no layer set is a session
             // whose animation frames never arrive at all.
             self.start_gpu(&session);
+
+            // The browser can end a session on its own - the person takes the headset off, the page loses the
+            // display - and a session that does not notice is a frame loop drawing into nothing.
+            let ended = self.ended.clone();
+            let on_end = Closure::<dyn FnMut()>::new(move || ended.set(true));
+            session.set_onend(Some(on_end.as_ref().unchecked_ref()));
+            self.on_end = Some(on_end);
+
             self.inner.borrow_mut().session = Some(session);
             self.request_frame();
+        }
+
+        // Before the visibility, because a session that has ended has no visibility worth reading.
+        if self.ended.get() {
+            if self.state != wxr::State::Ended {
+                self.state = wxr::State::Ended;
+                return Some(wxr::Event::StateChanged(wxr::State::Ended));
+            }
+            if !self.lost {
+                self.lost = true;
+                return Some(wxr::Event::Lost);
+            }
         }
 
         // Where the ladder is: `Connecting` until there is a session, and after that whatever the browser says
@@ -362,6 +404,26 @@ impl wxr::Session for WebXrSession {
         }
         self.state = next;
         Some(wxr::Event::StateChanged(next))
+    }
+
+    /// What the display shows behind the picture, which WebXR calls `environmentBlendMode`.
+    ///
+    /// `web-sys` does not bind it - it is in the browser's own `XRSession` prototype and not in the bindings,
+    /// which is how this reads it, the same way `gpu::has_feature` reads `enabledFeatures`. Opaque until there
+    /// is a session to ask.
+    fn blend(&self) -> wxr::Blend {
+        let Some(session) = self.inner.borrow().session.clone() else {
+            return wxr::Blend::Opaque;
+        };
+        let name = js_sys::Reflect::get(
+            session.unchecked_ref::<JsValue>(),
+            &JsValue::from_str("environmentBlendMode"),
+        );
+        match name.ok().and_then(|value| value.as_string()).as_deref() {
+            Some("additive") => wxr::Blend::Additive,
+            Some("alpha-blend") => wxr::Blend::AlphaBlend,
+            _ => wxr::Blend::Opaque,
+        }
     }
 
     fn images(&self) -> wxr::ImageMeta {
