@@ -119,6 +119,7 @@ The model, the seam, and a mock:
 There is no headset here, so verification is what compiles and what is tested:
 
 ```sh
+cargo fmt --all --check
 cargo test                                                  # 27, on the host
 cargo clippy --workspace --all-targets -- -D warnings
 cargo clippy --workspace --all-targets --target wasm32-unknown-unknown -- -D warnings
@@ -127,16 +128,18 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
 
 Each backend crate is empty outside its own target family - `wxr-openxr` off wasm, `wxr-webxr` off wasm the
-other way, `wxr-apple` off Apple - so a host build tests the core and the renderer and leaves the platforms
-to a cross-compiler. What that does not prove is that any of the three has drawn a frame on real hardware,
-because none of them has.
+other way, `wxr-apple` off Apple - so a host build tests the core and the renderer and leaves the platforms to
+a cross-compiler. `.github/workflows/ci.yml` runs exactly this list. What none of it proves is that any of the
+three has drawn a frame on real hardware, because none of them has.
 
 ## What is not decided yet
 
 - **WebXR's images.** The binding is not shipped; when it is, `wxr-webxr`'s `Image` becomes a sub-image and
   the `Import` that wraps it is written beside it, which is the same shape the other two already have.
-- **The Apple app.** The SwiftUI entry and its `Info.plist` are the app's, not the backend's, and until they
-  exist the Apple leg ends at `AppleBackend::new`.
+- **The Apple app.** The Rust half of its entry point is `wxr_apple::entry::run`: connect, pick a space, and
+  run frames until the space closes, with a callback for the app's own work. What is left is the SwiftUI file
+  around it, its `Info.plist` - `NSWorldSensingUsageDescription` is what ARKit refuses without - and the
+  app's choice of how to get the compositor's device into wgpu, which `AppleBackend::device` documents.
 - **A real scene.** `wxr-render` draws one triangle with no depth buffer and a fixed near and far. A scene
   with depth is where `Depth` stops being an argument nobody passes, and where the reverse-Z requirement
   stops being a comment.

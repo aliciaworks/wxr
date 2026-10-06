@@ -25,8 +25,10 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_compositor_services::{
     cp_drawable, cp_drawable_array, cp_drawable_t, cp_drawable_target, cp_frame, cp_frame_t,
-    cp_frame_timing, cp_layer_renderer_get_state, cp_layer_renderer_query_next_frame,
-    cp_layer_renderer_state, cp_layer_renderer_t, cp_time, cp_view, cp_view_texture_map,
+    cp_frame_timing, cp_layer_renderer_configuration_get_color_format,
+    cp_layer_renderer_get_configuration, cp_layer_renderer_get_state,
+    cp_layer_renderer_query_next_frame, cp_layer_renderer_state, cp_layer_renderer_t, cp_time,
+    cp_view, cp_view_texture_map,
 };
 use objc2_metal::{MTLCommandBuffer, MTLCommandQueue, MTLDevice, MTLPixelFormat, MTLTexture};
 
@@ -98,6 +100,12 @@ pub struct AppleSession {
     /// ARKit, when it came up. `None` means every pose is relative to the wearer's head and there are no
     /// hands.
     arkit: Option<ArKit>,
+    /// The colour format the layer was configured with.
+    ///
+    /// Kept because it is answerable before there is a frame, which is what lets a caller make its renderer in
+    /// advance instead of in the middle of its first one. A drawable's own texture still wins when there is
+    /// one: it is what will actually be drawn into.
+    configured: wxr::ColorFormat,
     /// Where the device is in the world at this frame's presentation time, when ARKit answered. The frame's
     /// views are built from it, and it is what was handed to the compositor to reproject against.
     origin: Option<Mat4>,
@@ -109,6 +117,13 @@ pub struct AppleSession {
 
 impl AppleSession {
     fn new(renderer: Retained<cp_layer_renderer_t>, queue: wgpu::Queue) -> Self {
+        // SAFETY: the layer renderer is live, and the configuration is Apple's to hand out - it is the one the
+        // app asked for when it made the immersive space.
+        let configured = unsafe {
+            color_format(cp_layer_renderer_configuration_get_color_format(
+                &cp_layer_renderer_get_configuration(&renderer),
+            ))
+        };
         Self {
             renderer,
             queue,
@@ -117,6 +132,7 @@ impl AppleSession {
             textures: Vec::new(),
             // Tracking that will not start is a head-locked scene, not a session that failed.
             arkit: ArKit::new(),
+            configured,
             origin: None,
             predicted: Duration::ZERO,
             reported: wxr::State::Synchronized,
@@ -212,11 +228,18 @@ impl wxr::Session for AppleSession {
     }
 
     fn images(&self) -> wxr::ImageMeta {
-        // The texture is the truth about itself. The layer's configuration is what the app *asked* for, and
-        // the compositor is free to hand back something else - so the format, the size and the layer count
-        // are read off the thing that will actually be drawn into.
+        // The texture is the truth about itself: the layer's configuration is what the app *asked* for, and
+        // the compositor is free to hand back something else - so the format, the size and the layer count are
+        // read off the thing that will actually be drawn into, when there is one.
+        //
+        // Before a frame there is only the configuration, and answering with its format rather than with
+        // `Unknown` is what lets a caller build its renderer up front. The extent is a frame's to know and is
+        // left at zero until then; nothing draws into it before a drawable says how big it is.
         let Some(texture) = self.textures.first() else {
-            return wxr::ImageMeta::default();
+            return wxr::ImageMeta {
+                format: self.configured,
+                ..Default::default()
+            };
         };
         let (format, width, height, layers) = (
             texture.pixelFormat(),

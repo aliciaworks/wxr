@@ -41,17 +41,19 @@
 //! CompositorServices (C) ──▶ frames, textures, viewports, per-eye transform and tangents ──▶ session
 //! ARKit (C)              ──▶ world tracking: where the head is ────────────────────────────▶ arkit
 //!                        └─▶ hand tracking: where the hands are ───────────────────────────▶ session::inputs
-//! Swift (the app)        ──▶ ImmersiveSpace's CompositorLayer closure ─────────────────────▶ AppleBackend
+//! Swift (the app)        ──▶ ImmersiveSpace's CompositorLayer closure + the wgpu device ───▶ entry::run
 //! ```
 
 #![cfg(target_vendor = "apple")]
 
 pub mod arkit;
+pub mod entry;
 pub mod import;
 pub mod metal;
 pub mod session;
 pub mod sys;
 
 pub use arkit::ArKit;
+pub use entry::run;
 pub use import::Images;
 pub use session::{AppleBackend, AppleSession};
