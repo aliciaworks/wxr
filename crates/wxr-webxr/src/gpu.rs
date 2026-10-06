@@ -81,16 +81,6 @@ extern "C" {
     pub fn get_view_descriptor(this: &XrGpuSubImage) -> JsValue;
 }
 
-/// `XRSession::updateRenderState`, which `web-sys` declares for the base layer and not for layers.
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_name = XRSession)]
-    type SessionLayers;
-
-    #[wasm_bindgen(method)]
-    fn update_render_state(this: &SessionLayers, state: &JsValue);
-}
-
 /// The WebGPU name of the depth format this workspace draws with.
 ///
 /// It is named here because this is where it can be asked for: a projection layer made without a depth format
@@ -135,12 +125,17 @@ pub fn has_feature(session: &XrSession, feature: &str) -> bool {
 
 /// Present the layer - which is what a WebGPU-compatible session does *instead* of setting a base layer, and
 /// what makes its animation frames start arriving at all.
+///
+/// `web-sys` declares both halves of this: `XrRenderStateInit::set_layers` and
+/// `XrSession::update_render_state_with_state`. So this is those two calls and not a hand-built object, and the
+/// one thing the bindings cannot name is the *layer* itself, which is what `XrProjectionLayer` above is for.
 pub fn set_layers(session: &XrSession, layer: &XrProjectionLayer) {
-    let state = js_sys::Object::new();
-    let layers = js_sys::Array::of1(layer.as_ref());
-    let _ = js_sys::Reflect::set(&state, &JsValue::from_str("layers"), &layers);
-    let session: &SessionLayers = session.unchecked_ref();
-    session.update_render_state(&state);
+    let state = web_sys::XrRenderStateInit::new();
+    // The layer is the one thing the bindings cannot name - there is no `XrProjectionLayer` in `web-sys` - so
+    // it goes over as the base type they can, which is the same JavaScript object.
+    let layer: web_sys::XrLayer = layer.unchecked_ref::<JsValue>().clone().unchecked_into();
+    state.set_layers(Some(&[layer]));
+    session.update_render_state_with_state(&state);
 }
 
 /// The array layer a sub-image's descriptor starts at: how a stereo projection layer says which eye a view is.

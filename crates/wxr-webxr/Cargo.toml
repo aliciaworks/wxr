@@ -32,6 +32,10 @@ web-sys = { version = "0.3", features = [
     "XrViewport",
     "XrReferenceSpace",
     "XrReferenceSpaceType",
+    # The render state, so that presenting a *layer* comes from the bindings rather than from a hand-built
+    # object: `XrRenderStateInit::set_layers` is what a WebGPU-compatible session presents through.
+    "XrLayer",
+    "XrRenderStateInit",
     "XrRigidTransform",
     "XrPose",
     "XrSpace",
