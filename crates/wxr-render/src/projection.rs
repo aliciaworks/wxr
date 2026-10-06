@@ -1,0 +1,204 @@
+//! Turning a field of view into a projection, and the two conventions there are.
+//!
+//! A field of view is four half-angles, because that is what a runtime reports and because a headset's lens
+//! is not centred on its panel: the projection is asymmetric, and an approximation that centres it skews
+//! everything the user sees.
+//!
+//! The trap in this file is the depth range. wgpu, Vulkan, D3D12 and Metal put it in `0..w`; OpenGL and
+//! WebGL put it in `-w..w`, and **WebXR reports the second**. A projection taken from a browser and handed
+//! to wgpu unaltered is an eye whose depth is half off - which looks like a scene that is all clipped, or
+//! all drawn, depending on where the near plane landed. [`from_gl`] is the one matrix that fixes it, and
+//! [`angles`] is the way back, which is also what a backend that reports a matrix has to use.
+
+use wxr::FieldOfView;
+use wxr::glam::{Mat4, Vec3};
+
+/// Where a projection puts its depth range.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Depth {
+    /// `0..w`: wgpu, Vulkan, D3D12, Metal. What this crate draws with.
+    #[default]
+    ZeroToOne,
+    /// `-w..w`: OpenGL, WebGL, and therefore WebXR.
+    MinusOneToOne,
+}
+
+/// A projection from a field of view, for a camera that looks down its own `-Z`.
+///
+/// Right-handed, and the near and far planes are the only distances involved: the four openings come from
+/// the angles, so a wider eye is a wider frustum rather than a scaled one.
+pub fn perspective(fov: FieldOfView, near: f32, far: f32, depth: Depth) -> Mat4 {
+    // The tangents of the half-angles are the frustum's edges at one unit out.
+    let (left, right) = (fov.left.tan(), fov.right.tan());
+    let (up, down) = (fov.up.tan(), fov.down.tan());
+    let width = right + left;
+    let height = up + down;
+    if width <= 0.0 || height <= 0.0 || near <= 0.0 || far <= near {
+        return Mat4::IDENTITY;
+    }
+
+    let scale_x = 2.0 / width;
+    let scale_y = 2.0 / height;
+    // Where the opening's centre is, as a fraction of its width. Zero is a centred projection, and it is
+    // not zero on a headset.
+    let offset_x = (right - left) / width;
+    let offset_y = (up - down) / height;
+
+    let (z_scale, z_offset) = match depth {
+        Depth::ZeroToOne => (far / (near - far), far * near / (near - far)),
+        Depth::MinusOneToOne => ((far + near) / (near - far), 2.0 * far * near / (near - far)),
+    };
+
+    Mat4::from_cols_array(&[
+        scale_x, 0.0, 0.0, 0.0, //
+        0.0, scale_y, 0.0, 0.0, //
+        offset_x, offset_y, z_scale, -1.0, //
+        0.0, 0.0, z_offset, 0.0,
+    ])
+}
+
+/// The field of view a projection was made from.
+///
+/// This is the way back, and it exists because WebXR hands out a matrix rather than angles: a backend for it
+/// has to read the four openings out of the matrix, and a renderer that wants them has to have them.
+pub fn angles(projection: Mat4) -> FieldOfView {
+    let column = projection.z_axis;
+    let (scale_x, scale_y) = (projection.x_axis.x, projection.y_axis.y);
+    if scale_x == 0.0 || scale_y == 0.0 {
+        return FieldOfView::symmetric(0.0, 0.0);
+    }
+    // The offsets are the third column's x and y, which is where `perspective` put them.
+    let (offset_x, offset_y) = (column.x, column.y);
+    FieldOfView {
+        left: (-(offset_x - 1.0) / scale_x).atan(),
+        right: ((offset_x + 1.0) / scale_x).atan(),
+        up: ((offset_y + 1.0) / scale_y).atan(),
+        down: (-(offset_y - 1.0) / scale_y).atan(),
+    }
+}
+
+/// A projection in OpenGL's convention, as wgpu's.
+///
+/// The z row is remapped from `-w..w` to `0..w`, which is a scale of a half and a shift of a half in
+/// homogeneous terms. Everything else is untouched: the x and y rows are the same convention on both sides.
+pub fn from_gl(projection: Mat4) -> Mat4 {
+    let to_zero_to_one = Mat4::from_cols_array(&[
+        1.0, 0.0, 0.0, 0.0, //
+        0.0, 1.0, 0.0, 0.0, //
+        0.0, 0.0, 0.5, 0.0, //
+        0.0, 0.0, 0.5, 1.0,
+    ]);
+    to_zero_to_one * projection
+}
+
+/// A camera's view matrix from where it is: the inverse of the pose, because a camera is a place the world
+/// is seen from rather than a thing in it.
+pub fn view(pose: wxr::Pose) -> Mat4 {
+    pose.transform().inverse().into()
+}
+
+/// A direction in the world from a camera that looks down its own `-Z`.
+pub fn forward(pose: wxr::Pose) -> Vec3 {
+    pose.orientation * Vec3::NEG_Z
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
+
+    fn close(a: f32, b: f32) -> bool {
+        (a - b).abs() < 1e-4
+    }
+
+    #[test]
+    fn angles_and_the_matrix_are_the_same_fact() {
+        let fov = FieldOfView {
+            up: 0.5,
+            down: 0.4,
+            left: 0.6,
+            right: 0.55,
+        };
+        let back = angles(perspective(fov, 0.05, 100.0, Depth::ZeroToOne));
+        assert!(close(back.up, fov.up), "{back:?}");
+        assert!(close(back.down, fov.down), "{back:?}");
+        assert!(close(back.left, fov.left), "{back:?}");
+        assert!(close(back.right, fov.right), "{back:?}");
+    }
+
+    #[test]
+    fn a_centred_field_of_view_is_a_centred_projection() {
+        let fov = FieldOfView::symmetric(FRAC_PI_2, FRAC_PI_2);
+        let matrix = perspective(fov, 0.1, 10.0, Depth::ZeroToOne);
+        assert!(matrix.z_axis.x.abs() < 1e-6, "no horizontal offset");
+        assert!(matrix.z_axis.y.abs() < 1e-6, "no vertical offset");
+        // A quarter turn is a square, and the projection of one is a unit scale.
+        assert!(close(matrix.x_axis.x, 1.0));
+        assert!(close(matrix.y_axis.y, 1.0));
+    }
+
+    #[test]
+    fn an_offset_field_of_view_leans_the_projection_the_same_way() {
+        let fov = FieldOfView {
+            up: 0.5,
+            down: 0.5,
+            left: 0.0,
+            right: FRAC_PI_4,
+        };
+        let matrix = perspective(fov, 0.1, 10.0, Depth::ZeroToOne);
+        // Everything opens to the right, so the camera's own axis is the left edge of the picture: the
+        // frustum's left edge is at x = 0 and its right at x = 1, and the offset is what puts them there.
+        assert!(close(matrix.z_axis.x, 1.0), "{:?}", matrix.z_axis.x);
+        // Which is the same statement as: the centre of the frustum lands in the centre of the picture.
+        let centre = (fov.right.tan() - fov.left.tan()) * 0.5;
+        let ndc = matrix.x_axis.x * centre - matrix.z_axis.x;
+        assert!(ndc.abs() < 1e-5, "{ndc}");
+    }
+
+    #[test]
+    fn the_near_plane_lands_on_zero_and_the_far_on_one() {
+        // The one thing a depth range has to do, checked where it is used: the near plane in a point that is
+        // `near` away, and the far plane in one that is `far` away. Both are on the -Z axis, where a camera
+        // looks.
+        let fov = FieldOfView::symmetric(FRAC_PI_2, FRAC_PI_2);
+        let (near, far) = (0.5_f32, 20.0_f32);
+        let matrix = perspective(fov, near, far, Depth::ZeroToOne);
+        for (distance, expected) in [(near, 0.0), (far, 1.0)] {
+            let clip = matrix * wxr::glam::Vec4::new(0.0, 0.0, -distance, 1.0);
+            assert!(close(clip.z / clip.w, expected), "{distance}: {clip:?}");
+        }
+    }
+
+    #[test]
+    fn a_gl_projection_becomes_a_wgpu_one() {
+        // The same camera, twice: once in the convention WebXR reports and once in the one wgpu wants. The
+        // near and far planes have to land in the same places afterwards.
+        let fov = FieldOfView::symmetric(FRAC_PI_2, FRAC_PI_2);
+        let (near, far) = (0.5_f32, 20.0_f32);
+        let gl = perspective(fov, near, far, Depth::MinusOneToOne);
+        let converted = from_gl(gl);
+        let ours = perspective(fov, near, far, Depth::ZeroToOne);
+        for (distance, expected) in [(near, 0.0), (far, 1.0)] {
+            let a = converted * wxr::glam::Vec4::new(0.0, 0.0, -distance, 1.0);
+            let b = ours * wxr::glam::Vec4::new(0.0, 0.0, -distance, 1.0);
+            assert!(close(a.z / a.w, expected), "{distance}: {a:?}");
+            assert!(close(a.z / a.w, b.z / b.w), "{distance}");
+        }
+    }
+
+    #[test]
+    fn a_view_matrix_puts_the_camera_at_its_own_origin() {
+        let pose = wxr::Pose {
+            position: Vec3::new(1.0, 2.0, 3.0),
+            orientation: wxr::glam::Quat::from_rotation_y(FRAC_PI_2),
+        };
+        let eye = view(pose) * pose.position.extend(1.0);
+        assert!(eye.truncate().length() < 1e-5, "{eye:?}");
+        // And it looks along the pose's own -Z, which after a quarter turn is -X in the world.
+        assert!(
+            forward(pose).abs_diff_eq(Vec3::NEG_X, 1e-5),
+            "{:?}",
+            forward(pose)
+        );
+    }
+}

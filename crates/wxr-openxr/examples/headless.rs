@@ -14,11 +14,12 @@ mod native {
     pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         // A device with no surface: nothing is presented to a window, because the compositor is where the
         // picture goes.
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: None,
             force_fallback_adapter: false,
+            ..Default::default()
         }))?;
         let (device, _queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {

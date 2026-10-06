@@ -17,6 +17,7 @@
 #![cfg(not(target_family = "wasm"))]
 
 mod hal;
+mod import;
 
 use std::time::Duration;
 
@@ -126,6 +127,11 @@ impl OpenXr {
     }
 }
 
+/// `VK_FORMAT_R8G8B8A8_SRGB`: eight bits each and sRGB-encoded, the format every compositor must accept. A
+/// headset wants more than eight bits, and that is a thing to add together with the tone map that makes it
+/// usable rather than a format to ask for and hope for.
+pub(crate) const RGBA8_SRGB: u32 = 43;
+
 impl wxr::Backend for OpenXr {
     type Device = Device;
     type Session = OpenXrSession;
@@ -216,10 +222,6 @@ impl OpenXrSession {
         }
         .map_err(|error| Error::runtime("create a session", error))?;
 
-        // 43 is `VK_FORMAT_R8G8B8A8_SRGB`: eight bits each and sRGB-encoded, the format every compositor
-        // must accept. A headset wants more than eight bits, and that is a thing to add together with the
-        // tone map that makes it usable rather than a format to ask for and hope for.
-        const RGBA8_SRGB: u32 = 43;
         let formats = session
             .enumerate_swapchain_formats()
             .map_err(|error| Error::runtime("enumerate swapchain formats", error))?;

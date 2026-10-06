@@ -5,7 +5,7 @@
 # boundary have to agree on what those are.
 [workspace]
 resolver = "3"
-members = ["crates/wxr", "crates/wxr-openxr", "crates/wxr-webxr"]
+members = ["crates/wxr", "crates/wxr-openxr", "crates/wxr-webxr", "crates/wxr-render"]
 
 [workspace.package]
 edition = "2024"
@@ -16,8 +16,13 @@ version = "0.1.0"
 # that carry one across a boundary should not have to convert between three spellings of that.
 glam = "0.30"
 # The renderer's layer, and the reason the core does not need one: a backend is *given* a device, and what
-# it is given is a wgpu device. Named at the version the rest of the stack is on so the two can share one.
-wgpu = "27"
+# it is given is a wgpu device.
+#
+# 30 and not 27, which is what bevy is on: `wgpu-hal`'s Vulkan backend grew
+# `Device::texture_from_raw` in 30, and without it there is no way to wrap a compositor's image as a wgpu
+# texture - which is the whole of what an OpenXR backend has to do with one. Matching bevy's version would
+# buy an interop that is not wanted and cost the only path to the headset.
+wgpu = "30"
 thiserror = "2"
 log = "0.4"
 

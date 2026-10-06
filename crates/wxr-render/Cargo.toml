@@ -1,0 +1,11 @@
+[package]
+name = "wxr-render"
+description = "The renderer: what happens between a session's frame and a picture."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+wxr = { path = "../wxr" }
+# On both families: the arithmetic is the same everywhere, and a browser draws with the same wgpu.
+wgpu = { workspace = true }
+log = { workspace = true }

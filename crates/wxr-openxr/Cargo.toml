@@ -8,6 +8,7 @@ edition.workspace = true
 # empty rather than broken.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 wxr = { path = "../wxr" }
+wxr-render = { path = "../wxr-render" }
 # The renderer's layer. The device a session is given is a wgpu device; nothing here creates one.
 wgpu = { workspace = true, features = ["vulkan"] }
 # `loaded` (the default) loads the runtime at run time rather than linking it, so this builds on a machine

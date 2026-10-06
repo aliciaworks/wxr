@@ -25,6 +25,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
+use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{XrFrame, XrReferenceSpace, XrReferenceSpaceType, XrSession, XrSessionMode};
@@ -77,10 +78,14 @@ impl wxr::Backend for WebXr {
         // that can be done, and a `Connecting` session that is polled is the same ladder a session is
         // climbed by anyway.
         let result = Rc::new(RefCell::new(Connect::Pending));
-        // The plain form: the options form is what asks for features like `local-floor`, and a session that
-        // asks for one the runtime has not got is refused outright rather than degraded - which is a
-        // decision to make deliberately rather than here.
-        let requested = self.system.request_session(XrSessionMode::ImmersiveVr);
+        // The options form, because `local-floor` is asked for and not optional: a runtime that cannot say
+        // where the floor is would put the player's feet at their eyes, and a session that is refused for
+        // asking is a session that was never going to be usable.
+        let init = web_sys::XrSessionInit::new();
+        init.set_required_features(&[JsValue::from_str("local-floor")]);
+        let requested = self
+            .system
+            .request_session_with_options(XrSessionMode::ImmersiveVr, &init);
         let requested: js_sys::Promise = requested.unchecked_into();
 
         let slot = result.clone();
@@ -309,6 +314,57 @@ impl wxr::Session for WebXrSession {
             });
         }
         self.located = out_views.len();
+        Ok(())
+    }
+
+    fn inputs(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        out: &mut Vec<wxr::InputSource>,
+    ) -> Result<(), wxr::Error> {
+        let Some(reference) = self
+            .spaces
+            .get(space.id() as usize)
+            .and_then(|slot| slot.borrow().clone())
+        else {
+            return Ok(());
+        };
+        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
+            return Ok(());
+        };
+        let Some(session) = self.inner.borrow().session.clone() else {
+            return Ok(());
+        };
+
+        let sources = session.input_sources();
+        for index in 0..sources.length() {
+            let Some(source) = sources.get(index) else {
+                continue;
+            };
+            let handedness = match source.handedness() {
+                web_sys::XrHandedness::Left => wxr::Handedness::Left,
+                web_sys::XrHandedness::Right => wxr::Handedness::Right,
+                _ => wxr::Handedness::Unknown,
+            };
+            // The grip if the runtime has one - a controller one can be held - and the aim otherwise: a
+            // gaze cursor has a ray and nothing to hold.
+            let (grip, space) = match source.grip_space() {
+                Some(space) => (wxr::Grip::Grip, space),
+                None => (wxr::Grip::Aim, source.target_ray_space()),
+            };
+            // An untracked source is still a source, and reporting it as untracked is the difference between
+            // a hand that is not moving and a hand that is not there.
+            let pose = frame.get_pose(&space, reference.unchecked_ref());
+            let tracked = pose.is_some();
+            out.push(wxr::InputSource {
+                handedness,
+                grip,
+                pose: pose
+                    .map(|pose| transform(pose.transform()))
+                    .unwrap_or(wxr::Pose::IDENTITY),
+                tracked,
+            });
+        }
         Ok(())
     }
 

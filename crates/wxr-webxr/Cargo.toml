@@ -30,6 +30,10 @@ web-sys = { version = "0.3", features = [
     "XrReferenceSpaceType",
     "XrRigidTransform",
     "XrPose",
+    "XrSpace",
+    "XrInputSource",
+    "XrInputSourceArray",
+    "XrHandedness",
     # `XrRigidTransform` reports its position and orientation as DOM points.
     "DomPoint",
     "DomPointReadOnly",

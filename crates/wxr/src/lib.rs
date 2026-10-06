@@ -26,12 +26,14 @@
 pub use glam;
 
 pub mod frame;
+pub mod input;
 pub mod mock;
 pub mod session;
 pub mod space;
 pub mod target;
 
 pub use frame::{Eye, FieldOfView, Frame, FrameState, View, Viewport};
+pub use input::{Grip, Handedness, InputSource};
 pub use session::{Backend, Error, Event, Presentation, Session, State};
 pub use space::{Pose, ReferenceSpace, SpaceKind};
 pub use target::{ColorFormat, Extent2d, ImageMeta};

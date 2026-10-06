@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use crate::frame::Frame;
+use crate::input::InputSource;
 use crate::space::{ReferenceSpace, SpaceKind};
 use crate::target::ImageMeta;
 
@@ -144,6 +145,15 @@ pub trait Session {
 
     /// Fill in the views for the frame just begun, in the space given.
     fn views(&mut self, space: ReferenceSpace, out: &mut Frame) -> Result<(), Error>;
+
+    /// Fill in what the user is holding, in the space given.
+    ///
+    /// Empty by default, because a backend that has no inputs yet - a runtime with no controllers bound, a
+    /// scene being watched rather than played - is a backend with nothing to report rather than one that
+    /// failed.
+    fn inputs(&mut self, _space: ReferenceSpace, _out: &mut Vec<InputSource>) -> Result<(), Error> {
+        Ok(())
+    }
 
     /// Hand the frame back for the compositor to present.
     fn end(&mut self, frame: &mut Frame) -> Result<(), Error>;
