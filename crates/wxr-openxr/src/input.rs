@@ -59,8 +59,15 @@ impl Hands {
             let path = instance
                 .string_to_path(&format!("/user/hand/{side}"))
                 .map_err(|error| Error::runtime("name a hand", error))?;
+            // OpenXR requires every action's *localized* name in a set to be distinct, and a pair of hands
+            // declaring a "Grip" each is two the same - so the side belongs in the name a person reads as
+            // well as in the one the code uses.
             let pose = |name: &str, localized: &str| {
-                set.create_action::<xr::Posef>(&format!("{side}_{name}"), localized, &[path])
+                set.create_action::<xr::Posef>(
+                    &format!("{side}_{name}"),
+                    &format!("{side} {localized}"),
+                    &[path],
+                )
             };
             let grip_action = pose("grip", "Grip")
                 .map_err(|error| Error::runtime("create a pose action", error))?;
@@ -77,7 +84,11 @@ impl Hands {
                 .map_err(|error| Error::runtime("make the aim space", error))?;
 
             let boolean = |name: &str, localized: &str| {
-                set.create_action::<bool>(&format!("{side}_{name}"), localized, &[path])
+                set.create_action::<bool>(
+                    &format!("{side}_{name}"),
+                    &format!("{side} {localized}"),
+                    &[path],
+                )
             };
             hands.push(Hand {
                 handedness,
@@ -93,12 +104,16 @@ impl Hands {
                 menu: boolean("menu", "Menu")
                     .map_err(|error| Error::runtime("create an action", error))?,
                 trigger: set
-                    .create_action::<f32>(&format!("{side}_trigger"), "Trigger", &[path])
+                    .create_action::<f32>(
+                        &format!("{side}_trigger"),
+                        &format!("{side} trigger"),
+                        &[path],
+                    )
                     .map_err(|error| Error::runtime("create an action", error))?,
                 thumbstick: set
                     .create_action::<xr::Vector2f>(
                         &format!("{side}_thumbstick"),
-                        "Thumbstick",
+                        &format!("{side} thumbstick"),
                         &[path],
                     )
                     .map_err(|error| Error::runtime("create an action", error))?,

@@ -22,6 +22,7 @@ mod input;
 
 pub use import::Images;
 
+use std::ffi::c_void;
 use std::time::Duration;
 
 use wxr::glam::{Quat, Vec3};
@@ -55,13 +56,21 @@ impl OpenXr {
         let entry =
             unsafe { xr::Entry::load(&()) }.map_err(|error| Error::runtime("load", error))?;
 
-        // Both Vulkan extensions are asked for. The runtime decides which it has, and it is the *first* this
-        // needs - the one that takes handles that already exist. Asking for it alone would fail on a runtime
-        // that only has the second, and that failure would be about the extension rather than about what
-        // this crate needs.
+        // The *legacy* binding, and only it, because it is the one that takes an instance and a device that
+        // already exist. Asking for both is not harmless: the crate prefers `XR_KHR_vulkan_enable2` when it
+        // is there, and that is the path where the runtime makes the instance itself - the trap this backend
+        // is written against. It is also the path where a runtime wants a `vkGetInstanceProcAddr` the app
+        // never handed it, and says so: Monado refuses with
+        // `xrGetVulkanGraphicsDeviceKHR(sys->vk_get_instance_proc_addr == NULL)`.
         let mut extensions = xr::ExtensionSet::default();
         extensions.khr_vulkan_enable = true;
-        extensions.khr_vulkan_enable2 = true;
+        // A floor space is worth having and not worth failing over, so it is asked for only from a runtime
+        // that lists it: `xrCreateInstance` refuses an extension the runtime does not have, and a session
+        // that cannot be created at all is worse than one without a floor.
+        extensions.ext_local_floor = entry
+            .enumerate_extensions()
+            .map_err(|error| Error::runtime("ask what the runtime supports", error))?
+            .ext_local_floor;
 
         // The loader validates this: an application with no name is not an application it will make an
         // instance for, and that is a real check rather than a formality - a runtime's logs are read by
@@ -200,6 +209,8 @@ pub struct OpenXrSession {
     predicted: xr::Time,
     /// Which image the frame took, until it is given back.
     held: Option<u32>,
+    /// Whether this session has been begun, which is a thing OpenXR makes the app do once.
+    begun: bool,
 }
 
 impl OpenXrSession {
@@ -209,6 +220,25 @@ impl OpenXrSession {
                 "the device is not a Vulkan one, and OpenXR's binding on this platform is".into(),
             )
         })?;
+
+        // The runtime is asked which physical device it wants *before* a session is made with it, and that
+        // is not a formality: one that has not been asked refuses the session outright, which is what
+        // Monado says - `Has not called xrGetVulkanGraphicsDeviceKHR`. The answer is the GPU the renderer
+        // already made its device on, and when it is not, saying so is better than a session created
+        // against the wrong one - the whole reason the renderer makes the device in the first place.
+        // SAFETY: the instance is live, and the handle is the one this device was made from.
+        let wanted = unsafe {
+            backend
+                .instance
+                .vulkan_graphics_device(backend.system, native.instance as *mut c_void)
+        }
+        .map_err(|error| Error::runtime("ask which Vulkan device the runtime wants", error))?;
+        if !std::ptr::eq(wanted, native.physical_device) {
+            return Err(Error::Unsupported(format!(
+                "the runtime wants the Vulkan device {wanted:?}, and the renderer's was made on {:?}",
+                native.physical_device
+            )));
+        }
 
         let info = xr::vulkan::SessionCreateInfo {
             instance: native.instance,
@@ -286,6 +316,7 @@ impl OpenXrSession {
             state: wxr::State::Ready,
             predicted: xr::Time::from_nanos(0),
             held: None,
+            begun: false,
         })
     }
 }
@@ -310,7 +341,21 @@ impl wxr::Session for OpenXrSession {
                 Ok(Some(xr::Event::SessionStateChanged(event))) => {
                     let state = match event.state() {
                         xr::SessionState::IDLE => wxr::State::Idle,
-                        xr::SessionState::READY => wxr::State::Ready,
+                        xr::SessionState::READY => {
+                            // A session runs only after the app has begun it, and only once it is ready -
+                            // the runtime says `XR_ERROR_SESSION_NOT_RUNNING` from `xrWaitFrame` until then,
+                            // which is the one thing it will not do on the app's behalf.
+                            if !self.begun {
+                                if let Err(error) = self
+                                    .session
+                                    .begin(xr::ViewConfigurationType::PRIMARY_STEREO)
+                                {
+                                    log::error!("wxr-openxr: beginning the session: {error:?}");
+                                }
+                                self.begun = true;
+                            }
+                            wxr::State::Ready
+                        }
                         xr::SessionState::SYNCHRONIZED => wxr::State::Synchronized,
                         xr::SessionState::VISIBLE => wxr::State::Visible,
                         xr::SessionState::FOCUSED => wxr::State::Focused,
