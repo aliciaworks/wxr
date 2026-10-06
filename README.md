@@ -33,6 +33,11 @@ A session is also a stream of events - a press on a source, a squeeze, the sessi
 siblings, because what a source *does* is not in a frame, it happens between them. A source is named by an id
 the backend hands out, which WebXR does with the object itself and a Rust value cannot.
 
+A source that is a hand is also a skeleton: twenty-five joints, `XRHandJoint` by name and a pose and a radius
+each, asked for as one thing rather than a joint at a time. `InputSource::hand` is WebXR's nullable `hand` - a
+source says whether there is a skeleton to ask for, which a controller and a palm-only platform both answer no
+to.
+
 Two more of WebXR's words are here for the same reason. `offset_space` is `getOffsetReferenceSpace`: a space at
 a pose inside one the session handed out, which is how a scene anchors something to a place - a table, a wall, a
 controller. And `set_depth_range` is `XRRenderState.depthNear` and `depthFar`, the one number a renderer and a

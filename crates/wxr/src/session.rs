@@ -4,7 +4,7 @@ use std::any::Any;
 use std::time::Duration;
 
 use crate::frame::Frame;
-use crate::input::{InputId, InputSource};
+use crate::input::{Hand, InputId, InputSource};
 use crate::space::{Pose, ReferenceSpace, SpaceKind};
 use crate::target::ImageMeta;
 
@@ -295,6 +295,22 @@ pub trait Session: Any {
     /// scene being watched rather than played - is a backend with nothing to report rather than one that
     /// failed.
     fn inputs(&mut self, _space: ReferenceSpace, _out: &mut Vec<InputSource>) -> Result<(), Error> {
+        Ok(())
+    }
+
+    /// Fill in a hand's skeleton, if the source has one and the runtime is tracking it.
+    ///
+    /// WebXR's `XRFrame.getJointPose`, asked once for the whole hand rather than once per joint. A source with
+    /// no skeleton says so with `InputSource::hand`, and a hand half out of view has joints that are not
+    /// tracked: both are an empty [`Hand`], because a missing finger is not a failed frame. Empty by default
+    /// for the same reason.
+    fn hand(
+        &mut self,
+        _source: InputId,
+        _space: ReferenceSpace,
+        out: &mut Hand,
+    ) -> Result<(), Error> {
+        out.clear();
         Ok(())
     }
 

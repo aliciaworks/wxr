@@ -61,7 +61,8 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
-    XrFrame, XrReferenceSpace, XrReferenceSpaceType, XrRigidTransform, XrSession, XrSessionMode,
+    XrFrame, XrHandJoint, XrReferenceSpace, XrReferenceSpaceType, XrRigidTransform, XrSession,
+    XrSessionMode,
 };
 
 use wxr::glam::{Quat, Vec3};
@@ -753,6 +754,9 @@ impl wxr::Session for WebXrSession {
                 id: self.sources.id(&source),
                 handedness,
                 target_ray_mode: input::target_ray_mode(&source),
+                // A source with a `hand` is one with a skeleton to ask for, which is the whole of what WebXR
+                // says about it: whether the fingers are tracked is `hand`'s answer, not this one's.
+                hand: source.hand().is_some(),
                 grip: grip
                     .map(|pose| transform(pose.transform()))
                     .unwrap_or(wxr::Pose::IDENTITY),
@@ -770,6 +774,43 @@ impl wxr::Session for WebXrSession {
                     thumbstick: wxr::glam::Vec2::new(axis(2), axis(3)),
                 },
             });
+        }
+        Ok(())
+    }
+
+    fn hand(
+        &mut self,
+        source: wxr::InputId,
+        space: wxr::ReferenceSpace,
+        out: &mut wxr::Hand,
+    ) -> Result<(), wxr::Error> {
+        out.clear();
+        let Some(input) = self.sources.get(source) else {
+            return Ok(());
+        };
+        let Some(hand) = input.hand() else {
+            return Ok(());
+        };
+        let Some(reference) = self
+            .spaces
+            .get(space.id() as usize)
+            .and_then(|slot| slot.borrow().space.clone())
+        else {
+            return Ok(());
+        };
+        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
+            return Ok(());
+        };
+        // A joint at a time, because a joint is the call the browser has - and a joint it will not answer for is
+        // a joint that is not tracked, which is what `None` in an empty `Hand` already means.
+        for joint in wxr::HandJoint::ALL {
+            let space = hand.get(hand_joint(joint));
+            if let Some(pose) = frame.get_joint_pose(&space, reference.unchecked_ref()) {
+                out.joints_mut()[joint.index()] = Some(wxr::Joint {
+                    pose: transform(pose.transform()),
+                    radius: pose.radius(),
+                });
+            }
         }
         Ok(())
     }
@@ -819,6 +860,46 @@ fn rigid(pose: wxr::Pose) -> Result<XrRigidTransform, wxr::Error> {
     orientation.set_w(pose.orientation.w as f64);
     XrRigidTransform::new_with_position_and_orientation(&position, &orientation)
         .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))
+}
+
+/// Which browser joint a core one is.
+///
+/// A one-to-one match, because it is WebXR's own list: the core took the names from the specification rather
+/// than inventing a vocabulary of its own.
+fn hand_joint(joint: wxr::HandJoint) -> XrHandJoint {
+    match joint {
+        wxr::HandJoint::Wrist => XrHandJoint::Wrist,
+        wxr::HandJoint::ThumbMetacarpal => XrHandJoint::ThumbMetacarpal,
+        wxr::HandJoint::ThumbPhalanxProximal => XrHandJoint::ThumbPhalanxProximal,
+        wxr::HandJoint::ThumbPhalanxDistal => XrHandJoint::ThumbPhalanxDistal,
+        wxr::HandJoint::ThumbTip => XrHandJoint::ThumbTip,
+        wxr::HandJoint::IndexFingerMetacarpal => XrHandJoint::IndexFingerMetacarpal,
+        wxr::HandJoint::IndexFingerPhalanxProximal => XrHandJoint::IndexFingerPhalanxProximal,
+        wxr::HandJoint::IndexFingerPhalanxIntermediate => {
+            XrHandJoint::IndexFingerPhalanxIntermediate
+        }
+        wxr::HandJoint::IndexFingerPhalanxDistal => XrHandJoint::IndexFingerPhalanxDistal,
+        wxr::HandJoint::IndexFingerTip => XrHandJoint::IndexFingerTip,
+        wxr::HandJoint::MiddleFingerMetacarpal => XrHandJoint::MiddleFingerMetacarpal,
+        wxr::HandJoint::MiddleFingerPhalanxProximal => XrHandJoint::MiddleFingerPhalanxProximal,
+        wxr::HandJoint::MiddleFingerPhalanxIntermediate => {
+            XrHandJoint::MiddleFingerPhalanxIntermediate
+        }
+        wxr::HandJoint::MiddleFingerPhalanxDistal => XrHandJoint::MiddleFingerPhalanxDistal,
+        wxr::HandJoint::MiddleFingerTip => XrHandJoint::MiddleFingerTip,
+        wxr::HandJoint::RingFingerMetacarpal => XrHandJoint::RingFingerMetacarpal,
+        wxr::HandJoint::RingFingerPhalanxProximal => XrHandJoint::RingFingerPhalanxProximal,
+        wxr::HandJoint::RingFingerPhalanxIntermediate => XrHandJoint::RingFingerPhalanxIntermediate,
+        wxr::HandJoint::RingFingerPhalanxDistal => XrHandJoint::RingFingerPhalanxDistal,
+        wxr::HandJoint::RingFingerTip => XrHandJoint::RingFingerTip,
+        wxr::HandJoint::PinkyFingerMetacarpal => XrHandJoint::PinkyFingerMetacarpal,
+        wxr::HandJoint::PinkyFingerPhalanxProximal => XrHandJoint::PinkyFingerPhalanxProximal,
+        wxr::HandJoint::PinkyFingerPhalanxIntermediate => {
+            XrHandJoint::PinkyFingerPhalanxIntermediate
+        }
+        wxr::HandJoint::PinkyFingerPhalanxDistal => XrHandJoint::PinkyFingerPhalanxDistal,
+        wxr::HandJoint::PinkyFingerTip => XrHandJoint::PinkyFingerTip,
+    }
 }
 
 /// A transform in the core's terms.

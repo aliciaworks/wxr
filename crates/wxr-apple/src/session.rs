@@ -542,6 +542,10 @@ impl wxr::Session for AppleSession {
                 // A palm ray is a tracked pointer like any other; the C surface has no gaze or screen ray to
                 // make.
                 target_ray_mode: wxr::TargetRayMode::TrackedPointer,
+                // No skeleton, and that is the C surface rather than a gap somebody chose: ARKit's hand anchors
+                // are a palm pose, and the joints are in the Swift `HandAnchor.skeleton` this crate cannot see.
+                // So there is nothing to ask for and `Session::hand` would have nothing to answer with.
+                hand: false,
                 // A hand here is a place and an orientation, and that is all the C API gives - the skeleton
                 // is the Swift API's, so there is no fingertip to aim from and no pinch to read. Grip and
                 // aim are therefore the same pose, and the pose's own orientation is the palm's direction:

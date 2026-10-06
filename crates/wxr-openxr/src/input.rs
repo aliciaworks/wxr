@@ -49,6 +49,9 @@ struct Hand {
     menu: xr::Action<bool>,
     trigger: xr::Action<f32>,
     thumbstick: xr::Action<xr::Vector2f>,
+    /// The skeleton, when the runtime has `XR_EXT_hand_tracking` and made one for this hand. A hand without it
+    /// is a pose and no fingers, which is what most hands are.
+    tracker: Option<xr::HandTracker>,
     /// What the boolean actions were the last time they were read, so a press is an edge and not a state.
     select_was: bool,
     squeeze_was: bool,
@@ -103,6 +106,13 @@ impl Hands {
                     &[path],
                 )
             };
+            let tracker = session
+                .create_hand_tracker(if handedness == wxr::Handedness::Left {
+                    xr::Hand::LEFT
+                } else {
+                    xr::Hand::RIGHT
+                })
+                .ok();
             hands.push(Hand {
                 id: wxr::InputId::new(index as u32),
                 handedness,
@@ -131,6 +141,7 @@ impl Hands {
                         &[path],
                     )
                     .map_err(|error| Error::runtime("create an action", error))?,
+                tracker,
                 select_was: false,
                 squeeze_was: false,
             });
@@ -315,6 +326,7 @@ impl Hands {
                 // A pose action is a tracked pointer by definition: OpenXR has no gaze or screen ray to be one
                 // of the other modes with.
                 target_ray_mode: wxr::TargetRayMode::TrackedPointer,
+                hand: hand.tracker.is_some(),
                 grip: pose(&grip),
                 aim: pose(&aim),
                 tracked: tracked(&grip) || tracked(&aim),
@@ -341,6 +353,31 @@ impl Hands {
         }
 
         self.pending.extend(edges);
+    }
+
+    /// A hand's skeleton, from the tracker for it, when the runtime made one.
+    pub fn hand(&self, index: usize, base: &xr::Space, time: xr::Time, out: &mut wxr::Hand) {
+        out.clear();
+        let Some(tracker) = self.hands.get(index).and_then(|hand| hand.tracker.as_ref()) else {
+            return;
+        };
+        let Ok(Some(joints)) = base.locate_hand_joints(tracker, time) else {
+            return;
+        };
+        for (slot, joint) in wxr::HandJoint::ALL.iter().enumerate() {
+            // OpenXR's list is WebXR's with a palm in front of it, so every joint is one further along -
+            // and the palm is dropped, because a palm is not a joint of anything.
+            let location = &joints[joint.index() + 1];
+            if location
+                .location_flags
+                .contains(xr::SpaceLocationFlags::POSITION_TRACKED)
+            {
+                out.joints_mut()[slot] = Some(wxr::Joint {
+                    pose: crate::pose(location.pose),
+                    radius: location.radius,
+                });
+            }
+        }
     }
 
     /// A press or a squeeze the last frame made an edge of, oldest first.

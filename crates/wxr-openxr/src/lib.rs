@@ -76,10 +76,13 @@ impl OpenXr {
         // A floor space is worth having and not worth failing over, so it is asked for only from a runtime
         // that lists it: `xrCreateInstance` refuses an extension the runtime does not have, and a session
         // that cannot be created at all is worse than one without a floor.
-        extensions.ext_local_floor = entry
+        let supported = entry
             .enumerate_extensions()
-            .map_err(|error| Error::runtime("ask what the runtime supports", error))?
-            .ext_local_floor;
+            .map_err(|error| Error::runtime("ask what the runtime supports", error))?;
+        extensions.ext_local_floor = supported.ext_local_floor;
+        // Hand tracking is asked for the same way: a session with no skeleton is a session, and an instance the
+        // runtime refuses is not.
+        extensions.ext_hand_tracking = supported.ext_hand_tracking;
 
         // The loader validates this: an application with no name is not an application it will make an
         // instance for, and that is a real check rather than a formality - a runtime's logs are read by
@@ -642,6 +645,23 @@ impl wxr::Session for OpenXrSession {
             return Err(wxr::Error::NoSpace(space.kind));
         };
         hands.read(&self.session, reference, self.predicted, out);
+        Ok(())
+    }
+
+    fn hand(
+        &mut self,
+        source: wxr::InputId,
+        space: wxr::ReferenceSpace,
+        out: &mut wxr::Hand,
+    ) -> Result<(), wxr::Error> {
+        let Some(hands) = self.hands.as_ref() else {
+            out.clear();
+            return Ok(());
+        };
+        let Some(reference) = self.spaces.get(space.id() as usize) else {
+            return Err(wxr::Error::NoSpace(space.kind));
+        };
+        hands.hand(source.get() as usize, reference, self.predicted, out);
         Ok(())
     }
 

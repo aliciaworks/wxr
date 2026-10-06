@@ -42,6 +42,13 @@ web-sys = { version = "0.3", features = [
     "XrInputSource",
     "XrInputSourceArray",
     "XrInputSourceEvent",
+    # A hand is a map of joints to spaces, and a joint's pose is a pose with a radius: `XrPose` comes with
+    # `XrJointPose`, which extends it.
+    "XrHand",
+    "XrHandJoint",
+    "XrJointSpace",
+    "XrJointPose",
+    "XrPose",
     "XrHandedness",
     "Gamepad",
     "GamepadButton",

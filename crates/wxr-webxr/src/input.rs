@@ -26,6 +26,11 @@ impl Sources {
         Self::default()
     }
 
+    /// The source an id names, if this session has seen it.
+    pub fn get(&self, id: wxr::InputId) -> Option<XrInputSource> {
+        self.known.borrow().get(id.get() as usize).cloned()
+    }
+
     /// The core's id for `source`, remembering it if it has not been seen before.
     pub fn id(&self, source: &XrInputSource) -> wxr::InputId {
         let mut known = self.known.borrow_mut();

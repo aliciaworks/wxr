@@ -67,6 +67,130 @@ impl InputId {
     }
 }
 
+/// A joint of a hand, which is WebXR's `XRHandJoint` and nothing but its names.
+///
+/// Twenty-five of them: the wrist, and then five places along each finger. The thumb is the one that reads
+/// differently, because it has no intermediate phalanx and a metacarpal of its own. OpenXR has the same list
+/// with a palm in front of it, and a palm is not a joint of anything - so a backend that has one leaves it out
+/// rather than the core carrying a name only one platform says.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum HandJoint {
+    Wrist,
+    ThumbMetacarpal,
+    ThumbPhalanxProximal,
+    ThumbPhalanxDistal,
+    ThumbTip,
+    IndexFingerMetacarpal,
+    IndexFingerPhalanxProximal,
+    IndexFingerPhalanxIntermediate,
+    IndexFingerPhalanxDistal,
+    IndexFingerTip,
+    MiddleFingerMetacarpal,
+    MiddleFingerPhalanxProximal,
+    MiddleFingerPhalanxIntermediate,
+    MiddleFingerPhalanxDistal,
+    MiddleFingerTip,
+    RingFingerMetacarpal,
+    RingFingerPhalanxProximal,
+    RingFingerPhalanxIntermediate,
+    RingFingerPhalanxDistal,
+    RingFingerTip,
+    PinkyFingerMetacarpal,
+    PinkyFingerPhalanxProximal,
+    PinkyFingerPhalanxIntermediate,
+    PinkyFingerPhalanxDistal,
+    PinkyFingerTip,
+}
+
+impl HandJoint {
+    /// How many there are, which is how many a [`Hand`] holds.
+    pub const COUNT: usize = 25;
+
+    /// Every joint, in WebXR's order, which is the order a [`Hand`] is in.
+    pub const ALL: [Self; Self::COUNT] = [
+        Self::Wrist,
+        Self::ThumbMetacarpal,
+        Self::ThumbPhalanxProximal,
+        Self::ThumbPhalanxDistal,
+        Self::ThumbTip,
+        Self::IndexFingerMetacarpal,
+        Self::IndexFingerPhalanxProximal,
+        Self::IndexFingerPhalanxIntermediate,
+        Self::IndexFingerPhalanxDistal,
+        Self::IndexFingerTip,
+        Self::MiddleFingerMetacarpal,
+        Self::MiddleFingerPhalanxProximal,
+        Self::MiddleFingerPhalanxIntermediate,
+        Self::MiddleFingerPhalanxDistal,
+        Self::MiddleFingerTip,
+        Self::RingFingerMetacarpal,
+        Self::RingFingerPhalanxProximal,
+        Self::RingFingerPhalanxIntermediate,
+        Self::RingFingerPhalanxDistal,
+        Self::RingFingerTip,
+        Self::PinkyFingerMetacarpal,
+        Self::PinkyFingerPhalanxProximal,
+        Self::PinkyFingerPhalanxIntermediate,
+        Self::PinkyFingerPhalanxDistal,
+        Self::PinkyFingerTip,
+    ];
+
+    /// Which joint of a [`Hand`] this is.
+    pub fn index(self) -> usize {
+        self as usize
+    }
+}
+
+/// One joint of a hand at one frame.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Joint {
+    /// Where it is, in whichever reference space the hand was asked for.
+    pub pose: Pose,
+    /// How thick the finger is there, in metres. OpenXR and WebXR both report it, and a hand drawn without it
+    /// is a stick figure.
+    pub radius: f32,
+}
+
+/// A hand's skeleton, which is WebXR's `XRHand` read as a pose per joint.
+///
+/// A fixed array rather than a list, because the joints are a fixed set and a caller indexing by joint should
+/// not have to ask whether the list is complete: `None` is a joint that is not tracked, which is a hand half out
+/// of view and not an error.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Hand {
+    joints: [Option<Joint>; HandJoint::COUNT],
+}
+
+impl Default for Hand {
+    fn default() -> Self {
+        Self {
+            joints: [None; HandJoint::COUNT],
+        }
+    }
+}
+
+impl Hand {
+    /// Where a joint is, if it is tracked this frame.
+    pub fn joint(&self, joint: HandJoint) -> Option<Joint> {
+        self.joints[joint.index()]
+    }
+
+    /// The joints, for a backend to fill. Emptying it first is the backend's business.
+    pub fn joints_mut(&mut self) -> &mut [Option<Joint>; HandJoint::COUNT] {
+        &mut self.joints
+    }
+
+    /// Forget every joint, which is what a frame with no hand in view looks like.
+    pub fn clear(&mut self) {
+        self.joints = [None; HandJoint::COUNT];
+    }
+
+    /// Whether any of it is tracked, which is what a hand that is there at all looks like.
+    pub fn is_tracked(&self) -> bool {
+        self.joints.iter().any(Option::is_some)
+    }
+}
+
 /// The buttons every one of the three has, under whatever name.
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct Buttons {
@@ -96,6 +220,11 @@ pub struct InputSource {
     pub handedness: Handedness,
     /// How the source is aimed, which is not what it is: a controller and a hand are both tracked pointers.
     pub target_ray_mode: TargetRayMode,
+    /// Whether there is a skeleton to ask for, which is WebXR's `hand` being non-null.
+    ///
+    /// A controller has none, and neither does a platform whose hands are a pose and no fingers - so this is a
+    /// question to ask before [`crate::Session::hand`], not a promise that the fingers are there.
+    pub hand: bool,
     /// In whichever reference space the sources were asked for.
     ///
     /// Two poses and not one, because a controller is one thing with two places on it: a grip is where it is

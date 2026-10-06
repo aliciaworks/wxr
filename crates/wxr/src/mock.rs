@@ -252,6 +252,9 @@ impl Session for MockSession {
                 id: InputId::new(id),
                 handedness,
                 target_ray_mode: TargetRayMode::TrackedPointer,
+                // A mock controller, which is what a mock can be without inventing a skeleton: the joints are
+                // what a *hand* has, and the mock is the thing a game is developed against before either exists.
+                hand: false,
                 grip: Pose {
                     position: Vec3::new(x, 1.0, 0.0),
                     orientation: Quat::IDENTITY,
@@ -383,6 +386,20 @@ mod tests {
         assert_eq!(session.poll(), Some(Event::SelectEnd(id)));
         assert_eq!(session.poll(), Some(Event::Select(id)));
         assert_eq!(session.poll(), None);
+    }
+
+    #[test]
+    fn a_controller_has_no_skeleton() {
+        let mut session = running();
+        let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+        let mut sources = Vec::new();
+        session.inputs(space, &mut sources).unwrap();
+        assert!(!sources[0].hand, "a controller is not a hand");
+
+        let mut hand = crate::Hand::default();
+        session.hand(sources[0].id, space, &mut hand).unwrap();
+        assert!(!hand.is_tracked());
+        assert_eq!(hand.joint(crate::HandJoint::Wrist), None);
     }
 
     #[test]
