@@ -45,6 +45,12 @@ extern "C" {
 
     #[wasm_bindgen(method)]
     pub fn get_preferred_color_format(this: &XrGpuBinding) -> String;
+
+    /// The depth buffer for a view, as `XRGPUDepthInformation` - the module's WebGPU form, which is on the
+    /// binding rather than on the frame. Throws when the session was not configured for GPU depth, which is why
+    /// it is caught: a session with depth it cannot read is a session without depth.
+    #[wasm_bindgen(method, catch, js_name = "getDepthInformation")]
+    pub fn get_depth_information(this: &XrGpuBinding, view: &XrView) -> Result<JsValue, JsValue>;
 }
 
 /// The layer a WebGPU-compatible session presents, which is what it has *instead* of a base layer.

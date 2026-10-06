@@ -113,6 +113,8 @@ pub struct WebXrSession {
     hit_sources: Vec<Rc<RefCell<hit::Slot>>>,
     /// The light probes this session has asked for, each empty until the browser answers.
     light_probes: Vec<Rc<RefCell<light::Slot>>>,
+    /// This frame's depth buffer, kept for as long as the reference into it is handed out.
+    depth_image: Option<JsValue>,
     /// This frame's views, kept because depth is asked for one of them by object and not by index.
     frame_views: Vec<XrView>,
     /// Reference-space `reset` events, which arrive on a space rather than on the session and are passed on
@@ -152,6 +154,7 @@ impl WebXrSession {
             planes: planes::Ids::default(),
             hit_sources: Vec::new(),
             light_probes: Vec::new(),
+            depth_image: None,
             frame_views: Vec::new(),
             reset: Rc::new(RefCell::new(VecDeque::new())),
             located: 0,
@@ -250,6 +253,9 @@ impl wxr::Session for WebXrSession {
     /// sub-image per view that shares both and differs only in which part of the colour one the view draws
     /// into - so a frame here is one image, two viewports, and two array layers when the layer is stereo.
     type Image = FrameImage;
+    /// The depth buffer, as the browser's own `GPUTexture` - which is what `gpu-optimized` depth arrives as,
+    /// and only while the frame it was made for is the frame being drawn.
+    type Depth = JsValue;
 
     fn presentation(&self) -> wxr::Presentation {
         wxr::Presentation::Composited
@@ -261,6 +267,31 @@ impl wxr::Session for WebXrSession {
 
     fn visibility(&self) -> wxr::Visibility {
         self.visibility
+    }
+
+    fn features(&self) -> wxr::Features {
+        let Some(session) = self.inner.borrow().session.clone() else {
+            // Before the session arrives there is nothing to ask, and an answer that is not here yet is not a
+            // capability.
+            return wxr::Features::NONE;
+        };
+        let mut features = wxr::Features::NONE;
+        for (bit, name) in [
+            (wxr::Features::PLANES, "plane-detection"),
+            (wxr::Features::HIT_TEST, "hit-test"),
+            (wxr::Features::LIGHT_ESTIMATION, "light-estimation"),
+            (wxr::Features::HAND_TRACKING, "hand-tracking"),
+        ] {
+            if gpu::has_feature(&session, name) {
+                features = features.union(bit);
+            }
+        }
+        // Depth is granted by a feature and readable only through the binding that gives a texture: a browser
+        // that granted it and no binding is a depth this backend cannot hand over.
+        if gpu::has_feature(&session, "depth-sensing") && self.gpu.is_some() {
+            features = features.union(wxr::Features::DEPTH);
+        }
+        features
     }
 
     fn poll(&mut self) -> Option<wxr::Event> {
@@ -844,24 +875,15 @@ impl wxr::Session for WebXrSession {
         Ok(())
     }
 
-    fn depth(&mut self, view: usize) -> Result<Option<wxr::DepthInfo>, wxr::Error> {
-        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
-            return Ok(None);
-        };
-        let Some(view) = self.frame_views.get(view) else {
-            return Ok(None);
-        };
-        Ok(depth::info(&frame, view))
-    }
-
-    fn depth_at(&mut self, view: usize, x: f32, y: f32) -> Result<Option<f32>, wxr::Error> {
-        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
-            return Ok(None);
-        };
-        let Some(view) = self.frame_views.get(view) else {
-            return Ok(None);
-        };
-        Ok(depth::at(&frame, view, x, y))
+    fn depth(&mut self, view: usize) -> Option<(&Self::Depth, wxr::DepthInfo)> {
+        self.depth_image = None;
+        // From the binding and not the frame, because this session asked for GPU depth - the one that arrives
+        // as something to draw with rather than as bytes to read.
+        let gpu = self.gpu.as_ref()?;
+        let view = self.frame_views.get(view)?;
+        let (image, info) = depth::information(&gpu.binding, view)?;
+        self.depth_image = Some(image);
+        self.depth_image.as_ref().map(|image| (image, info))
     }
 
     fn end(&mut self, _frame: &mut wxr::Frame) -> Result<(), wxr::Error> {

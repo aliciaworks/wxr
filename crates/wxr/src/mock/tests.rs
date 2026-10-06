@@ -115,8 +115,8 @@ fn a_space_with_no_boundary_has_an_empty_one() {
 #[test]
 fn a_backend_without_depth_sensing_answers_none() {
     let mut session = running();
-    assert_eq!(session.depth(0).unwrap(), None);
-    assert_eq!(session.depth_at(0, 0.5, 0.5).unwrap(), None);
+    assert!(session.depth(0).is_none());
+    assert_eq!(session.features(), crate::Features::NONE);
 }
 
 #[test]

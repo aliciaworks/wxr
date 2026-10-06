@@ -26,6 +26,7 @@
 pub use glam;
 
 pub mod depth;
+pub mod feature;
 pub mod frame;
 pub mod hit;
 pub mod input;
@@ -37,6 +38,7 @@ pub mod space;
 pub mod target;
 
 pub use depth::DepthInfo;
+pub use feature::Features;
 pub use frame::{Eye, FieldOfView, Frame, FrameState, View, Viewport};
 pub use hit::{Hit, HitTestSource};
 pub use input::{

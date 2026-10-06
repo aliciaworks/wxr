@@ -146,6 +146,11 @@ impl wxr::Backend for WebXr {
         // Surfaces are asked for in the session that is drawn over the world, which is the only kind that has
         // them - and as optional, because a browser that will not grant them is a session with no table in it
         // rather than no session.
+        if mode != wxr::SessionMode::Inline {
+            // Hands are an input mode in both immersive sessions, and a browser that will not grant them is a
+            // session with controllers or nothing.
+            optional.push(JsValue::from_str("hand-tracking"));
+        }
         if mode == wxr::SessionMode::ImmersiveAr {
             // What the world-understanding modules need, and only in the session that has a world.
             optional.push(JsValue::from_str("plane-detection"));
@@ -154,16 +159,16 @@ impl wxr::Backend for WebXr {
             optional.push(JsValue::from_str("depth-sensing"));
         }
         init.set_optional_features(&optional);
-        // Depth arrives as an `ArrayBuffer` per view under `cpu-optimized`, which is the one a WebGPU session
-        // can read without a renderer to import a texture - so that is what is asked for, in the format that
-        // needs no unpacking. `depth-sensing` as a feature is not enough: the specification wants this key
-        // beside it whenever the feature is granted.
+        // Depth is asked for as `gpu-optimized`, which is the delivery that hands over a buffer rather than
+        // bytes - the one the core's `Session::Depth` is shaped for, and the one a renderer can test against.
+        // `depth-sensing` as a feature is not enough: the specification wants this key beside it whenever the
+        // feature is granted.
         if mode == wxr::SessionMode::ImmersiveAr {
             let sensing = js_sys::Object::new();
             let _ = js_sys::Reflect::set(
                 &sensing,
                 &JsValue::from_str("usagePreference"),
-                &js_sys::Array::of1(&JsValue::from_str("cpu-optimized")),
+                &js_sys::Array::of1(&JsValue::from_str("gpu-optimized")),
             );
             let _ = js_sys::Reflect::set(
                 &sensing,

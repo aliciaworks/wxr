@@ -380,6 +380,11 @@ impl Hands {
         }
     }
 
+    /// Whether any hand has a skeleton to read, which is what hand tracking is.
+    pub fn has_tracking(&self) -> bool {
+        self.hands.iter().any(|hand| hand.tracker.is_some())
+    }
+
     /// A press or a squeeze the last frame made an edge of, oldest first.
     ///
     /// Read from here rather than returned by `read`, because a frame's snapshot and a session's events are two

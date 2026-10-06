@@ -201,6 +201,8 @@ impl OpenXrSession {
 
 impl wxr::Session for OpenXrSession {
     type Image = u64;
+    /// No depth to hand over: the binding cannot chain a depth layer, so there is no measurement to carry.
+    type Depth = ();
 
     fn presentation(&self) -> wxr::Presentation {
         wxr::Presentation::Composited
@@ -212,6 +214,15 @@ impl wxr::Session for OpenXrSession {
 
     fn visibility(&self) -> wxr::Visibility {
         self.visibility
+    }
+
+    fn features(&self) -> wxr::Features {
+        // A hand tracker is the skeleton, so a session that was given one has hand tracking. Everything else
+        // this backend asks for - the depth layer, surfaces - it does not get.
+        match &self.hands {
+            Some(hands) if hands.has_tracking() => wxr::Features::HAND_TRACKING,
+            _ => wxr::Features::NONE,
+        }
     }
 
     fn poll(&mut self) -> Option<wxr::Event> {

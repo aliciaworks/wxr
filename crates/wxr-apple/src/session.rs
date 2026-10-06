@@ -268,6 +268,9 @@ impl AppleSession {
 
 impl wxr::Session for AppleSession {
     type Image = FrameImage;
+    /// No depth to hand over: a `CompositorServices` drawable has a depth buffer, but it is the one being
+    /// *drawn into* rather than a measurement of the room.
+    type Depth = ();
 
     fn presentation(&self) -> wxr::Presentation {
         wxr::Presentation::Composited
@@ -279,6 +282,12 @@ impl wxr::Session for AppleSession {
 
     fn visibility(&self) -> wxr::Visibility {
         self.layer_state().1
+    }
+
+    fn features(&self) -> wxr::Features {
+        // ARKit's world tracking is a reference space rather than a capability, and its hands are a palm with
+        // no skeleton - so there is nothing here that every session does not already have.
+        wxr::Features::NONE
     }
 
     fn poll(&mut self) -> Option<wxr::Event> {

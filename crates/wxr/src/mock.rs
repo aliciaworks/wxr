@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use glam::{Quat, Vec3};
 
+use crate::feature::Features;
 use crate::frame::{Eye, FieldOfView, Frame, FrameState, View, Viewport};
 use crate::input::{Axes, Buttons, Handedness, InputId, InputSource, TargetRayMode};
 use crate::session::{
@@ -106,6 +107,7 @@ pub struct MockSession {
 
 impl Session for MockSession {
     type Image = u32;
+    type Depth = ();
 
     fn presentation(&self) -> Presentation {
         Presentation::Composited
@@ -117,6 +119,11 @@ impl Session for MockSession {
 
     fn visibility(&self) -> Visibility {
         self.visibility
+    }
+
+    fn features(&self) -> Features {
+        // A mock has a session and nothing else, which is every backend's floor.
+        Features::NONE
     }
 
     fn poll(&mut self) -> Option<Event> {

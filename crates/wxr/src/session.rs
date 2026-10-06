@@ -6,6 +6,7 @@ use std::time::Duration;
 use glam::Vec2;
 
 use crate::depth::DepthInfo;
+use crate::feature::Features;
 use crate::frame::Frame;
 use crate::hit::{Hit, HitTestSource};
 use crate::input::{Hand, InputId, InputSource};
@@ -217,6 +218,11 @@ pub trait Session: Any {
     /// The compositor's own name for an image. Opaque here, on purpose.
     type Image;
 
+    /// The runtime's own name for a depth buffer, when it has one to hand over - a browser texture, a Vulkan
+    /// image, a scene mesh. An associated type for the same reason [`Session::Image`] is one, and `()` is the
+    /// honest answer for a session with no depth at all.
+    type Depth;
+
     /// The backend's own session, when a program needs the platform the core deliberately does not speak.
     ///
     /// This is the core's answer to `wgpu`'s `as_hal` - the same escape hatch, for the same reason. The core
@@ -256,6 +262,12 @@ pub trait Session: Any {
     }
 
     fn presentation(&self) -> Presentation;
+
+    /// What this session can do beyond what every session can, which is [`Features`].
+    ///
+    /// What a backend answers with is what it actually got and not what it asked for: a browser may refuse an
+    /// optional feature, and a runtime may be missing an extension.
+    fn features(&self) -> Features;
 
     /// The session's lifecycle: is it being asked for, is it here, is it over.
     fn state(&self) -> State;
@@ -411,20 +423,19 @@ pub trait Session: Any {
         Ok(())
     }
 
-    /// What the runtime measured of the real world for the view at `index`, which is WebXR's
-    /// `XRFrame.getDepthInformation`.
+    /// What the runtime measured of the real world for the view at `index`, and the buffer itself - WebXR's
+    /// `XRFrame.getDepthInformation`, OpenXR's environment depth.
     ///
-    /// `None` for a runtime with no depth sensing, for a view it has none for, and for one that has paused it -
-    /// which are the same answer to a caller asking how far away the wall is. Read it in the same frame the
-    /// views were: a depth buffer is about *that* frame's eyes.
-    fn depth(&mut self, _view: usize) -> Result<Option<DepthInfo>, Error> {
-        Ok(None)
-    }
-
-    /// How far away the real world is through the view at `index`, at normalized view coordinates `(x, y)` in
-    /// `0..=1` - the convenience over finding the pixel and scaling it yourself.
-    fn depth_at(&mut self, _view: usize, _x: f32, _y: f32) -> Result<Option<f32>, Error> {
-        Ok(None)
+    /// `None` for a runtime with no depth sensing, for a view it has none for, for one that has paused it, and
+    /// for a backend that never had any - which are the same answer to a caller asking how far away the wall
+    /// is. Whether a session has this at all is [`Features::DEPTH`], because `None` here cannot tell those
+    /// apart.
+    ///
+    /// Ask once per frame, like a view: the way a runtime delivers depth is a buffer made for the frame and
+    /// taken back at the end of it, and the metadata says what the values in it mean. The buffer is the
+    /// platform's own, and the renderer's importer is what turns it into something to draw with.
+    fn depth(&mut self, _view: usize) -> Option<(&Self::Depth, DepthInfo)> {
+        None
     }
 
     /// Hand the frame back for the compositor to present.
