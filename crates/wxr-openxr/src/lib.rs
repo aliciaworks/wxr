@@ -51,6 +51,8 @@ pub struct OpenXr {
     system: xr::SystemId,
     views: Vec<xr::ViewConfigurationView>,
     blend: xr::EnvironmentBlendMode,
+    /// Whether to ask for an HDR swapchain when a runtime offers one. Off by default - see [`OpenXr::prefer_hdr`].
+    prefer_hdr: bool,
 }
 
 impl OpenXr {
@@ -123,6 +125,7 @@ impl OpenXr {
             system,
             views,
             blend,
+            prefer_hdr: false,
         })
     }
 
@@ -140,6 +143,17 @@ impl OpenXr {
             requirements.min_api_version_supported,
             requirements.max_api_version_supported,
         ))
+    }
+
+    /// Ask for an HDR swapchain when the runtime offers one.
+    ///
+    /// Off by default, and it has to be asked for: an HDR image is drawn with values above one, so a scene that
+    /// is not built for it clips where it would have looked brighter. Turning this on is half of that decision
+    /// and the tone map is the other half, which is the app's - which is why it is a choice and not a default.
+    ///
+    /// It changes the format `images` reports, and a renderer builds its pipeline from that.
+    pub fn prefer_hdr(&mut self, prefer: bool) {
+        self.prefer_hdr = prefer;
     }
 
     /// The size the runtime recommends for each eye, which is what a swapchain is made at.
@@ -317,13 +331,20 @@ impl OpenXrSession {
         let formats = session
             .enumerate_swapchain_formats()
             .map_err(|error| Error::runtime("enumerate swapchain formats", error))?;
-        // sRGB 8-bit first, because every compositor must accept it; failing that, the first format this core
-        // can *name*, because a format it cannot name is a frame it will not draw; and only then whatever is
-        // left, which is reported as `Unknown` rather than as a plausible lie about what the pixels mean.
+        // An HDR format first when the app asked for one, and sRGB 8-bit otherwise - which is what every
+        // compositor must accept. Failing that, the first format this core can *name*, because a format it
+        // cannot name is a frame it will not draw; and only then whatever is left, reported as `Unknown` rather
+        // than as a plausible lie about what the pixels mean.
         let format = formats
             .iter()
             .copied()
-            .find(|format| *format == ash::vk::Format::R8G8B8A8_SRGB.as_raw() as u32)
+            .find(|format| backend.prefer_hdr && color_format(*format).is_hdr())
+            .or_else(|| {
+                formats
+                    .iter()
+                    .copied()
+                    .find(|format| *format == ash::vk::Format::R8G8B8A8_SRGB.as_raw() as u32)
+            })
             .or_else(|| {
                 formats
                     .iter()
