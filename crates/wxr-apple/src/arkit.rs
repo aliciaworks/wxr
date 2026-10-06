@@ -22,7 +22,9 @@
 //! declaration in [`crate::sys`] is transcribed from Apple's C header or Apple's own C guide and neither is in
 //! hand. A guessed signature is a wrong ABI at run time rather than a compile error, which is the one kind of
 //! mistake this file cannot afford - so [`wxr::Session::planes`] is the core's default here, a session with no
-//! surfaces, until the header says otherwise.
+//! surfaces, until the header says otherwise. [`wxr::Session::anchor`] is the same story: the world-tracking
+//! provider this crate uses *queries* a device anchor, and whether the C surface can *add* one has not been
+//! shown either.
 //!
 //! Tracking is allowed to fail. A refused provider - usually a missing `NSWorldSensingUsageDescription` -
 //! leaves the scene head-locked and the hands absent, both of which still draw, so everything here comes

@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use glam::Vec2;
 
+use crate::anchor::Anchor;
 use crate::depth::DepthInfo;
 use crate::feature::Features;
 use crate::frame::Frame;
@@ -438,6 +439,30 @@ pub trait Session: Any {
         *out = LightEstimate::default();
         Ok(())
     }
+
+    /// Ask the runtime to keep a place fixed in the room, which is WebXR's `XRFrame.createAnchor`.
+    ///
+    /// `space` and `pose` are where the place is now; what comes back is a name for it, and the runtime keeps it
+    /// where it was as its understanding of the room changes. Made asynchronously, so it is a handle the way a
+    /// hit-test source is - and a backend with no anchors says so rather than handing back one that never
+    /// answers. Whether a session has them at all is [`Features::ANCHORS`].
+    fn anchor(&mut self, _space: ReferenceSpace, _pose: Pose) -> Result<Anchor, Error> {
+        Err(Error::Unsupported("anchors".into()))
+    }
+
+    /// Where an anchor is now, in the space given - `None` when the runtime has lost it, which is a place that
+    /// is no longer there rather than a failure. Ask once per frame, like a view.
+    fn anchor_pose(
+        &mut self,
+        _anchor: Anchor,
+        _space: ReferenceSpace,
+    ) -> Result<Option<Pose>, Error> {
+        Ok(None)
+    }
+
+    /// Tell the runtime the app is done with an anchor, which is WebXR's `XRAnchor.delete`. Nothing by
+    /// default, because a backend with no anchors has none to release.
+    fn release_anchor(&mut self, _anchor: Anchor) {}
 
     /// What the runtime measured of the real world for the view at `index`, and the buffer itself - WebXR's
     /// `XRFrame.getDepthInformation`, OpenXR's environment depth.

@@ -25,6 +25,7 @@
 // The math the core speaks, so a backend does not have to guess which `glam` it means.
 pub use glam;
 
+pub mod anchor;
 pub mod depth;
 pub mod feature;
 pub mod frame;
@@ -37,6 +38,7 @@ pub mod session;
 pub mod space;
 pub mod target;
 
+pub use anchor::Anchor;
 pub use depth::DepthInfo;
 pub use feature::Features;
 pub use frame::{Eye, FieldOfView, Frame, FrameState, View, Viewport};

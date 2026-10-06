@@ -47,6 +47,7 @@
 
 #![cfg(target_family = "wasm")]
 
+mod anchors;
 mod convert;
 mod depth;
 mod gpu;
@@ -157,6 +158,7 @@ impl wxr::Backend for WebXr {
             optional.push(JsValue::from_str("hit-test"));
             optional.push(JsValue::from_str("light-estimation"));
             optional.push(JsValue::from_str("depth-sensing"));
+            optional.push(JsValue::from_str("anchors"));
         }
         init.set_optional_features(&optional);
         // Depth is asked for as `gpu-optimized`, which is the delivery that hands over a buffer rather than

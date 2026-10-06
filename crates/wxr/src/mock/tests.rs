@@ -117,6 +117,18 @@ fn a_backend_without_depth_sensing_answers_none() {
     let mut session = running();
     assert!(session.depth(0).is_none());
     assert_eq!(session.features(), crate::Features::NONE);
+
+    // Anchors are the same shape: a backend that cannot make one says so rather than handing back a name that
+    // never resolves.
+    let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+    assert!(matches!(
+        session.anchor(space, Pose::IDENTITY),
+        Err(Error::Unsupported(_))
+    ));
+    assert_eq!(
+        session.anchor_pose(crate::Anchor::new(0), space).unwrap(),
+        None
+    );
 }
 
 #[test]

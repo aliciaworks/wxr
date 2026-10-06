@@ -29,7 +29,9 @@
 //! the app drives the state machine itself (begin, poll until `DONE`, read into a buffer it owns, begin again)
 //! over `openxr-sys` structs and raw pointers. That is a piece of work of its own, and an untested one, because
 //! Monado has no plane detection to test it against - so `planes` is the core's default, a session with no
-//! surfaces, until it is done.
+//! surfaces, until it is done. **Anchors are the same shape**: `XR_EXT_spatial_anchor` is loaded as raw
+//! function pointers like the rest of the spatial extensions, so `anchor` is the core's `Unsupported` until
+//! they are driven by hand.
 
 #![cfg(not(target_family = "wasm"))]
 

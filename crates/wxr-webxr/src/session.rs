@@ -11,9 +11,10 @@ use wasm_bindgen_futures::JsFuture;
 use web_sys::{XrFrame, XrReferenceSpace, XrSession, XrView};
 
 use crate::convert::{
-    field_of_view, hand_joint, offset_reference_space, reference_space_type, transform, visibility,
+    field_of_view, hand_joint, offset_reference_space, reference_space_type, rigid, transform,
+    visibility,
 };
-use crate::{depth, gpu, hit, input, light, planes};
+use crate::{anchors, depth, gpu, hit, input, light, planes};
 
 impl Drop for WebXrSession {
     /// End the browser's session when this one is dropped.
@@ -117,6 +118,8 @@ pub struct WebXrSession {
     depth_image: Option<JsValue>,
     /// How much foveation the app asked for, if it asked: `None` leaves the layer's own default alone.
     foveation: Option<f32>,
+    /// The anchors this session has asked for, each empty until the browser answers.
+    anchors: Vec<Rc<RefCell<anchors::Slot>>>,
     /// This frame's views, kept because depth is asked for one of them by object and not by index.
     frame_views: Vec<XrView>,
     /// Reference-space `reset` events, which arrive on a space rather than on the session and are passed on
@@ -158,6 +161,7 @@ impl WebXrSession {
             light_probes: Vec::new(),
             depth_image: None,
             foveation: None,
+            anchors: Vec::new(),
             frame_views: Vec::new(),
             reset: Rc::new(RefCell::new(VecDeque::new())),
             located: 0,
@@ -295,6 +299,7 @@ impl wxr::Session for WebXrSession {
             (wxr::Features::HIT_TEST, "hit-test"),
             (wxr::Features::LIGHT_ESTIMATION, "light-estimation"),
             (wxr::Features::HAND_TRACKING, "hand-tracking"),
+            (wxr::Features::ANCHORS, "anchors"),
         ] {
             if gpu::has_feature(&session, name) {
                 features = features.union(bit);
@@ -895,6 +900,62 @@ impl wxr::Session for WebXrSession {
         if let Some(view) = self.frame_views.get(view) {
             view.request_viewport_scale(scale.map(|scale| scale as f64));
         }
+    }
+
+    fn anchor(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        pose: wxr::Pose,
+    ) -> Result<wxr::Anchor, wxr::Error> {
+        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
+            return Err(wxr::Error::Unavailable("a frame has not begun yet".into()));
+        };
+        let Some(base) = self
+            .spaces
+            .get(space.id() as usize)
+            .and_then(|slot| slot.borrow().space.clone())
+        else {
+            return Err(wxr::Error::NoSpace(space.kind));
+        };
+        let slot = Rc::new(RefCell::new(anchors::Slot::default()));
+        anchors::create(&frame, &base, rigid(pose)?, slot.clone());
+        self.anchors.push(slot);
+        Ok(wxr::Anchor::new((self.anchors.len() - 1) as u32))
+    }
+
+    fn anchor_pose(
+        &mut self,
+        anchor: wxr::Anchor,
+        space: wxr::ReferenceSpace,
+    ) -> Result<Option<wxr::Pose>, wxr::Error> {
+        let Some(anchor) = self
+            .anchors
+            .get(anchor.id() as usize)
+            .and_then(|slot| slot.borrow().anchor())
+        else {
+            return Ok(None);
+        };
+        let Some(base) = self
+            .spaces
+            .get(space.id() as usize)
+            .and_then(|slot| slot.borrow().space.clone())
+        else {
+            return Ok(None);
+        };
+        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
+            return Ok(None);
+        };
+        Ok(anchors::pose(&frame, &anchor, &base))
+    }
+
+    fn release_anchor(&mut self, anchor: wxr::Anchor) {
+        let Some(slot) = self.anchors.get(anchor.id() as usize) else {
+            return;
+        };
+        if let Some(anchor) = slot.borrow().anchor() {
+            anchor.delete();
+        }
+        slot.borrow_mut().forget();
     }
 
     fn depth(&mut self, view: usize) -> Option<(&Self::Depth, wxr::DepthInfo)> {

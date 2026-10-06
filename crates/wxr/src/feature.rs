@@ -25,6 +25,8 @@ impl Features {
     /// A hand's skeleton: [`crate::Session::hand`]. A hand's *place* is not this - that is an input source like
     /// any other, and comes without asking.
     pub const HAND_TRACKING: Self = Self(1 << 4);
+    /// Places the runtime keeps fixed in the room: [`crate::Session::anchor`].
+    pub const ANCHORS: Self = Self(1 << 5);
 
     /// Whether every bit of `other` is in this set.
     pub const fn contains(self, other: Self) -> bool {
