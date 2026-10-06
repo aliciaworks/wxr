@@ -5,8 +5,8 @@
 //! things arrive as promises or as callbacks instead of as calls:
 //!
 //! * `requestSession` is a promise, so a session cannot be connected to in one call. The core has
-//!   `wxr::State::Connecting` for exactly this: the request is started, and the caller polls the ladder
-//!   until it lands or fails.
+//!   `wxr::State::Connecting` for exactly this: the request is started, and the caller polls until it lands
+//!   or fails.
 //! * `requestReferenceSpace` is a promise too, so a space is *asked for* before it exists. A space here is
 //!   a slot: a caller that asks for one and draws in the same breath gets no views for a frame or two,
 //!   which is what an empty view list means.
@@ -170,19 +170,15 @@ impl Drop for WebXrSession {
     }
 }
 
-/// A browser's visibility state in the core's terms.
+/// A browser's visibility state in the core's terms, which is a translation and not a mapping.
 ///
-/// `visible` is a session that is showing, which is the core's `Visible` and the point at which an app may
-/// draw - and it is the *only* thing a browser says about that. `visible-blurred` is a session that is still
-/// showing while something else has the attention, which the core has no reason to tell apart; `hidden` is a
-/// session that exists and is not on a display yet, which is `Synchronized`. A browser has no notion of
-/// focus, so [`wxr::State::Focused`] is never reached here - the same place the Apple backend stops.
-fn visible(state: web_sys::XrVisibilityState) -> wxr::State {
+/// It is the same vocabulary: WebXR is where the core's [`wxr::Visibility`] came from, three rungs and all.
+/// Nothing is folded and nothing is invented.
+fn visibility(state: web_sys::XrVisibilityState) -> wxr::Visibility {
     match state {
-        web_sys::XrVisibilityState::Visible | web_sys::XrVisibilityState::VisibleBlurred => {
-            wxr::State::Visible
-        }
-        _ => wxr::State::Synchronized,
+        web_sys::XrVisibilityState::Visible => wxr::Visibility::Visible,
+        web_sys::XrVisibilityState::VisibleBlurred => wxr::Visibility::VisibleBlurred,
+        _ => wxr::Visibility::Hidden,
     }
 }
 
@@ -239,6 +235,8 @@ pub struct WebXrSession {
     /// Spaces, each a slot: the request is a promise, so a space exists a frame or two after it is asked for.
     spaces: Vec<Rc<RefCell<Option<XrReferenceSpace>>>>,
     state: wxr::State,
+    /// Whether the session is being shown, which is the browser's own `visibilityState`.
+    visibility: wxr::Visibility,
     /// The views the frame located, for the layer the compositor would be given.
     located: usize,
     /// The device the app made, kept because a WebXR/WebGPU session needs it: the binding that hands out the
@@ -264,6 +262,7 @@ impl WebXrSession {
             lost: false,
             spaces: Vec::new(),
             state: wxr::State::Connecting,
+            visibility: wxr::Visibility::Hidden,
             located: 0,
             device: Some(device),
             gpu: None,
@@ -352,6 +351,10 @@ impl wxr::Session for WebXrSession {
         self.state
     }
 
+    fn visibility(&self) -> wxr::Visibility {
+        self.visibility
+    }
+
     fn poll(&mut self) -> Option<wxr::Event> {
         // Taken out of the slot as it is read: a session that has arrived moves into the session, and a poll
         // that left it there would find it again every time - and ask the browser for another animation frame
@@ -366,6 +369,7 @@ impl wxr::Session for WebXrSession {
             Connect::Pending => None,
         };
         if let Some(session) = arrived {
+            self.state = wxr::State::Ready;
             // Before the frame loop starts, because a WebGPU-compatible session with no layer set is a session
             // whose animation frames never arrive at all.
             self.start_gpu(&session);
@@ -393,17 +397,26 @@ impl wxr::Session for WebXrSession {
             }
         }
 
-        // Where the ladder is: `Connecting` until there is a session, and after that whatever the browser says
-        // the session's visibility is - which is the only thing here that means "the app may draw".
-        let next = match &self.inner.borrow().session {
+        // Two axes, and each is news once: the session arriving or not being here yet is the lifecycle, and
+        // the browser's own `visibilityState` is the other - the same vocabulary, one rung at a time.
+        let session = self.inner.borrow().session.clone();
+        let next = match &session {
             None => wxr::State::Connecting,
-            Some(session) => visible(session.visibility_state()),
+            Some(_) => wxr::State::Ready,
         };
-        if next == self.state {
-            return None;
+        if next != self.state {
+            self.state = next;
+            return Some(wxr::Event::StateChanged(next));
         }
-        self.state = next;
-        Some(wxr::Event::StateChanged(next))
+        let shown = match &session {
+            None => wxr::Visibility::Hidden,
+            Some(session) => visibility(session.visibility_state()),
+        };
+        if shown != self.visibility {
+            self.visibility = shown;
+            return Some(wxr::Event::VisibilityChanged(shown));
+        }
+        None
     }
 
     /// What the display shows behind the picture, which WebXR calls `environmentBlendMode`.

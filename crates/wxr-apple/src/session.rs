@@ -126,8 +126,9 @@ pub struct AppleSession {
     /// views are built from it, and it is what was handed to the compositor to reproject against.
     origin: Option<Mat4>,
     predicted: Duration,
-    /// The last state `poll` reported, so that a state the layer is simply still in is not news twice.
-    reported: wxr::State,
+    /// What `poll` reported last, on both axes, so that a state the layer is simply still in is not news
+    /// twice.
+    reported: (wxr::State, wxr::Visibility),
     spaces: u32,
 }
 
@@ -153,7 +154,7 @@ impl AppleSession {
             configured,
             origin: None,
             predicted: Duration::ZERO,
-            reported: wxr::State::Synchronized,
+            reported: (wxr::State::Ready, wxr::Visibility::Hidden),
             spaces: 0,
         }
     }
@@ -193,22 +194,20 @@ impl AppleSession {
         wxr_render::Depth::Reverse
     }
 
-    /// What the layer is doing, which is the one thing it reports.
+    /// What the layer is doing, as the two things a session can be: here or not, and shown or not.
     ///
     /// There is no event queue on this side - the C surface has a state and no events - so this is read
-    /// rather than waited for.
-    fn layer_state(&self) -> wxr::State {
+    /// rather than waited for. Its three states carry both axes between them: a paused layer is a session that
+    /// exists and is not on a display, a running one is both, and an invalidated one is over.
+    fn layer_state(&self) -> (wxr::State, wxr::Visibility) {
         // SAFETY: the layer renderer is live.
         let state = unsafe { cp_layer_renderer_get_state(&self.renderer) };
         if state == cp_layer_renderer_state::running {
-            // The layer is ready for a frame. `Focused` would say the person is in the session rather than
-            // looking at it, and the compositor does not report that, so this is where the ladder stops.
-            wxr::State::Visible
+            (wxr::State::Ready, wxr::Visibility::Visible)
         } else if state == cp_layer_renderer_state::invalidated {
-            wxr::State::Ended
+            (wxr::State::Ended, wxr::Visibility::Hidden)
         } else {
-            // `paused`: the layer exists and is not drawing. A session waiting to be shown.
-            wxr::State::Synchronized
+            (wxr::State::Ready, wxr::Visibility::Hidden)
         }
     }
 
@@ -253,16 +252,24 @@ impl wxr::Session for AppleSession {
     }
 
     fn state(&self) -> wxr::State {
-        self.layer_state()
+        self.layer_state().0
+    }
+
+    fn visibility(&self) -> wxr::Visibility {
+        self.layer_state().1
     }
 
     fn poll(&mut self) -> Option<wxr::Event> {
-        let state = self.layer_state();
-        if state == self.reported {
-            return None;
+        let (state, visibility) = self.layer_state();
+        if state != self.reported.0 {
+            self.reported.0 = state;
+            return Some(wxr::Event::StateChanged(state));
         }
-        self.reported = state;
-        Some(wxr::Event::StateChanged(state))
+        if visibility != self.reported.1 {
+            self.reported.1 = visibility;
+            return Some(wxr::Event::VisibilityChanged(visibility));
+        }
+        None
     }
 
     fn blend(&self) -> wxr::Blend {

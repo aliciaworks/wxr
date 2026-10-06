@@ -213,7 +213,12 @@ pub struct OpenXrSession {
     /// built from them, and they cannot be recovered from the core's view type without a round trip that
     /// would have to be exact to be honest.
     located: Vec<xr::View>,
+    /// The lifecycle and the visibility the core speaks, derived from OpenXR's own ladder below.
     state: wxr::State,
+    visibility: wxr::Visibility,
+    /// OpenXR's own state, kept because it carries more than the core's two axes do - and a program that
+    /// needs the rest needs the platform.
+    openxr_state: xr::SessionState,
     predicted: xr::Time,
     /// Which image the frame took, until it is given back.
     held: Option<u32>,
@@ -322,6 +327,8 @@ impl OpenXrSession {
             spaces: Vec::new(),
             located: Vec::new(),
             state: wxr::State::Ready,
+            visibility: wxr::Visibility::Hidden,
+            openxr_state: xr::SessionState::IDLE,
             predicted: xr::Time::from_nanos(0),
             held: None,
             begun: false,
@@ -340,6 +347,10 @@ impl wxr::Session for OpenXrSession {
         self.state
     }
 
+    fn visibility(&self) -> wxr::Visibility {
+        self.visibility
+    }
+
     fn poll(&mut self) -> Option<wxr::Event> {
         // Events come off the instance, one at a time, and a state change is the one a frame loop acts on.
         // The rest - an interaction profile changing, an event lost - are the runtime's business for now,
@@ -347,8 +358,12 @@ impl wxr::Session for OpenXrSession {
         loop {
             match self.instance.poll_event(&mut self.events) {
                 Ok(Some(xr::Event::SessionStateChanged(event))) => {
-                    let state = match event.state() {
-                        xr::SessionState::IDLE => wxr::State::Idle,
+                    let openxr = event.state();
+                    self.openxr_state = openxr;
+                    // OpenXR's ladder is where both of the core's axes are read from, and the interesting
+                    // rung is `VISIBLE` without `FOCUSED`: a session on a display that nobody is attending
+                    // to, which is exactly WebXR's `visible-blurred`.
+                    let (state, visibility) = match openxr {
                         xr::SessionState::READY => {
                             // A session runs only after the app has begun it, and only once it is ready -
                             // the runtime says `XR_ERROR_SESSION_NOT_RUNNING` from `xrWaitFrame` until then,
@@ -362,21 +377,31 @@ impl wxr::Session for OpenXrSession {
                                 }
                                 self.begun = true;
                             }
-                            wxr::State::Ready
+                            (wxr::State::Ready, wxr::Visibility::Hidden)
                         }
-                        xr::SessionState::SYNCHRONIZED => wxr::State::Synchronized,
-                        xr::SessionState::VISIBLE => wxr::State::Visible,
-                        xr::SessionState::FOCUSED => wxr::State::Focused,
-                        xr::SessionState::STOPPING => wxr::State::Stopping,
-                        xr::SessionState::LOSS_PENDING | xr::SessionState::EXITING => {
-                            wxr::State::Ended
+                        xr::SessionState::IDLE | xr::SessionState::SYNCHRONIZED => {
+                            (wxr::State::Ready, wxr::Visibility::Hidden)
                         }
+                        xr::SessionState::VISIBLE => {
+                            (wxr::State::Ready, wxr::Visibility::VisibleBlurred)
+                        }
+                        xr::SessionState::FOCUSED => (wxr::State::Ready, wxr::Visibility::Visible),
+                        xr::SessionState::STOPPING
+                        | xr::SessionState::LOSS_PENDING
+                        | xr::SessionState::EXITING => (wxr::State::Ended, wxr::Visibility::Hidden),
                         // A state this crate has not learned is not a state to guess at: the session is
                         // still whatever it was, and the next event will say what happened.
                         _ => continue,
                     };
-                    self.state = state;
-                    return Some(wxr::Event::StateChanged(state));
+                    if state != self.state {
+                        self.state = state;
+                        return Some(wxr::Event::StateChanged(state));
+                    }
+                    if visibility != self.visibility {
+                        self.visibility = visibility;
+                        return Some(wxr::Event::VisibilityChanged(visibility));
+                    }
+                    continue;
                 }
                 Ok(Some(_)) => continue,
                 Ok(None) => return None,
@@ -580,6 +605,13 @@ impl wxr::Session for OpenXrSession {
             .end(self.predicted, self.blend, &[&layer])
             .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
         Ok(())
+    }
+}
+
+impl OpenXrSession {
+    /// OpenXR's own session state, which says more than the core's two axes and is this platform's.
+    pub fn openxr_state(&self) -> xr::SessionState {
+        self.openxr_state
     }
 }
 

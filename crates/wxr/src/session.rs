@@ -7,50 +7,73 @@ use crate::input::InputSource;
 use crate::space::{ReferenceSpace, SpaceKind};
 use crate::target::ImageMeta;
 
-/// What the runtime is doing.
+/// What the session's lifecycle is: the smallest thing a synchronous API needs and a promise does not.
 ///
-/// WebXR's states, and they are a chain rather than a flag: a session that is not yet `Visible` has nothing
-/// to draw into, and a session past `Visible` has stopped drawing. Naming them the same way the spec does
-/// means a backend can be read against its own documentation.
+/// WebXR has no session state machine. `requestSession` resolves and there is a session, and an `end` event
+/// says there no longer is; everything else about whether the session is *showing* is `visibilityState`, which
+/// is a separate axis and is [`Visibility`] here. So this is three facts: a session is being asked for, there
+/// is one, or there was one and it is over.
+///
+/// What this replaced was OpenXR's ladder, with WebXR mapped down onto it - which is backwards, and for the
+/// reason this whole workspace is shaped the way it is. A core that takes the *biggest* platform's vocabulary
+/// as its own is a core the other two have to be bent into, and the bend is where the meaning goes missing: a
+/// `visible-blurred` session is not a `Synchronized` one, and OpenXR's `VISIBLE` (not focused) is not a
+/// distinct rung of a lifecycle at all. OpenXR's own states are its backend's business and stay there, where a
+/// program that needs them can ask for them.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum State {
-    /// Connected, with no session yet.
-    #[default]
-    Idle,
-    /// A session has been asked for and is not ready yet.
+    /// A session has been asked for and is not ready.
     ///
     /// WebXR is why this exists: its `requestSession` is a promise, and a runtime whose session arrives
     /// asynchronously cannot be connected to in one call. A backend that has to wait says so and is polled,
     /// which is the same ladder a session is already climbed by rather than a second mechanism.
+    #[default]
     Connecting,
-    /// A session exists and has not been asked to run.
+    /// There is a session.
     Ready,
-    /// Running, and not yet showing anything.
-    Synchronized,
-    /// Showing, and the app may draw.
-    Visible,
-    /// Showing and receiving input: the user is in it.
-    Focused,
-    /// Being torn down.
-    Stopping,
-    /// Gone.
+    /// There was a session and it is over.
     Ended,
 }
 
 impl State {
-    /// Whether the app may draw into this session's images.
-    pub fn can_render(self) -> bool {
-        matches!(self, Self::Visible | Self::Focused)
-    }
-
-    /// Whether the session is still worth polling.
+    /// Whether the session still exists, in either of the two ways it can.
     pub fn is_alive(self) -> bool {
         !matches!(self, Self::Ended)
     }
 
-    /// Whether connecting has finished, one way or the other.
+    /// Whether the session is still being asked for.
     pub fn is_connecting(self) -> bool {
         matches!(self, Self::Connecting)
+    }
+}
+
+/// Whether the session is being shown, which is WebXR's `visibilityState` and nothing more.
+///
+/// A separate axis from [`State`] because it is one in the specification: a session exists and is either on a
+/// display or not. A core that folded the two together could not say "the session is running and the system
+/// menu is over it", which is a thing that happens every time somebody opens one.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Visibility {
+    /// There is a session and it is not on a display.
+    #[default]
+    Hidden,
+    /// It is on a display and somebody is looking at it. The state a frame loop draws in.
+    Visible,
+    /// It is on a display and something else has the person's attention - a system menu, a notification, a
+    /// second app in a shared space. A session that keeps drawing and may be drawn less often.
+    ///
+    /// This is the rung that was being lost: OpenXR's `VISIBLE` without `FOCUSED` is the same fact, and a core
+    /// with one ladder had nowhere to put either of them.
+    VisibleBlurred,
+}
+
+impl Visibility {
+    /// Whether the app should draw, which is the question a frame loop is really asking.
+    ///
+    /// Both of the showing states are a yes: a blurred session is still on a display, and a frame that is not
+    /// drawn is a hole in it.
+    pub fn can_render(self) -> bool {
+        matches!(self, Self::Visible | Self::VisibleBlurred)
     }
 }
 
@@ -58,6 +81,9 @@ impl State {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Event {
     StateChanged(State),
+    /// The session started or stopped being shown. WebXR's `visibilitychange`, and the other axis: a session
+    /// that is shown is not a session that exists.
+    VisibilityChanged(Visibility),
     /// The runtime wants to stop - the user took the headset off, or the page lost the session. Not an
     /// error, and not a state: the app is expected to shut its session down cleanly.
     ExitRequested,
@@ -137,7 +163,17 @@ pub trait Session {
     type Image;
 
     fn presentation(&self) -> Presentation;
+
+    /// The session's lifecycle: is it being asked for, is it here, is it over.
     fn state(&self) -> State;
+
+    /// Whether the session is being shown.
+    ///
+    /// Hidden by default, because a backend that does not say is one whose display nobody has looked at yet -
+    /// and because drawing into a session that is not shown is drawing into nothing.
+    fn visibility(&self) -> Visibility {
+        Visibility::Hidden
+    }
 
     /// The next thing that happened, or `None` if nothing has. Drained one at a time, because two events in
     /// a row can matter in the order they happened - `Visible` then `ExitRequested` is a session that ran
@@ -187,5 +223,5 @@ pub trait Session {
 
 /// Whether a session is both able and expected to draw, which is the question a renderer really asks.
 pub fn should_render<S: Session + ?Sized>(session: &S) -> bool {
-    session.presentation() == Presentation::Composited && session.state().can_render()
+    session.presentation() == Presentation::Composited && session.visibility().can_render()
 }

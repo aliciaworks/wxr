@@ -477,7 +477,10 @@ mod tests {
             .connect(())
             .expect("the mock connects");
         while let Some(event) = session.poll() {
-            if matches!(event, wxr::Event::StateChanged(wxr::State::Focused)) {
+            if matches!(
+                event,
+                wxr::Event::VisibilityChanged(wxr::Visibility::Visible)
+            ) {
                 break;
             }
         }
@@ -584,7 +587,10 @@ mod tests {
             .connect(())
             .expect("the mock connects");
         while let Some(event) = session.poll() {
-            if matches!(event, wxr::Event::StateChanged(wxr::State::Focused)) {
+            if matches!(
+                event,
+                wxr::Event::VisibilityChanged(wxr::Visibility::Visible)
+            ) {
                 break;
             }
         }
@@ -683,7 +689,10 @@ mod tests {
             .connect(())
             .expect("the mock connects");
         while let Some(event) = session.poll() {
-            if matches!(event, wxr::Event::StateChanged(wxr::State::Focused)) {
+            if matches!(
+                event,
+                wxr::Event::VisibilityChanged(wxr::Visibility::Visible)
+            ) {
                 break;
             }
         }
@@ -708,7 +717,10 @@ mod tests {
         };
         let mut session = wxr::mock::MockBackend::default().connect(()).unwrap();
         while let Some(event) = session.poll() {
-            if matches!(event, wxr::Event::StateChanged(wxr::State::Focused)) {
+            if matches!(
+                event,
+                wxr::Event::VisibilityChanged(wxr::Visibility::Visible)
+            ) {
                 break;
             }
         }

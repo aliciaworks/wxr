@@ -1,9 +1,9 @@
 //! A runtime that is not there.
 //!
-//! A headset is not needed to test what a session *is*: the frame loop, the state ladder, the eye poses, and
-//! the arithmetic that turns a hand in a shoulder into a hand in a room. The mock fabricates all of it, so
-//! the core's tests run on a machine with no XR runtime at all - and so a renderer can be developed against
-//! a session before any backend exists.
+//! A headset is not needed to test what a session *is*: the frame loop, the two ladders a session climbs, the
+//! eye poses, and the arithmetic that turns a hand in a shoulder into a hand in a room. The mock fabricates
+//! all of it, so the core's tests run on a machine with no XR runtime at all - and so a renderer can be
+//! developed against a session before any backend exists.
 
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -11,7 +11,7 @@ use std::time::Duration;
 use glam::{Quat, Vec3};
 
 use crate::frame::{Eye, FieldOfView, Frame, FrameState, View, Viewport};
-use crate::session::{Backend, Error, Event, Presentation, Session, State};
+use crate::session::{Backend, Error, Event, Presentation, Session, State, Visibility};
 use crate::space::{Pose, ReferenceSpace, SpaceKind};
 use crate::target::{ColorFormat, Extent2d, ImageMeta};
 
@@ -26,9 +26,12 @@ pub const PREDICTION: Duration = Duration::from_micros(11_000);
 pub struct MockBackend {
     pub extent: Extent2d,
     pub stereo: bool,
-    /// The states to hand out, in order, before it settles. Makes the ladder something to test rather than
-    /// something to assume.
+    /// The lifecycle rungs to hand out, in order. `Ready` by default, and on its own, because that is what
+    /// WebXR's promise does: the session arrives and that is the whole of it.
     pub states: Vec<State>,
+    /// The visibility rungs to hand out after them, in order. What makes the other ladder something to test
+    /// rather than something to assume - and the rung that a core with one ladder had nowhere to put.
+    pub visibility: Vec<Visibility>,
 }
 
 impl Default for MockBackend {
@@ -36,7 +39,12 @@ impl Default for MockBackend {
         Self {
             extent: Extent2d::new(2048, 2048),
             stereo: true,
-            states: vec![State::Synchronized, State::Visible, State::Focused],
+            states: vec![State::Ready],
+            visibility: vec![
+                Visibility::Hidden,
+                Visibility::Visible,
+                Visibility::VisibleBlurred,
+            ],
         }
     }
 }
@@ -47,14 +55,23 @@ impl Backend for MockBackend {
     type Session = MockSession;
 
     fn connect(&self, _device: ()) -> Result<Self::Session, Error> {
+        // Two ladders, in the order they happen: the session arrives, and then it is shown.
+        let pending: VecDeque<Event> = self
+            .states
+            .iter()
+            .copied()
+            .map(Event::StateChanged)
+            .chain(
+                self.visibility
+                    .iter()
+                    .copied()
+                    .map(Event::VisibilityChanged),
+            )
+            .collect();
         Ok(MockSession {
-            state: State::Idle,
-            pending: self
-                .states
-                .iter()
-                .copied()
-                .map(Event::StateChanged)
-                .collect(),
+            state: State::Connecting,
+            visibility: Visibility::Hidden,
+            pending,
             extent: self.extent,
             stereo: self.stereo,
             spaces: 0,
@@ -70,6 +87,7 @@ impl Backend for MockBackend {
 /// asks what an image *is*.
 pub struct MockSession {
     state: State,
+    visibility: Visibility,
     pending: VecDeque<Event>,
     extent: Extent2d,
     stereo: bool,
@@ -92,10 +110,16 @@ impl Session for MockSession {
         self.state
     }
 
+    fn visibility(&self) -> Visibility {
+        self.visibility
+    }
+
     fn poll(&mut self) -> Option<Event> {
         let event = self.pending.pop_front()?;
-        if let Event::StateChanged(state) = event {
-            self.state = state;
+        match event {
+            Event::StateChanged(state) => self.state = state,
+            Event::VisibilityChanged(visibility) => self.visibility = visibility,
+            _ => {}
         }
         Some(event)
     }
@@ -135,9 +159,14 @@ impl Session for MockSession {
         self.image = (self.frames % 3) as u32;
         out.predicted_display_time = now + PREDICTION;
         out.state = match self.state {
-            State::Visible | State::Focused => FrameState::Render,
-            State::Stopping | State::Ended => FrameState::Exit,
-            _ => FrameState::Wait,
+            // A session that is over is a loop to stop; one that is being asked for is a frame to wait for; and
+            // one that is here draws exactly when it is being shown.
+            State::Ended => FrameState::Exit,
+            State::Connecting => FrameState::Wait,
+            State::Ready => match self.visibility {
+                Visibility::Hidden => FrameState::Wait,
+                Visibility::Visible | Visibility::VisibleBlurred => FrameState::Render,
+            },
         };
         out.views_mut().clear();
         Ok(())
@@ -219,7 +248,7 @@ mod tests {
             .connect(())
             .expect("the mock connects");
         while let Some(event) = session.poll() {
-            if let Event::StateChanged(State::Focused) = event {
+            if let Event::VisibilityChanged(Visibility::Visible) = event {
                 break;
             }
         }
@@ -227,16 +256,29 @@ mod tests {
     }
 
     #[test]
-    fn the_state_ladder_is_climbed_by_polling() {
+    fn the_lifecycle_and_the_visibility_are_two_ladders() {
         let mut session = MockBackend::default().connect(()).unwrap();
-        assert_eq!(session.state(), State::Idle);
+        assert_eq!(session.state(), State::Connecting);
+        assert_eq!(session.visibility(), Visibility::Hidden);
+
+        // The session arrives, which is the whole of the lifecycle ladder in WebXR's terms...
         session.poll();
-        assert_eq!(session.state(), State::Synchronized);
+        assert_eq!(session.state(), State::Ready);
+        assert!(!session.state().is_connecting());
+        assert!(session.state().is_alive());
+
+        // ...and then it is shown, in rungs of its own.
         session.poll();
-        assert_eq!(session.state(), State::Visible);
+        assert_eq!(session.visibility(), Visibility::Hidden);
         session.poll();
-        assert_eq!(session.state(), State::Focused);
-        assert!(session.state().can_render());
+        assert_eq!(session.visibility(), Visibility::Visible);
+        assert!(session.visibility().can_render());
+        session.poll();
+        assert_eq!(session.visibility(), Visibility::VisibleBlurred);
+        assert!(
+            session.visibility().can_render(),
+            "blurred is still on a display, and a frame not drawn is a hole in it"
+        );
         assert!(session.poll().is_none());
     }
 
@@ -288,13 +330,15 @@ mod tests {
     #[test]
     fn a_stopped_session_asks_to_exit() {
         let mut session = MockBackend {
-            states: vec![State::Visible, State::Stopping],
+            states: vec![State::Ready, State::Ended],
             ..Default::default()
         }
         .connect(())
         .unwrap();
         session.poll();
         session.poll();
+        assert_eq!(session.state(), State::Ended);
+        assert!(!session.state().is_alive());
         let mut frame = Frame::default();
         session.begin(Duration::ZERO, &mut frame).unwrap();
         assert_eq!(frame.state, FrameState::Exit);

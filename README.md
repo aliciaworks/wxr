@@ -91,9 +91,9 @@ and in a browser it is behind the `webxr-webgpu-binding` flag, which does work o
 announcement named Windows and Android - so it hands over the head, the eyes and the timing and says so
 plainly. It has a smoke page of its own, `crates/wxr-webxr-smoke` with a `serve.py` that builds it and serves
 it, because a backend nobody has run is a backend nobody has seen work: in a browser with the Immersive Web
-Emulator it gets a real session, and stops exactly where this paragraph says it must - at `Synchronized`, not
-`Visible`, because a session does not become visible without a base layer and there is no WebGPU binding to
-make one from in that browser.
+Emulator it gets a real session, and stops exactly where this paragraph says it must - with visibility
+`Hidden`, never `Visible`, because a session does not become visible without a base layer and there is no WebGPU
+binding to make one from in that browser.
 
 **`wxr-apple`** was going to need a Swift shim, and does not. Two things were learned from Apple's own
 documentation rather than assumed:

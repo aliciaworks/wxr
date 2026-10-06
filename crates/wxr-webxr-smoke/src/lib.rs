@@ -53,8 +53,9 @@ struct Board {
     space: Option<wxr::ReferenceSpace>,
     drawn: u32,
     ticks: u32,
-    /// The last state reported, so a rung of the ladder is news once.
+    /// The last lifecycle reported, and the last visibility, so a rung of either ladder is news once.
     state: wxr::State,
+    visibility: wxr::Visibility,
 }
 
 #[wasm_bindgen(start)]
@@ -107,7 +108,11 @@ async fn setup() {
         Ok(session) => session,
         Err(error) => return say(&format!("connect refused: {error}")),
     };
-    say(&format!("connected, state {:?}", session.state()));
+    say(&format!(
+        "connected, state {:?}, visibility {:?}",
+        session.state(),
+        session.visibility()
+    ));
 
     // The loop is the browser's, because WebXR has no blocking wait: the session's animation callback puts a
     // frame in a slot and this ticks over it, which is what an app does too.
@@ -118,6 +123,7 @@ async fn setup() {
         drawn: 0,
         ticks: 0,
         state: wxr::State::default(),
+        visibility: wxr::Visibility::default(),
     }));
     let ticking = board.clone();
     let interval: Rc<RefCell<Option<i32>>> = Rc::new(RefCell::new(None));
@@ -153,21 +159,24 @@ fn tick(board: &mut Board) {
     while let Some(event) = board.session.poll() {
         say(&format!("event: {event:?}"));
     }
-    // Reported on every rung of the ladder rather than per frame: a session that never reaches `Visible` is
-    // exactly the case this backend has to be honest about, and frames never arrive to say it in.
-    if board.session.state() != board.state {
+    // Reported on every change rather than per frame: a session that never reaches `Visible` is exactly the
+    // case this backend has to be honest about, and frames never arrive to say it in. The lifecycle and the
+    // visibility are separate axes, so each is reported when it moves.
+    if board.session.state() != board.state || board.session.visibility() != board.visibility {
         board.state = board.session.state();
+        board.visibility = board.session.visibility();
         let meta = board.session.images();
         say(&format!(
-            "state {:?}: {} image(s), {:?} at {:?}",
+            "state {:?}, visibility {:?}: {} image(s), {:?} at {:?}",
             board.state,
+            board.visibility,
             board.session.image_count(),
             meta.format,
             meta.extent
         ));
     }
 
-    if board.space.is_none() && board.session.state().can_render() {
+    if board.space.is_none() && board.session.visibility().can_render() {
         match board.session.space(wxr::SpaceKind::LocalFloor) {
             Ok(space) => {
                 say("asked for a floor space");

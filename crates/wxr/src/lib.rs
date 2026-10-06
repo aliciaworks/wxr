@@ -34,6 +34,6 @@ pub mod target;
 
 pub use frame::{Eye, FieldOfView, Frame, FrameState, View, Viewport};
 pub use input::{Axes, Buttons, Handedness, InputSource};
-pub use session::{Backend, Blend, Error, Event, Presentation, Session, State};
+pub use session::{Backend, Blend, Error, Event, Presentation, Session, State, Visibility};
 pub use space::{Pose, ReferenceSpace, SpaceKind};
 pub use target::{ColorFormat, Extent2d, ImageMeta};
