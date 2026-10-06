@@ -1,5 +1,7 @@
 # wxr
 
+experimental project, co-authored by deepseek-v4.1-flash
+
 An XR core. One vocabulary for a session, and a backend per platform that fills it in:
 
 ```
