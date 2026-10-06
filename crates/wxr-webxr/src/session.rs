@@ -11,8 +11,7 @@ use wasm_bindgen_futures::JsFuture;
 use web_sys::{XrFrame, XrReferenceSpace, XrSession, XrView};
 
 use crate::convert::{
-    field_of_view, hand_joint, offset_reference_space, recommended_scale, reference_space_type,
-    transform, visibility,
+    field_of_view, hand_joint, offset_reference_space, reference_space_type, transform, visibility,
 };
 use crate::{depth, gpu, hit, input, light, planes};
 
@@ -243,11 +242,7 @@ impl WebXrSession {
         let (Some(gpu), Some(foveation)) = (&self.gpu, self.foveation) else {
             return;
         };
-        let _ = js_sys::Reflect::set(
-            gpu.layer.unchecked_ref::<JsValue>(),
-            &JsValue::from_str("fixedFoveation"),
-            &JsValue::from_f64(foveation as f64),
-        );
+        gpu.layer.set_fixed_foveation(foveation as f64);
     }
 
     /// Ask for the next frame, once there is a session to ask.
@@ -613,7 +608,9 @@ impl wxr::Session for WebXrSession {
                 viewport,
                 image: 0,
                 layer,
-                recommended_viewport_scale: recommended_scale(&view),
+                recommended_viewport_scale: view
+                    .recommended_viewport_scale()
+                    .map(|scale| scale as f32),
             });
         }
         self.located = out_views.len();
@@ -780,25 +777,16 @@ impl wxr::Session for WebXrSession {
         else {
             return Ok(());
         };
-        // `boundsGeometry` is on the bounded-floor space and nowhere else, so a space that is not one has an
-        // `undefined` where the outline would be - which is an outline with no points.
-        let Ok(bounds) = js_sys::Reflect::get(
-            space.unchecked_ref::<JsValue>(),
-            &JsValue::from_str("boundsGeometry"),
-        ) else {
+        // `boundsGeometry` is on the bounded-floor space and nowhere else, so a space that is not one is not
+        // this type - which is an outline with no points rather than a failure.
+        let Ok(bounds) = space.dyn_into::<web_sys::XrBoundedReferenceSpace>() else {
             return Ok(());
         };
-        let Ok(Some(points)) = js_sys::try_iter(&bounds) else {
-            return Ok(());
-        };
-        for point in points.flatten() {
-            let at = |name: &str| {
-                js_sys::Reflect::get(&point, &JsValue::from_str(name))
-                    .ok()
-                    .and_then(|value| value.as_f64())
-                    .unwrap_or(0.0) as f32
+        for point in bounds.bounds_geometry().iter() {
+            let Ok(point) = point.dyn_into::<web_sys::DomPointReadOnly>() else {
+                continue;
             };
-            out.push(wxr::glam::Vec2::new(at("x"), at("z")));
+            out.push(wxr::glam::Vec2::new(point.x() as f32, point.z() as f32));
         }
         Ok(())
     }
@@ -902,22 +890,11 @@ impl wxr::Session for WebXrSession {
     }
 
     fn request_viewport_scale(&mut self, view: usize, scale: Option<f32>) {
-        // `null` is ignored, which the specification says so that a recommendation may be passed unchecked.
-        let (Some(scale), Some(view)) = (scale, self.frame_views.get(view)) else {
-            return;
-        };
-        let Ok(request) = js_sys::Reflect::get(
-            view.unchecked_ref::<JsValue>(),
-            &JsValue::from_str("requestViewportScale"),
-        )
-        .and_then(|value| value.dyn_into::<js_sys::Function>()) else {
-            return;
-        };
+        // `None` is ignored, which the specification says so that a recommendation may be passed unchecked.
         // It lands when the browser next answers for this view's viewport, which is the next `views`.
-        let _ = request.call1(
-            view.unchecked_ref::<JsValue>(),
-            &JsValue::from_f64(scale as f64),
-        );
+        if let Some(view) = self.frame_views.get(view) {
+            view.request_viewport_scale(scale.map(|scale| scale as f64));
+        }
     }
 
     fn depth(&mut self, view: usize) -> Option<(&Self::Depth, wxr::DepthInfo)> {

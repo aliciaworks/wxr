@@ -3,9 +3,8 @@
 //! Everything here is one direction or the other between what `web-sys` reports and what the core says, kept
 //! together so the mappings can be read next to each other.
 
-use wasm_bindgen::prelude::*;
 use web_sys::{
-    XrHandJoint, XrReferenceSpace, XrReferenceSpaceType, XrRigidTransform, XrSessionMode, XrView,
+    XrHandJoint, XrReferenceSpace, XrReferenceSpaceType, XrRigidTransform, XrSessionMode,
 };
 
 use wxr::glam::{Quat, Vec3};
@@ -20,17 +19,6 @@ pub(crate) fn visibility(state: web_sys::XrVisibilityState) -> wxr::Visibility {
         web_sys::XrVisibilityState::VisibleBlurred => wxr::Visibility::VisibleBlurred,
         _ => wxr::Visibility::Hidden,
     }
-}
-
-/// What scale the runtime suggests for a view, which WebXR reports as a nullable number.
-pub(crate) fn recommended_scale(view: &XrView) -> Option<f32> {
-    js_sys::Reflect::get(
-        view.unchecked_ref::<JsValue>(),
-        &JsValue::from_str("recommendedViewportScale"),
-    )
-    .ok()
-    .and_then(|value| value.as_f64())
-    .map(|value| value as f32)
 }
 
 /// Which browser session mode a core one is, which is WebXR's own three values.

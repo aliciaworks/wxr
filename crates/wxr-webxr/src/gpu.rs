@@ -58,6 +58,12 @@ extern "C" {
 extern "C" {
     #[wasm_bindgen(js_name = XRProjectionLayer)]
     pub type XrProjectionLayer;
+
+    /// How much foveation the compositor applies, `0..=1`: the Layers module's `fixedFoveation`, which is a
+    /// hint the compositor is free to ignore. Declared here rather than read by name because this is a type this
+    /// crate already owns - and it is not in `web-sys`, so the name still comes from the specification.
+    #[wasm_bindgen(method, setter, js_name = "fixedFoveation")]
+    pub fn set_fixed_foveation(this: &XrProjectionLayer, amount: f64);
 }
 
 /// One view's worth of a frame's texture.
