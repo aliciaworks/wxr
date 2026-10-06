@@ -1,0 +1,27 @@
+[package]
+name = "wxr-webxr-smoke"
+description = "The page that runs the WebXR backend, so that it has been run at all."
+version.workspace = true
+edition.workspace = true
+
+# A `cdylib` rather than an example, because that is what `wasm-bindgen` takes and an example cannot be one.
+# Empty off wasm, like the backend it exercises.
+[lib]
+crate-type = ["cdylib"]
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+wxr = { path = "../wxr" }
+wxr-webxr = { path = "../wxr-webxr" }
+wgpu = { workspace = true }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Document",
+    "HtmlElement",
+    "Navigator",
+    "Request",
+    "RequestInit",
+    "Response",
+    "console",
+] }

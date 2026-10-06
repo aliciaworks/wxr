@@ -112,6 +112,22 @@ pub enum Error {
     NoXr,
 }
 
+/// A browser's visibility state in the core's terms.
+///
+/// `visible` is a session that is showing, which is the core's `Visible` and the point at which an app may
+/// draw - and it is the *only* thing a browser says about that. `visible-blurred` is a session that is still
+/// showing while something else has the attention, which the core has no reason to tell apart; `hidden` is a
+/// session that exists and is not on a display yet, which is `Synchronized`. A browser has no notion of
+/// focus, so [`wxr::State::Focused`] is never reached here - the same place the Apple backend stops.
+fn visible(state: web_sys::XrVisibilityState) -> wxr::State {
+    match state {
+        web_sys::XrVisibilityState::Visible | web_sys::XrVisibilityState::VisibleBlurred => {
+            wxr::State::Visible
+        }
+        _ => wxr::State::Synchronized,
+    }
+}
+
 impl From<Error> for wxr::Error {
     fn from(error: Error) -> Self {
         wxr::Error::Unavailable(error.to_string())
@@ -190,27 +206,34 @@ impl wxr::Session for WebXrSession {
     }
 
     fn poll(&mut self) -> Option<wxr::Event> {
-        // Taken out before anything is written: a `JsValue` clone is a handle, and holding the borrow
-        // across the writes below is what a `RefCell` refuses.
-        let phase = match &*self.connect.borrow() {
-            Connect::Pending => None,
-            Connect::Failed(message) => Some(Err(message.clone())),
-            Connect::Started(session) => Some(Ok(session.clone())),
-        };
-        match phase {
-            None => None,
-            Some(Err(message)) => {
+        // Taken out of the slot as it is read: a session that has arrived moves into the session, and a poll
+        // that left it there would find it again every time - and ask the browser for another animation frame
+        // every time with it, one closure per tick, none of them ever dropped.
+        let arrived = match std::mem::replace(&mut *self.connect.borrow_mut(), Connect::Pending) {
+            Connect::Started(session) => Some(session),
+            Connect::Failed(message) => {
                 log::error!("wxr-webxr: the session was refused: {message}");
                 self.state = wxr::State::Ended;
-                Some(wxr::Event::Lost)
+                return Some(wxr::Event::Lost);
             }
-            Some(Ok(session)) => {
-                self.inner.borrow_mut().session = Some(session);
-                self.state = wxr::State::Ready;
-                self.request_frame();
-                Some(wxr::Event::StateChanged(wxr::State::Ready))
-            }
+            Connect::Pending => None,
+        };
+        if let Some(session) = arrived {
+            self.inner.borrow_mut().session = Some(session);
+            self.request_frame();
         }
+
+        // Where the ladder is: `Connecting` until there is a session, and after that whatever the browser says
+        // the session's visibility is - which is the only thing here that means "the app may draw".
+        let next = match &self.inner.borrow().session {
+            None => wxr::State::Connecting,
+            Some(session) => visible(session.visibility_state()),
+        };
+        if next == self.state {
+            return None;
+        }
+        self.state = next;
+        Some(wxr::Event::StateChanged(next))
     }
 
     fn images(&self) -> wxr::ImageMeta {

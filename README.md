@@ -61,11 +61,12 @@ backend here takes the `Scene` arm: RealityKit would mean the platform draws and
 ## Layout
 
 ```
-crates/wxr/            the core: session, space, frame, target, input. No platform code, no graphics API.
-crates/wxr-openxr/     the OpenXR backend, on Vulkan handles that already exist.
-crates/wxr-webxr/      the WebXR backend, for wasm.
-crates/wxr-apple/      the Apple backend: CompositorServices to present, ARKit to track. All of it is C.
-crates/wxr-render/     the renderer: takes a frame and a device, draws into the images.
+crates/wxr/                the core: session, space, frame, target, input. No platform code, no graphics API.
+crates/wxr-openxr/         the OpenXR backend, on Vulkan handles that already exist.
+crates/wxr-webxr/          the WebXR backend, for wasm.
+crates/wxr-webxr-smoke/    the page that runs it, so that it has been run.
+crates/wxr-apple/          the Apple backend: CompositorServices to present, ARKit to track. All of it is C.
+crates/wxr-render/         the renderer: takes a frame and a device, draws into the images.
 ```
 
 There is no `apple/` directory of Swift, and that is a finding rather than an omission - see below.
@@ -81,7 +82,11 @@ proof that it reaches a real runtime - which needs a machine whose runtime is ru
 **`wxr-webxr`** is the one that did not fit: WebXR's session, its reference spaces and its frames all arrive
 asynchronously, which is why the core has `State::Connecting` and why a space is asked for before it exists.
 It also cannot give a renderer any images yet - WebXR's WebGPU binding (`XRGPUBinding`) is not in `web-sys`
-and not in browsers - so it hands over the head, the eyes and the timing and says so plainly.
+and not in browsers - so it hands over the head, the eyes and the timing and says so plainly. It has a smoke
+page of its own, `crates/wxr-webxr-smoke` with a `serve.py` that builds it and serves it, because a backend
+nobody has run is a backend nobody has seen work: in a browser with the Immersive Web Emulator it gets a real
+session, and stops exactly where this paragraph says it must - at `Synchronized`, not `Visible`, because a
+session does not become visible without a base layer and there is no WebGPU binding to make one from.
 
 **`wxr-apple`** was going to need a Swift shim, and does not. Two things were learned from Apple's own
 documentation rather than assumed:

@@ -1318,6 +1318,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "wxr-webxr-smoke"
+version = "0.1.0"
+dependencies = [
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "wgpu",
+ "wxr",
+ "wxr-webxr",
+]
+
+[[package]]
 name = "xml-rs"
 version = "0.8.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
