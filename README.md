@@ -23,8 +23,8 @@ owns one, wgpu is made to adopt it.
 
 ## The core is small on purpose
 
-A session has a head pose, two eyes with a field of view each, an origin to measure them from, and an image
-at the end that somebody presents. That is the whole of it, and it is **WebXR's** vocabulary, because WebXR
+A session has a head pose, two eyes with a field of view each, an origin to measure them from - and spaces
+made from that one, at a pose inside it - and an image at the end that somebody presents. That is the whole of it, and it is **WebXR's** vocabulary, because WebXR
 is the only one of the three that is a specification rather than a vendor's API - OpenXR and the Apple APIs
 each describe a superset in their own terms, so the smallest of the three is the one the other two reduce to.
 
@@ -32,6 +32,12 @@ A session is also a stream of events - a press on a source, a squeeze, the sessi
 **WebXR's** vocabulary too, down to the names: `selectstart`, `selectend`, `select` and their three squeeze
 siblings, because what a source *does* is not in a frame, it happens between them. A source is named by an id
 the backend hands out, which WebXR does with the object itself and a Rust value cannot.
+
+Two more of WebXR's words are here for the same reason. `offset_space` is `getOffsetReferenceSpace`: a space at
+a pose inside one the session handed out, which is how a scene anchors something to a place - a table, a wall, a
+controller. And `set_depth_range` is `XRRenderState.depthNear` and `depthFar`, the one number a renderer and a
+compositor have to agree on, because a compositor that reprojects a frame with depth cannot read the planes out
+of the picture.
 
 Three things the core deliberately does not know:
 
