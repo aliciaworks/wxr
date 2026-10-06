@@ -35,6 +35,12 @@ pub enum ColorFormat {
     Rgba8Srgb,
     /// Eight bits each, linear. What a compositor that does its own encoding asks for.
     Rgba8Unorm,
+    /// Eight bits each, sRGB-encoded, with blue first: the arrangement a compositor that follows the
+    /// display's own channel order asks for. Apple's layers hand out BGRA, and a core that could not name it
+    /// would have to call every one of them `Unknown`.
+    Bgra8Srgb,
+    /// Eight bits each, linear, blue first.
+    Bgra8Unorm,
     /// Half floats, linear light with values above one. HDR, which is what a headset wants and a tone map
     /// is needed for.
     Rgba16Float,

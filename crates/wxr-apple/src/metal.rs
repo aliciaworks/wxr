@@ -36,8 +36,10 @@ pub unsafe fn texture(
         depth_or_array_layers: meta.layers,
     };
 
-    // SAFETY: the texture is the compositor's and stays valid while the layer does; `None` for the drop
-    // callback is what says "do not release it", because the compositor owns it and will want it back.
+    // SAFETY: the texture is the compositor's and stays valid while the layer does. The retain is this
+    // wrapper's own: the hal texture owns it and releases it when wgpu drops the texture, which is correct,
+    // because the compositor holds a reference of its own. There is nothing else to release, which is what
+    // the empty drop callback says.
     let hal_texture = unsafe {
         wgpu::hal::metal::Device::texture_from_raw(
             raw,

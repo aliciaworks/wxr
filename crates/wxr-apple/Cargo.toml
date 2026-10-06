@@ -14,4 +14,7 @@ wgpu = { workspace = true, features = ["metal"] }
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSObject"] }
 objc2-metal = "0.3"
+# The compositor's own bindings, from the same family as the Metal ones - so the C surface is Apple's
+# headers as a generator read them rather than as this crate remembers them.
+objc2-compositor-services = "0.3"
 log = { workspace = true }

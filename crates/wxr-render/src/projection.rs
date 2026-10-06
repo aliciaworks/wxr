@@ -77,6 +77,23 @@ pub fn angles(projection: Mat4) -> FieldOfView {
     }
 }
 
+/// A field of view from its four half-angle tangents, which is how a compositor that reports tangents
+/// reports it.
+///
+/// Apple's CompositorServices hands a view's opening over as `tangents` - the tangents of the four
+/// half-angles, in the order left, right, up, down - and a tangent is a field of view with an `atan` in
+/// front of it. It lives here rather than in the Apple backend because the arithmetic is not Apple's: a
+/// tangent is a distance over a distance, and any runtime that reports one gets the same answer.
+pub fn angles_from_tangents(tangents: [f32; 4]) -> FieldOfView {
+    let [left, right, up, down] = tangents;
+    FieldOfView {
+        up: up.atan(),
+        down: down.atan(),
+        left: left.atan(),
+        right: right.atan(),
+    }
+}
+
 /// A projection in OpenGL's convention, as wgpu's.
 ///
 /// The z row is remapped from `-w..w` to `0..w`, which is a scale of a half and a shift of a half in
@@ -95,6 +112,20 @@ pub fn from_gl(projection: Mat4) -> Mat4 {
 /// is seen from rather than a thing in it.
 pub fn view(pose: wxr::Pose) -> Mat4 {
     pose.transform().inverse().into()
+}
+
+/// A pose from a view matrix: the way back from [`view`], and the one a runtime that reports a matrix
+/// instead of a place has to hand over.
+///
+/// A camera's view matrix is its pose inverted, so this inverts and then decomposes - which is exact for
+/// the rigid transforms a runtime reports, and is why the scale the decomposition also produces is the one
+/// part that is dropped.
+pub fn pose_from_view(transform: Mat4) -> wxr::Pose {
+    let (_, orientation, position) = transform.inverse().to_scale_rotation_translation();
+    wxr::Pose {
+        position,
+        orientation: orientation.normalize(),
+    }
 }
 
 /// A direction in the world from a camera that looks down its own `-Z`.
@@ -200,5 +231,40 @@ mod tests {
             "{:?}",
             forward(pose)
         );
+    }
+
+    #[test]
+    fn tangents_are_angles_waiting_for_an_atan() {
+        // An opening of a quarter turn each way has tangents of one, and the four directions come back as
+        // the quarter turns they were.
+        let half = FRAC_PI_4;
+        let angles = angles_from_tangents([half.tan(), half.tan(), half.tan(), half.tan()]);
+        assert!(close(angles.up, half), "{angles:?}");
+        assert!(close(angles.left, half), "{angles:?}");
+        // Asymmetric, and the asymmetry is in the tangents: four different openings stay four.
+        let skew = angles_from_tangents([0.5, 1.5, 2.0, 0.25]);
+        assert!(close(skew.left, 0.5_f32.atan()), "{skew:?}");
+        assert!(close(skew.right, 1.5_f32.atan()), "{skew:?}");
+        assert!(close(skew.up, 2.0_f32.atan()), "{skew:?}");
+        assert!(close(skew.down, 0.25_f32.atan()), "{skew:?}");
+    }
+
+    #[test]
+    fn a_view_matrix_is_a_pose_the_other_way_round() {
+        let pose = wxr::Pose {
+            position: Vec3::new(-0.03, 0.1, 0.2),
+            orientation: wxr::glam::Quat::from_rotation_y(0.7)
+                * wxr::glam::Quat::from_rotation_x(0.2),
+        };
+        let back = pose_from_view(view(pose));
+        assert!(back.position.abs_diff_eq(pose.position, 1e-5), "{back:?}");
+        // Compared by where they point rather than by their components: a rotation and its negation are
+        // the same rotation, and a decomposition is free to hand back either.
+        for axis in [Vec3::X, Vec3::Y, Vec3::Z] {
+            assert!(
+                (back.orientation * axis).abs_diff_eq(pose.orientation * axis, 1e-5),
+                "{axis:?}: {back:?}"
+            );
+        }
     }
 }

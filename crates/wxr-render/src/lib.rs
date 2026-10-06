@@ -12,7 +12,9 @@
 pub mod projection;
 pub mod scene;
 
-pub use projection::{Depth, angles, forward, from_gl, perspective, view};
+pub use projection::{
+    Depth, angles, angles_from_tangents, forward, from_gl, perspective, pose_from_view, view,
+};
 
 use wxr::ImageMeta;
 
@@ -25,6 +27,8 @@ pub fn texture_format(format: wxr::ColorFormat) -> Option<wgpu::TextureFormat> {
     match format {
         wxr::ColorFormat::Rgba8Srgb => Some(wgpu::TextureFormat::Rgba8UnormSrgb),
         wxr::ColorFormat::Rgba8Unorm => Some(wgpu::TextureFormat::Rgba8Unorm),
+        wxr::ColorFormat::Bgra8Srgb => Some(wgpu::TextureFormat::Bgra8UnormSrgb),
+        wxr::ColorFormat::Bgra8Unorm => Some(wgpu::TextureFormat::Bgra8Unorm),
         wxr::ColorFormat::Rgba16Float => Some(wgpu::TextureFormat::Rgba16Float),
         wxr::ColorFormat::Rgb10a2Unorm => Some(wgpu::TextureFormat::Rgb10a2Unorm),
         wxr::ColorFormat::Unknown => None,

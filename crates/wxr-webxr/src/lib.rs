@@ -5,17 +5,17 @@
 //! things arrive as promises or as callbacks instead of as calls:
 //!
 //! * `requestSession` is a promise, so a session cannot be connected to in one call. The core has
-//!   [`wxr::State::Connecting`] for exactly this: the request is started, and the caller polls the ladder
+//!   `wxr::State::Connecting` for exactly this: the request is started, and the caller polls the ladder
 //!   until it lands or fails.
 //! * `requestReferenceSpace` is a promise too, so a space is *asked for* before it exists. A space here is
 //!   a slot: a caller that asks for one and draws in the same breath gets no views for a frame or two,
 //!   which is what an empty view list means.
 //! * A frame arrives in the animation callback rather than from a `wait`. The callback puts it in a slot,
-//!   [`wxr::Session::begin`] drains it, and the next one is asked for when the frame is handed back.
+//!   `wxr::Session::begin` drains it, and the next one is asked for when the frame is handed back.
 //!
 //! And there is one thing this cannot do at all yet: **images**. WebXR's binding for WebGPU
 //! (`XRGPUBinding`) is not in `web-sys` and not in browsers, and the WebGL one gives a framebuffer that
-//! wgpu cannot draw into. So the session is [`wxr::Presentation::Composited`] with no images: it hands a
+//! wgpu cannot draw into. So the session is `wxr::Presentation::Composited` with no images: it hands a
 //! renderer the head, the eyes and the timing, and where the picture goes until the binding ships is the
 //! renderer's own canvas. Saying that plainly is better than an `Image` type that is not one.
 

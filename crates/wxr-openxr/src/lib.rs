@@ -6,7 +6,7 @@
 //! because a runtime that makes the device also gets to decide what the device can do.
 //!
 //! So a session is created from `XR_KHR_vulkan_enable`, which takes handles that already exist. They come
-//! from the wgpu device the renderer was given, read out through wgpu's HAL ([`hal`]), which is the only
+//! from the wgpu device the renderer was given, read out through wgpu's HAL (`hal`), which is the only
 //! place in the workspace that names a Vulkan type. Nothing here creates a device, and nothing here
 //! outlives one.
 //!

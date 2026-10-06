@@ -457,6 +457,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-compositor-services"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea6e9e72b0ea04639fdce9ee1146814e4c1a31a81333eefc06a7fc95da569d31"
+dependencies = [
+ "bitflags",
+ "objc2",
+ "objc2-core-foundation",
+ "objc2-metal",
+]
+
+[[package]]
 name = "objc2-core-foundation"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1259,6 +1271,7 @@ version = "0.1.0"
 dependencies = [
  "log",
  "objc2",
+ "objc2-compositor-services",
  "objc2-foundation",
  "objc2-metal",
  "wgpu",
