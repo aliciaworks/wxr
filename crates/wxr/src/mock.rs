@@ -402,6 +402,22 @@ mod tests {
     }
 
     #[test]
+    fn a_backend_without_hit_testing_says_so() {
+        let mut session = running();
+        let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+        assert!(matches!(
+            session.hit_test_source(space),
+            Err(Error::Unsupported(_))
+        ));
+        // And a hit test that never happened is no hits, not a failure.
+        let mut hits = Vec::new();
+        session
+            .hits(crate::HitTestSource::new(0), space, &mut hits)
+            .expect("an empty hit test is not an error");
+        assert!(hits.is_empty());
+    }
+
+    #[test]
     fn a_session_is_asked_for_in_a_mode_and_the_mock_remembers_it() {
         let session = MockBackend::default()
             .connect((), SessionMode::ImmersiveAr)

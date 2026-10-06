@@ -4,6 +4,7 @@ use std::any::Any;
 use std::time::Duration;
 
 use crate::frame::Frame;
+use crate::hit::{Hit, HitTestSource};
 use crate::input::{Hand, InputId, InputSource};
 use crate::plane::Plane;
 use crate::space::{Pose, ReferenceSpace, SpaceKind};
@@ -170,6 +171,8 @@ pub enum Error {
     Rejected(String),
     #[error("the runtime offers no {0:?} space")]
     NoSpace(SpaceKind),
+    #[error("this runtime does not do {0}")]
+    Unsupported(String),
     #[error("the frame could not be presented: {0}")]
     Present(String),
 }
@@ -349,6 +352,28 @@ pub trait Session: Any {
     /// rather than a list to keep. Empty for a session that has found none and for a backend that has not been
     /// taught surfaces - which are the same thing to a caller only asking whether there is a table here.
     fn planes(&mut self, _space: ReferenceSpace, out: &mut Vec<Plane>) -> Result<(), Error> {
+        out.clear();
+        Ok(())
+    }
+
+    /// Ask for a source of hits along a space's own aim - a ray out of its `-Z`, which is what WebXR's
+    /// `requestHitTestSource` makes when it is not given an offset ray.
+    ///
+    /// A source is made asynchronously and outlives the frame, so it comes back as a handle the way a space
+    /// does: a frame or two with no source, and `hits` on one that is not ready has none. A backend with no hit
+    /// testing says so rather than handing back a source that never answers - which is the difference between a
+    /// runtime where the ray missed and one where there is no ray.
+    fn hit_test_source(&mut self, _space: ReferenceSpace) -> Result<HitTestSource, Error> {
+        Err(Error::Unsupported("hit testing".into()))
+    }
+
+    /// Fill in what the ray met this frame, expressed in the space given. Empty when it met nothing.
+    fn hits(
+        &mut self,
+        _source: HitTestSource,
+        _space: ReferenceSpace,
+        out: &mut Vec<Hit>,
+    ) -> Result<(), Error> {
         out.clear();
         Ok(())
     }

@@ -48,6 +48,7 @@
 #![cfg(target_family = "wasm")]
 
 mod gpu;
+mod hit;
 mod import;
 mod input;
 mod planes;
@@ -141,7 +142,9 @@ impl wxr::Backend for WebXr {
         // them - and as optional, because a browser that will not grant them is a session with no table in it
         // rather than no session.
         if mode == wxr::SessionMode::ImmersiveAr {
+            // The two the world-understanding modules need, and only in the session that has a world.
             optional.push(JsValue::from_str("plane-detection"));
+            optional.push(JsValue::from_str("hit-test"));
         }
         init.set_optional_features(&optional);
         let requested = self
@@ -280,6 +283,8 @@ pub struct WebXrSession {
     /// The surfaces this session has seen, for the same reason as the sources: WebXR names one by the object it
     /// is, and a core plane carries a number.
     planes: planes::Ids,
+    /// The hit-test sources this session has asked for, each empty until the browser answers.
+    hit_sources: Vec<Rc<RefCell<hit::Slot>>>,
     /// The views the frame located, for the layer the compositor would be given.
     located: usize,
     /// The device the app made, kept because a WebXR/WebGPU session needs it: the binding that hands out the
@@ -312,6 +317,7 @@ impl WebXrSession {
             sources: input::Sources::new(),
             input: None,
             planes: planes::Ids::default(),
+            hit_sources: Vec::new(),
             located: 0,
             device: Some(device),
             gpu: None,
@@ -848,6 +854,67 @@ impl wxr::Session for WebXrSession {
             return Ok(());
         };
         planes::detected(&frame, &reference, &self.planes, out);
+        Ok(())
+    }
+
+    fn hit_test_source(
+        &mut self,
+        space: wxr::ReferenceSpace,
+    ) -> Result<wxr::HitTestSource, wxr::Error> {
+        let Some(session) = self.inner.borrow().session.clone() else {
+            return Err(wxr::Error::Unavailable(
+                "the session has not started yet".into(),
+            ));
+        };
+        let Some(base) = self.spaces.get(space.id() as usize).cloned() else {
+            return Err(wxr::Error::NoSpace(space.kind));
+        };
+        let slot = Rc::new(RefCell::new(hit::Slot::default()));
+        // The space may still be a promise, and a ray out of a space that is not here is not here either - so
+        // the request waits on the same promise the space does.
+        let resolved = base.borrow().space.clone();
+        if let Some(base) = resolved {
+            hit::request(&session, &base, slot.clone());
+        } else if let Some(promise) = base.borrow().promise.clone() {
+            let fill = slot.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Ok(value) = JsFuture::from(promise).await
+                    && let Ok(base) = value.dyn_into::<XrReferenceSpace>()
+                {
+                    hit::request(&session, &base, fill);
+                }
+            });
+        } else {
+            return Err(wxr::Error::NoSpace(space.kind));
+        }
+        self.hit_sources.push(slot);
+        Ok(wxr::HitTestSource::new((self.hit_sources.len() - 1) as u32))
+    }
+
+    fn hits(
+        &mut self,
+        source: wxr::HitTestSource,
+        space: wxr::ReferenceSpace,
+        out: &mut Vec<wxr::Hit>,
+    ) -> Result<(), wxr::Error> {
+        out.clear();
+        let Some(slot) = self.hit_sources.get(source.id() as usize) else {
+            return Ok(());
+        };
+        let Some(source) = slot.borrow().source() else {
+            return Ok(());
+        };
+        let Some(base) = self
+            .spaces
+            .get(space.id() as usize)
+            .and_then(|slot| slot.borrow().space.clone())
+        else {
+            return Ok(());
+        };
+        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
+            return Ok(());
+        };
+        hit::results(&frame, &source, &base, out);
         Ok(())
     }
 

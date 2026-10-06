@@ -44,6 +44,12 @@ controller. And `set_depth_range` is `XRRenderState.depthNear` and `depthFar`, t
 compositor have to agree on, because a compositor that reprojects a frame with depth cannot read the planes out
 of the picture.
 
+AR is the other half of what WebXR has: `Plane` and `Session::planes` are the surfaces a runtime has detected,
+and `HitTestSource` and `Session::hits` are where a ray out of a space lands on them. Both are asked for by
+`SessionMode::ImmersiveAr` - a runtime told the session is drawn over the world is the one that offers them -
+and both are WebXR's alone today, because OpenXR's are extensions the crate leaves as raw pointers and Apple's
+are behind a header that is not to hand.
+
 Three things the core deliberately does not know:
 
 **What a graphics API is.** `Session::Image` is an associated type. OpenXR's images are Vulkan or D3D12

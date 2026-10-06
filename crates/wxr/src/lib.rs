@@ -26,6 +26,7 @@
 pub use glam;
 
 pub mod frame;
+pub mod hit;
 pub mod input;
 pub mod mock;
 pub mod plane;
@@ -34,6 +35,7 @@ pub mod space;
 pub mod target;
 
 pub use frame::{Eye, FieldOfView, Frame, FrameState, View, Viewport};
+pub use hit::{Hit, HitTestSource};
 pub use input::{
     Axes, Buttons, Hand, HandJoint, Handedness, InputId, InputSource, Joint, TargetRayMode,
 };
