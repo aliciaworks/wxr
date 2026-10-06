@@ -44,12 +44,25 @@ pub type ArWorldTrackingConfiguration = *mut c_void;
 pub type ArWorldTrackingProvider = *mut c_void;
 pub type ArDeviceAnchor = *mut c_void;
 pub type ArAnchor = *mut c_void;
+pub type ArTrackableAnchor = *mut c_void;
+pub type ArHandTrackingConfiguration = *mut c_void;
+pub type ArHandTrackingProvider = *mut c_void;
+pub type ArHandAnchor = *mut c_void;
 
 /// `ar_device_anchor_query_status_success`.
 ///
 /// The enum has two cases, success and failure, and a C enum's first case is zero. That is the whole of the
 /// assumption, and it is worth writing down because Apple's documentation lists the cases without numbers.
+/// On AArch64 a small enum is interchangeable between `int` and `NSInteger` in a register - a write to the
+/// 32-bit half clears the 64-bit one - so declaring these as `isize` cannot misread a value that fits in
+/// both, which every one of these does.
 pub const QUERY_SUCCESS: isize = 0;
+
+/// `ar_transform_correction_none`: transforms are the actual locations.
+///
+/// The other case, `ar_transform_correction_rendered`, moves an anchor so that content drawn at it lands
+/// over the physical object in passthrough. Input wants where the hand *is*, not where to draw it.
+pub const TRANSFORM_NONE: isize = 0;
 
 // SAFETY: every declaration below is transcribed from Apple's C header or from Apple's own C guide, and the
 // framework is linked rather than loaded by hand. What is *not* proven here is the ABI - a wrong signature
@@ -95,6 +108,33 @@ unsafe extern "C-unwind" {
     /// The transform from the anchor's space to the origin's - for a device anchor, where the head is in the
     /// world ARKit tracks.
     pub fn ar_anchor_get_origin_from_anchor_transform(anchor: ArAnchor) -> Float4x4;
+    /// Whether ARKit is currently tracking this anchor. An untracked hand is still a hand with a pose, and
+    /// a source that forgets that teleports.
+    pub fn ar_trackable_anchor_is_tracked(anchor: ArTrackableAnchor) -> bool;
+
+    pub fn ar_hand_tracking_configuration_create() -> ArHandTrackingConfiguration;
+    pub fn ar_hand_tracking_provider_create(
+        configuration: ArHandTrackingConfiguration,
+    ) -> ArHandTrackingProvider;
+    /// Whether this device can track hands at all, which is asked before a provider is made because a
+    /// provider that is not supported is a provider whose queries all fail.
+    pub fn ar_hand_tracking_provider_is_supported() -> bool;
+    /// Fills both anchors in with the latest for each hand, and says whether it did.
+    ///
+    /// The two are handed over *left and right, in that order*, which is where a hand's handedness comes
+    /// from - so no chirality enum has to be guessed at.
+    pub fn ar_hand_tracking_provider_get_latest_anchors(
+        provider: ArHandTrackingProvider,
+        hand_anchor_left: ArHandAnchor,
+        hand_anchor_right: ArHandAnchor,
+    ) -> bool;
+    pub fn ar_hand_anchor_create() -> ArHandAnchor;
+    /// Where the hand is, with the correction named - see [`TRANSFORM_NONE`].
+    pub fn ar_hand_anchor_get_origin_from_anchor_transform_with_correction(
+        hand_anchor: ArHandAnchor,
+        transform_correction: isize,
+    ) -> Float4x4;
+
     /// Releases one reference, the counterpart to every `*_create` above.
     pub fn ar_release(object: *mut c_void);
 }

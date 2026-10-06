@@ -10,8 +10,9 @@
 //! The two things the compositor does not answer are outside it, and both are in the crate:
 //!
 //! * **Where that is in the world.** Device space is the wearer's head, so a pose in it is a scene that
-//!   follows them. [`crate::tracking`] is ARKit's world tracking in C, and it is what makes
-//!   [`wxr::SpaceKind::Local`] an answer rather than a refusal.
+//!   follows them. [`crate::arkit`] is ARKit's session in C, and it is what makes [`wxr::SpaceKind::Local`]
+//!   an answer rather than a refusal - and what fills [`wxr::Session::inputs`], because on this platform a
+//!   hand is the input.
 //! * **When the picture appears.** `cp_drawable_encode_present` has to be encoded into a command buffer and
 //!   committed, and the command buffer the renderer drew with is wgpu's, made and committed inside
 //!   `Queue::submit` where no backend can reach it. So the present gets a command buffer of its own on the
@@ -31,8 +32,8 @@ use objc2_metal::{MTLCommandBuffer, MTLCommandQueue, MTLDevice, MTLPixelFormat, 
 
 use wxr::glam::Mat4;
 
+use crate::arkit::ArKit;
 use crate::sys;
-use crate::tracking::WorldTracking;
 
 /// The layer renderer, which is everything a session is made from.
 ///
@@ -84,8 +85,9 @@ pub struct AppleSession {
     /// The frame's colour textures, retained while the frame is in flight: the drawable's own reference is
     /// not ours to keep, and the renderer wraps these between `begin` and `end`.
     textures: Vec<Retained<ProtocolObject<dyn MTLTexture>>>,
-    /// ARKit, when it came up. `None` means every pose is relative to the wearer's head.
-    tracking: Option<WorldTracking>,
+    /// ARKit, when it came up. `None` means every pose is relative to the wearer's head and there are no
+    /// hands.
+    arkit: Option<ArKit>,
     /// Where the device is in the world at this frame's presentation time, when ARKit answered. The frame's
     /// views are built from it, and it is what was handed to the compositor to reproject against.
     origin: Option<Mat4>,
@@ -104,7 +106,7 @@ impl AppleSession {
             drawable: std::ptr::null_mut(),
             textures: Vec::new(),
             // Tracking that will not start is a head-locked scene, not a session that failed.
-            tracking: WorldTracking::new(),
+            arkit: ArKit::new(),
             origin: None,
             predicted: Duration::ZERO,
             reported: wxr::State::Synchronized,
@@ -112,9 +114,9 @@ impl AppleSession {
         }
     }
 
-    /// Whether ARKit gave this session a world to put things in.
+    /// Whether ARKit gave this session a world to put things in, as opposed to one that follows the wearer.
     pub fn is_world_tracked(&self) -> bool {
-        self.tracking.is_some()
+        self.arkit.as_ref().is_some_and(ArKit::is_world_tracked)
     }
 
     /// What the layer is doing, which is the one thing it reports.
@@ -224,8 +226,9 @@ impl wxr::Session for AppleSession {
         // when ARKit came up - the origin it tracks, which is fixed where the session began and is exactly
         // `Local`. A floor is neither: ARKit's origin is not a plane, so a scene that asks to stand on one
         // is told no rather than put at eye height.
-        match (kind, &self.tracking) {
-            (wxr::SpaceKind::Viewer, _) | (wxr::SpaceKind::Local, Some(_)) => {}
+        match (kind, &self.arkit) {
+            (wxr::SpaceKind::Viewer, _) => {}
+            (wxr::SpaceKind::Local, Some(arkit)) if arkit.is_world_tracked() => {}
             _ => return Err(wxr::Error::NoSpace(kind)),
         }
         self.spaces += 1;
@@ -282,12 +285,9 @@ impl wxr::Session for AppleSession {
             // the compositor, which compares it with where the head actually is and reprojects the frame if
             // the two disagree. Doing this is what makes content hold still in the room instead of swimming
             // behind every movement of the wearer's head.
-            self.origin = self
-                .tracking
-                .as_ref()
-                .and_then(|tracking| tracking.device(seconds));
-            if let (Some(tracking), Some(_)) = (&self.tracking, self.origin) {
-                sys::cp_drawable_set_device_anchor(self.drawable, tracking.anchor());
+            self.origin = self.arkit.as_ref().and_then(|arkit| arkit.device(seconds));
+            if let (Some(arkit), Some(_)) = (&self.arkit, self.origin) {
+                sys::cp_drawable_set_device_anchor(self.drawable, arkit.anchor());
             }
 
             for index in 0..cp_drawable::texture_count(self.drawable) {
@@ -365,6 +365,42 @@ impl wxr::Session for AppleSession {
         // The queries are finished; rendering starts after this and the frame is submitted in `end`.
         // SAFETY: the frame is the one begun above and has not been given back.
         unsafe { cp_frame::end_update(self.frame) };
+        Ok(())
+    }
+
+    fn inputs(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        out: &mut Vec<wxr::InputSource>,
+    ) -> Result<(), wxr::Error> {
+        let Some(arkit) = &self.arkit else {
+            return Ok(());
+        };
+        // The same choice the views make: ARKit's origin when the caller asked for the space that has one,
+        // and device space otherwise.
+        let origin = match (space.kind, self.origin) {
+            (wxr::SpaceKind::Local, Some(origin)) => origin,
+            _ => Mat4::IDENTITY,
+        };
+
+        for (handedness, transform, tracked) in arkit.hands() {
+            let pose = wxr_render::pose_from_transform(origin * transform);
+            out.push(wxr::InputSource {
+                handedness,
+                // A hand here is a place and an orientation, and that is all the C API gives - the skeleton
+                // is the Swift API's, so there is no fingertip to aim from and no pinch to read. Grip and
+                // aim are therefore the same pose, and the pose's own orientation is the palm's direction:
+                // a game that wants a ray takes its -Z, which is what every ray in this workspace is.
+                grip: pose,
+                aim: pose,
+                tracked,
+                // And no buttons at all, which is not a gap: a hand has none. The core's buttons are the
+                // intersection of the three platforms, and this is the platform where the intersection is
+                // empty.
+                buttons: wxr::Buttons::default(),
+                axes: wxr::Axes::default(),
+            });
+        }
         Ok(())
     }
 

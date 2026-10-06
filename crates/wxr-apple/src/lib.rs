@@ -24,7 +24,7 @@
 //!   because they are not there.
 //! * ARKit has a **C API**, built for exactly this case and documented as
 //!   [ARKit in visionOS C API](https://developer.apple.com/documentation/arkit/arkit-in-visionos-c-api): a
-//!   session, providers, anchors, hands. `tracking` is its world tracking.
+//!   session, providers, anchors, hands. `arkit` is that session and the two providers this leg asks for.
 //!
 //! What is left for Swift is the app's entry: an `ImmersiveSpace` whose `CompositorLayer` closure hands the
 //! layer renderer to `AppleBackend::new`. That is the app's three lines, not a bridge this backend needs,
@@ -39,18 +39,18 @@
 //!
 //! ```text
 //! CompositorServices (C) ──▶ frames, textures, viewports, per-eye transform and tangents ──▶ session
-//! ARKit (C)              ──▶ world tracking: where the head is ────────────────────────────▶ tracking
-//!                        └─▶ hands, planes, the room ──────────────────────────────────────▶ later
+//! ARKit (C)              ──▶ world tracking: where the head is ────────────────────────────▶ arkit
+//!                        └─▶ hand tracking: where the hands are ───────────────────────────▶ session::inputs
 //! Swift (the app)        ──▶ ImmersiveSpace's CompositorLayer closure ─────────────────────▶ AppleBackend
 //! ```
 
 #![cfg(target_vendor = "apple")]
 
+pub mod arkit;
 pub mod import;
 pub mod metal;
 pub mod session;
 pub mod sys;
-pub mod tracking;
 
+pub use arkit::ArKit;
 pub use session::{AppleBackend, AppleSession};
-pub use tracking::WorldTracking;
