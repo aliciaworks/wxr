@@ -85,6 +85,10 @@ pub trait Import {
     /// for.
     type Image;
 
+    /// The session's own name for a depth buffer, when it has one - [`wxr::Session::Depth`] on the session this
+    /// is written for. `()` for a backend with none, which is what a session that never measured anything is.
+    type Depth;
+
     /// Wrap one of the session's images.
     ///
     /// `None` when it cannot be - a browser whose WebXR session has no images at all, an image whose format
@@ -112,6 +116,22 @@ pub trait Import {
         _device: &wgpu::Device,
         _meta: ImageMeta,
         _image: &Self::Image,
+    ) -> Option<wgpu::Texture> {
+        None
+    }
+
+    /// The room's depth for a view, as a texture to test fragments against, when the session measured one.
+    ///
+    /// [`Import::depth`] above is the buffer a pass is *drawn into*; this is the measurement of the real world
+    /// beside it, and it is what a scene throws occluded fragments away against. The metadata comes along
+    /// because an importer needs the buffer's size to describe it, and a shader needs what its values mean.
+    ///
+    /// `None` - the default - is a session with no depth to test against, and then the scene draws everything.
+    fn session_depth(
+        &self,
+        _device: &wgpu::Device,
+        _info: wxr::DepthInfo,
+        _depth: &Self::Depth,
     ) -> Option<wgpu::Texture> {
         None
     }
@@ -184,7 +204,7 @@ impl Renderer {
     ) -> Result<usize, wxr::Error>
     where
         S: wxr::Session,
-        I: Import<Image = S::Image>,
+        I: Import<Image = S::Image, Depth = S::Depth>,
     {
         if !frame.is_render() {
             return Ok(0);
@@ -194,7 +214,15 @@ impl Renderer {
         let clear_depth = depth_state(self.depth).clear;
 
         let mut drawn = 0;
-        for view in frame.views() {
+        for (index, view) in frame.views().iter().enumerate() {
+            // The room's depth, if this session measured any: imported and let go of in one breath, because the
+            // buffer belongs to the frame and the session cannot be asked for anything else while a reference
+            // into it is held.
+            let occlusion = session.depth(index).and_then(|(depth, info)| {
+                importer
+                    .session_depth(device, info, depth)
+                    .map(|texture| (texture, scene::Occlusion::from(info)))
+            });
             let Some(image) = session.image(view.image) else {
                 continue;
             };
@@ -250,7 +278,7 @@ impl Renderer {
                 ..Default::default()
             });
             if let Some(scene) = &self.scene {
-                scene.draw(queue, view, &mut pass);
+                scene.draw(device, queue, view, occlusion.as_ref(), &mut pass);
             }
             drop(pass);
             queue.submit(Some(encoder.finish()));

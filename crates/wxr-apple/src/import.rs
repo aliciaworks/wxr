@@ -18,6 +18,8 @@ pub struct Images;
 impl wxr_render::Import for Images {
     /// The colour texture and the depth buffer the drawable gave with it, which are one image here.
     type Image = FrameImage;
+    /// No depth to hand over.
+    type Depth = ();
 
     fn texture(
         &self,

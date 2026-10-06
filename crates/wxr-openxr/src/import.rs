@@ -22,6 +22,8 @@ pub struct Images;
 
 impl wxr_render::Import for Images {
     type Image = u64;
+    /// No depth to hand over.
+    type Depth = ();
 
     fn texture(
         &self,

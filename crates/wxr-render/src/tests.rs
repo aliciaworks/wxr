@@ -81,7 +81,7 @@ fn centre_pixel(device: &wgpu::Device, queue: &wgpu::Queue, depth: Depth) -> [u8
             }),
             ..Default::default()
         });
-        scene.draw(queue, &eye, &mut pass);
+        scene.draw(device, queue, &eye, None, &mut pass);
     }
     encoder.copy_texture_to_buffer(
         wgpu::TexelCopyTextureInfo {
@@ -135,6 +135,7 @@ struct Recording {
 
 impl Import for Recording {
     type Image = u32;
+    type Depth = ();
 
     fn texture(
         &self,
@@ -224,6 +225,7 @@ struct WrongDepth;
 
 impl Import for WrongDepth {
     type Image = u32;
+    type Depth = ();
 
     fn texture(
         &self,
@@ -318,6 +320,7 @@ struct Plain;
 
 impl Import for Plain {
     type Image = u32;
+    type Depth = ();
 
     fn texture(
         &self,
