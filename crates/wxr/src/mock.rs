@@ -218,6 +218,7 @@ impl Session for MockSession {
                     ..Default::default()
                 },
                 image: 0,
+                recommended_viewport_scale: None,
                 layer: 0,
             });
             views.push(View {
@@ -233,6 +234,7 @@ impl Session for MockSession {
                     ..Default::default()
                 },
                 image: 0,
+                recommended_viewport_scale: None,
                 layer: 1,
             });
         } else {
@@ -246,6 +248,7 @@ impl Session for MockSession {
                     ..Default::default()
                 },
                 image: 0,
+                recommended_viewport_scale: None,
                 layer: 0,
             });
         }

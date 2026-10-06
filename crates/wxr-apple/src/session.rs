@@ -521,6 +521,7 @@ impl wxr::Session for AppleSession {
                 },
                 image,
                 layer,
+                recommended_viewport_scale: None,
             });
         }
 

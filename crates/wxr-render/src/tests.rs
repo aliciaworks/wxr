@@ -60,6 +60,7 @@ fn centre_pixel_with(
         },
         image: 0,
         layer: 0,
+        recommended_viewport_scale: None,
     };
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
     {

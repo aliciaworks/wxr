@@ -305,6 +305,22 @@ pub trait Session: Any {
     /// backend that does submit depth overrides this.
     fn set_depth_range(&mut self, _near: f32, _far: f32) {}
 
+    /// How much foveation the compositor should apply, from `0` (none) to `1` (the most it has) - WebXR's
+    /// `fixedFoveation`.
+    ///
+    /// It is the fill-rate lever, and it is a *request*: a compositor that does not foveate ignores it, which is
+    /// why it is a knob and not a [`Features`] bit. Nothing is sent by default, because the default is the
+    /// runtime's own choice and a session that says nothing should keep it.
+    fn set_foveation(&mut self, _amount: f32) {}
+
+    /// Ask for a view to be rendered at `scale` of its full resolution - WebXR's `requestViewportScale`.
+    ///
+    /// This is the application's half of the trade the foveation above makes for the compositor: fewer pixels
+    /// where the eye is not looking. `None` is ignored, which is what the specification says, so that passing a
+    /// [`crate::View::recommended_viewport_scale`] without checking it first is safe - and it lands on a later frame,
+    /// because a viewport is read per frame.
+    fn request_viewport_scale(&mut self, _view: usize, _scale: Option<f32>) {}
+
     /// The shape of every image this session presents.
     fn images(&self) -> ImageMeta;
 

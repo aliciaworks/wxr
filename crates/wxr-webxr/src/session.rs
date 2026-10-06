@@ -11,7 +11,8 @@ use wasm_bindgen_futures::JsFuture;
 use web_sys::{XrFrame, XrReferenceSpace, XrSession, XrView};
 
 use crate::convert::{
-    field_of_view, hand_joint, offset_reference_space, reference_space_type, transform, visibility,
+    field_of_view, hand_joint, offset_reference_space, recommended_scale, reference_space_type,
+    transform, visibility,
 };
 use crate::{depth, gpu, hit, input, light, planes};
 
@@ -115,6 +116,8 @@ pub struct WebXrSession {
     light_probes: Vec<Rc<RefCell<light::Slot>>>,
     /// This frame's depth buffer, kept for as long as the reference into it is handed out.
     depth_image: Option<JsValue>,
+    /// How much foveation the app asked for, if it asked: `None` leaves the layer's own default alone.
+    foveation: Option<f32>,
     /// This frame's views, kept because depth is asked for one of them by object and not by index.
     frame_views: Vec<XrView>,
     /// Reference-space `reset` events, which arrive on a space rather than on the session and are passed on
@@ -155,6 +158,7 @@ impl WebXrSession {
             hit_sources: Vec::new(),
             light_probes: Vec::new(),
             depth_image: None,
+            foveation: None,
             frame_views: Vec::new(),
             reset: Rc::new(RefCell::new(VecDeque::new())),
             located: 0,
@@ -213,6 +217,8 @@ impl WebXrSession {
         gpu::set_layers(session, &layer);
         log::info!("wxr-webxr: a projection layer, and with it the frames");
         self.gpu = Some(Gpu { binding, layer });
+        // A foveation amount asked for before there was a layer goes on now that there is one.
+        self.apply_foveation();
     }
 
     /// Put the near and far planes on the browser's render state, if there is a session to put them on.
@@ -229,6 +235,19 @@ impl WebXrSession {
         state.set_depth_near(near as f64);
         state.set_depth_far(far as f64);
         session.update_render_state_with_state(&state);
+    }
+
+    /// Put the foveation amount on the layer, when there is one - a session with no binding has no layer, and
+    /// an amount it never asked for is the layer's own default and is left alone.
+    fn apply_foveation(&self) {
+        let (Some(gpu), Some(foveation)) = (&self.gpu, self.foveation) else {
+            return;
+        };
+        let _ = js_sys::Reflect::set(
+            gpu.layer.unchecked_ref::<JsValue>(),
+            &JsValue::from_str("fixedFoveation"),
+            &JsValue::from_f64(foveation as f64),
+        );
     }
 
     /// Ask for the next frame, once there is a session to ask.
@@ -594,6 +613,7 @@ impl wxr::Session for WebXrSession {
                 viewport,
                 image: 0,
                 layer,
+                recommended_viewport_scale: recommended_scale(&view),
             });
         }
         self.located = out_views.len();
@@ -873,6 +893,31 @@ impl wxr::Session for WebXrSession {
         };
         light::estimate(&frame, &probe, out);
         Ok(())
+    }
+
+    fn set_foveation(&mut self, amount: f32) {
+        // Clamped, because the specification says a value outside `0..=1` is clamped rather than refused.
+        self.foveation = Some(amount.clamp(0.0, 1.0));
+        self.apply_foveation();
+    }
+
+    fn request_viewport_scale(&mut self, view: usize, scale: Option<f32>) {
+        // `null` is ignored, which the specification says so that a recommendation may be passed unchecked.
+        let (Some(scale), Some(view)) = (scale, self.frame_views.get(view)) else {
+            return;
+        };
+        let Ok(request) = js_sys::Reflect::get(
+            view.unchecked_ref::<JsValue>(),
+            &JsValue::from_str("requestViewportScale"),
+        )
+        .and_then(|value| value.dyn_into::<js_sys::Function>()) else {
+            return;
+        };
+        // It lands when the browser next answers for this view's viewport, which is the next `views`.
+        let _ = request.call1(
+            view.unchecked_ref::<JsValue>(),
+            &JsValue::from_f64(scale as f64),
+        );
     }
 
     fn depth(&mut self, view: usize) -> Option<(&Self::Depth, wxr::DepthInfo)> {

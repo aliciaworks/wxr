@@ -490,6 +490,7 @@ impl wxr::Session for OpenXrSession {
                 },
                 image: image as usize,
                 layer: index as u32,
+                recommended_viewport_scale: None,
             });
         }
         self.located = located;

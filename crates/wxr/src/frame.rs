@@ -84,6 +84,12 @@ pub struct View {
     pub image: usize,
     /// Which array layer of that image.
     pub layer: u32,
+    /// What scale the runtime suggests rendering this view at, which is WebXR's `recommendedViewportScale`.
+    ///
+    /// `None` when the runtime has no opinion - and a runtime with no opinion is one where rendering at full
+    /// resolution is the right answer, so this is a hint to pass to `Session::request_viewport_scale` rather
+    /// than a field to obey.
+    pub recommended_viewport_scale: Option<f32>,
 }
 
 /// What the caller should do with the frame it just began.
