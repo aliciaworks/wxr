@@ -72,9 +72,9 @@ There is no `apple/` directory of Swift, and that is a finding rather than an om
 
 **`wxr-openxr`** is where the core's one architectural decision is cashed in: the renderer makes the device
 and the session is told about it, through `XR_KHR_vulkan_enable`. Its `Import` is where a `VkImage` meets a
-`wgpu::Texture` (`wgpu-hal`'s `Device::texture_from_raw`, which is why this workspace is on wgpu 30 and not on
-bevy's), its `input` is OpenXR's action sets, and `examples/headless.rs` is the proof that it reaches a real
-runtime - which needs a machine whose runtime is running.
+`wgpu::Texture` (`wgpu-hal`'s `Device::texture_from_raw`, which is why this workspace needs wgpu 30 - the same
+30 the game it was written for is on), its `input` is OpenXR's action sets, and `examples/headless.rs` is the
+proof that it reaches a real runtime - which needs a machine whose runtime is running.
 
 **`wxr-webxr`** is the one that did not fit: WebXR's session, its reference spaces and its frames all arrive
 asynchronously, which is why the core has `State::Connecting` and why a space is asked for before it exists.
