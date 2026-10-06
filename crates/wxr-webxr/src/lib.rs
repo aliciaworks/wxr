@@ -254,6 +254,9 @@ pub struct WebXrSession {
     image: Option<FrameImage>,
     /// What that texture said about itself, so `images` does not have to ask it twice.
     meta: wxr::ImageMeta,
+    /// The near and far planes the app asked for, kept because a session that has not arrived has no render
+    /// state to put them on yet.
+    depth_range: Option<(f32, f32)>,
 }
 
 impl WebXrSession {
@@ -281,6 +284,7 @@ impl WebXrSession {
                 format: wxr::ColorFormat::Unknown,
                 ..Default::default()
             },
+            depth_range: None,
         }
     }
 
@@ -325,6 +329,22 @@ impl WebXrSession {
         gpu::set_layers(session, &layer);
         log::info!("wxr-webxr: a projection layer, and with it the frames");
         self.gpu = Some(Gpu { binding, layer });
+    }
+
+    /// Put the near and far planes on the browser's render state, if there is a session to put them on.
+    ///
+    /// Called again when a session arrives, which is what lets an app set them while the session is still
+    /// `Connecting`: a render state belongs to the browser's session, and there is none until there is one.
+    fn apply_depth_range(&self) {
+        let (Some((near, far)), Some(session)) =
+            (self.depth_range, self.inner.borrow().session.clone())
+        else {
+            return;
+        };
+        let state = web_sys::XrRenderStateInit::new();
+        state.set_depth_near(near as f64);
+        state.set_depth_far(far as f64);
+        session.update_render_state_with_state(&state);
     }
 
     /// Ask for the next frame, once there is a session to ask.
@@ -393,6 +413,8 @@ impl wxr::Session for WebXrSession {
             self.input = Some(input::Events::new(&session, &self.sources));
 
             self.inner.borrow_mut().session = Some(session);
+            // A depth range the app set before the session existed goes on now that there is a render state.
+            self.apply_depth_range();
             self.request_frame();
         }
 
@@ -456,6 +478,16 @@ impl wxr::Session for WebXrSession {
             Some("alpha-blend") => wxr::Blend::AlphaBlend,
             _ => wxr::Blend::Opaque,
         }
+    }
+
+    /// The near and far planes, through the browser's own render state.
+    ///
+    /// Remembered as well as applied, because an app is free to set them while the session is still
+    /// `Connecting` - which is the honest order when the planes are the renderer's choice and not the
+    /// runtime's.
+    fn set_depth_range(&mut self, near: f32, far: f32) {
+        self.depth_range = Some((near, far));
+        self.apply_depth_range();
     }
 
     fn images(&self) -> wxr::ImageMeta {
@@ -541,6 +573,10 @@ impl wxr::Session for WebXrSession {
         let Some(pose) = frame.get_viewer_pose(&reference) else {
             return Ok(());
         };
+
+        // The head, which WebXR reports beside the eyes: `transform` is `XRViewerPose.transform`, and the views
+        // below are placed around it.
+        out.viewer = transform(pose.transform());
 
         let views = pose.views();
         let out_views = out.views_mut();

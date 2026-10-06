@@ -177,6 +177,9 @@ impl Session for MockSession {
         if !matches!(space.kind, SpaceKind::LocalFloor | SpaceKind::BoundedFloor) {
             return Err(Error::NoSpace(space.kind));
         }
+        // The head is between the eyes and the eyes are level with it, which is the one place a mock can be
+        // exactly like a real runtime.
+        out.viewer = Pose::IDENTITY;
         let fov = FieldOfView::symmetric(std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
         let views = out.views_mut();
         if self.stereo {
@@ -375,6 +378,8 @@ mod tests {
         session.views(space, &mut frame).unwrap();
 
         assert!(frame.is_render());
+        // The head is where the eyes are centred, and the views are around it.
+        assert_eq!(frame.viewer, Pose::IDENTITY);
         assert_eq!(frame.views().len(), 2);
         let (left, right) = (&frame.views()[0], &frame.views()[1]);
         assert_eq!(left.eye, Eye::Left);

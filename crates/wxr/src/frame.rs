@@ -109,6 +109,12 @@ pub struct Frame {
     /// in step with the head wants to be sampled for this time and not for now.
     pub predicted_display_time: Duration,
     pub state: FrameState,
+    /// Where the head is, in whichever reference space the views were asked for - WebXR's
+    /// `XRViewerPose.transform`.
+    ///
+    /// The eyes are placed around it, and a scene that wants the camera *at* the wearer rather than at an eye
+    /// asks for this. Filled by `views`, because that is the call the space is given to; identity until then.
+    pub viewer: Pose,
     views: Vec<View>,
 }
 

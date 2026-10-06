@@ -169,16 +169,6 @@ impl AppleSession {
         self.blend = blend;
     }
 
-    /// The near and far planes the scene draws with.
-    ///
-    /// The depth buffer this compositor hands over is only useful to it if it knows what the values in it mean,
-    /// and it cannot read that off the picture - so the app says, in metres. The compositor uses it to
-    /// reproject the frame: when the prediction was off it moves the pixels to where the head turned out to
-    /// be, and depth is what tells it how far each of them is.
-    pub fn set_depth_range(&mut self, near: f32, far: f32) {
-        self.depth_range = Some((near, far));
-    }
-
     /// Whether ARKit gave this session a world to put things in, as opposed to one that follows the wearer.
     pub fn is_world_tracked(&self) -> bool {
         self.arkit.as_ref().is_some_and(ArKit::is_world_tracked)
@@ -274,6 +264,17 @@ impl wxr::Session for AppleSession {
 
     fn blend(&self) -> wxr::Blend {
         self.blend
+    }
+
+    /// The near and far planes the scene draws with.
+    ///
+    /// The depth buffer this compositor hands over is only useful to it if it knows what the values in it mean,
+    /// and it cannot read that off the picture - so the app says, in metres. The compositor uses it to
+    /// reproject the frame: when the prediction was off it moves the pixels to where the head turned out to
+    /// be, and depth is what tells it how far each of them is. This is the platform the core's depth range was
+    /// written for, and the one where it is already put to work.
+    fn set_depth_range(&mut self, near: f32, far: f32) {
+        self.depth_range = Some((near, far));
     }
 
     fn images(&self) -> wxr::ImageMeta {
@@ -415,6 +416,9 @@ impl wxr::Session for AppleSession {
             (wxr::SpaceKind::Local, Some(origin)) => origin,
             _ => Mat4::IDENTITY,
         };
+        // The head is the device itself, and `origin` is where the device is: the transform the eyes are placed
+        // within, with no eye in it.
+        out.viewer = wxr_render::pose_from_transform(origin);
 
         // SAFETY: the drawable is this frame's and is live until `end`. Every index below is below the view
         // count just read, and the texture map lives as long as the view it came from.

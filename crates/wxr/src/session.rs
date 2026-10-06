@@ -242,6 +242,18 @@ pub trait Session: Any {
         Blend::Opaque
     }
 
+    /// The near and far planes the scene draws with, in metres.
+    ///
+    /// This is WebXR's `XRRenderState.depthNear` and `depthFar`, and it is in the core for the reason the core
+    /// is WebXR's vocabulary: a compositor that reprojects a frame with the depth buffer cannot read the planes
+    /// off the picture, so the app has to say what the values in it mean. `wgpu`'s depth is centred on the
+    /// same range on all three platforms, so this is the one number a renderer and a compositor have to agree
+    /// on.
+    ///
+    /// Nothing by default, and that is not a gap: a backend with no depth to submit has no planes to set. A
+    /// backend that does submit depth overrides this.
+    fn set_depth_range(&mut self, _near: f32, _far: f32) {}
+
     /// The shape of every image this session presents.
     fn images(&self) -> ImageMeta;
 

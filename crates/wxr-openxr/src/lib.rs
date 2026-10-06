@@ -20,7 +20,8 @@
 //! raw struct, and the crate's builders do not reach it. Doing it means building the layer through the `sys`
 //! layer and ending the frame through it, which is a piece of work of its own rather than a line here. What it
 //! would buy is what it buys on the other two backends: a compositor that reprojects with depth instead of
-//! guessing.
+//! guessing. It is also why `set_depth_range` is the core's default no-op here rather than an override that
+//! stores the planes: there is nothing to submit them with, and a field nothing reads is a field that lies.
 
 #![cfg(not(target_family = "wasm"))]
 
@@ -206,6 +207,9 @@ pub struct OpenXrSession {
     extent: wxr::Extent2d,
     blend: xr::EnvironmentBlendMode,
     spaces: Vec<xr::Space>,
+    /// The viewer's own space, whose one job is the head pose: OpenXR reports where the eyes are and not where
+    /// the wearer is, and `VIEW` is the single reference space that is the wearer.
+    view: xr::Space,
     /// The hands, which are declared once and read once a frame. `None` when the runtime would not take
     /// the action set - a runtime with no controllers is a session with no inputs rather than no session.
     hands: Option<input::Hands>,
@@ -313,6 +317,12 @@ impl OpenXrSession {
             }
         };
 
+        // Created once and located every frame, because `VIEW` is the head and the head is what a scene that
+        // wants the camera on the viewer asks for.
+        let view = session
+            .create_reference_space(xr::ReferenceSpaceType::VIEW, xr::Posef::IDENTITY)
+            .map_err(|error| Error::runtime("create the viewer space", error))?;
+
         Ok(Self {
             instance: backend.instance.clone(),
             events: xr::EventDataBuffer::new(),
@@ -325,6 +335,7 @@ impl OpenXrSession {
             extent,
             blend: backend.blend,
             spaces: Vec::new(),
+            view,
             located: Vec::new(),
             state: wxr::State::Ready,
             visibility: wxr::Visibility::Hidden,
@@ -532,6 +543,12 @@ impl wxr::Session for OpenXrSession {
             return Err(wxr::Error::Present(
                 "the runtime located an odd number of views".into(),
             ));
+        }
+
+        // The head, in the same space the views are in - the eyes are placed around it, and a scene that wants
+        // the camera on the wearer rather than on an eye asks for it.
+        if let Ok(location) = self.view.locate(reference, self.predicted) {
+            out.viewer = pose(location.pose);
         }
 
         let image = self.held.unwrap_or(0);
