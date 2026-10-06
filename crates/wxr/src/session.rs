@@ -3,6 +3,8 @@
 use std::any::Any;
 use std::time::Duration;
 
+use glam::Vec2;
+
 use crate::frame::Frame;
 use crate::hit::{Hit, HitTestSource};
 use crate::input::{Hand, InputId, InputSource};
@@ -92,6 +94,9 @@ pub enum Event {
     ExitRequested,
     /// The set of inputs changed. What the inputs then *are* is a frame's business.
     InputsChanged,
+    /// A reference space's origin was recentered, which is WebXR's `reset`. Every pose measured in it is stale
+    /// afterwards - a scene that was placed in the room before the recenter is somewhere else after it.
+    Reset(ReferenceSpace),
     /// The primary action started on a source. WebXR's `selectstart`.
     SelectStart(InputId),
     /// It finished. WebXR's `selectend`.
@@ -352,6 +357,16 @@ pub trait Session: Any {
     /// rather than a list to keep. Empty for a session that has found none and for a backend that has not been
     /// taught surfaces - which are the same thing to a caller only asking whether there is a table here.
     fn planes(&mut self, _space: ReferenceSpace, out: &mut Vec<Plane>) -> Result<(), Error> {
+        out.clear();
+        Ok(())
+    }
+
+    /// Fill in the boundary of a bounded space, as the outline the runtime knows - WebXR's
+    /// `XRBoundedReferenceSpace.boundsGeometry`.
+    ///
+    /// Points in the space's own X and Z, in metres, in order around a closed loop. Empty for a space with no
+    /// boundary and for a backend that never had one: a floor with no wall drawn around it is not an error.
+    fn bounds(&mut self, _space: ReferenceSpace, out: &mut Vec<Vec2>) -> Result<(), Error> {
         out.clear();
         Ok(())
     }

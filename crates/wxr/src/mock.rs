@@ -305,6 +305,12 @@ impl MockSession {
     pub fn inputs_changed(&mut self) {
         self.pending.push_back(Event::InputsChanged);
     }
+
+    /// Pretend a space's origin was recentered, which is the one thing a backend that cannot recenter still
+    /// has to be able to pass on.
+    pub fn reset(&mut self, space: ReferenceSpace) {
+        self.pending.push_back(Event::Reset(space));
+    }
 }
 
 #[cfg(test)]
@@ -399,6 +405,26 @@ mod tests {
         assert_eq!(session.poll(), Some(Event::SelectEnd(id)));
         assert_eq!(session.poll(), Some(Event::Select(id)));
         assert_eq!(session.poll(), None);
+    }
+
+    #[test]
+    fn a_recentered_space_is_stale_and_says_so() {
+        let mut session = running();
+        let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+        while session.poll().is_some() {}
+        session.reset(space);
+        assert_eq!(session.poll(), Some(Event::Reset(space)));
+    }
+
+    #[test]
+    fn a_space_with_no_boundary_has_an_empty_one() {
+        let mut session = running();
+        let space = session
+            .space(SpaceKind::BoundedFloor)
+            .expect("a bounded floor");
+        let mut bounds = Vec::new();
+        session.bounds(space, &mut bounds).unwrap();
+        assert!(bounds.is_empty());
     }
 
     #[test]

@@ -56,6 +56,7 @@ mod planes;
 pub use import::Images;
 
 use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -230,6 +231,10 @@ struct Inner {
 struct Space {
     space: Option<XrReferenceSpace>,
     promise: Option<js_sys::Promise>,
+    /// The `reset` handler, kept alive for as long as the space is: a closure the browser holds and this drops
+    /// is a closure that stops being called. Nothing reads it - holding it is the work.
+    #[allow(dead_code)]
+    on_reset: Option<Closure<dyn FnMut(web_sys::Event)>>,
 }
 
 impl Space {
@@ -238,6 +243,7 @@ impl Space {
         Self {
             space: Some(space),
             promise: None,
+            on_reset: None,
         }
     }
 }
@@ -285,6 +291,9 @@ pub struct WebXrSession {
     planes: planes::Ids,
     /// The hit-test sources this session has asked for, each empty until the browser answers.
     hit_sources: Vec<Rc<RefCell<hit::Slot>>>,
+    /// Reference-space `reset` events, which arrive on a space rather than on the session and are passed on
+    /// from here.
+    reset: Rc<RefCell<VecDeque<wxr::Event>>>,
     /// The views the frame located, for the layer the compositor would be given.
     located: usize,
     /// The device the app made, kept because a WebXR/WebGPU session needs it: the binding that hands out the
@@ -318,6 +327,7 @@ impl WebXrSession {
             input: None,
             planes: planes::Ids::default(),
             hit_sources: Vec::new(),
+            reset: Rc::new(RefCell::new(VecDeque::new())),
             located: 0,
             device: Some(device),
             gpu: None,
@@ -483,6 +493,11 @@ impl wxr::Session for WebXrSession {
             return Some(event);
         }
 
+        // A space that was recentered is news the same way, from a handler that fires between frames.
+        if let Some(event) = self.reset.borrow_mut().pop_front() {
+            return Some(event);
+        }
+
         // Two axes, and each is news once: the session arriving or not being here yet is the lifecycle, and
         // the browser's own `visibilityState` is the other - the same vocabulary, one rung at a time.
         let session = self.inner.borrow().session.clone();
@@ -564,22 +579,35 @@ impl wxr::Session for WebXrSession {
         let slot = Rc::new(RefCell::new(Space {
             space: None,
             promise: Some(promise.clone()),
+            on_reset: None,
         }));
 
+        // The id the handle will have, known before the space is here so that the reset handler can name it.
+        let id = self.spaces.len() as u32;
         let fill = slot.clone();
+        let reset = self.reset.clone();
         wasm_bindgen_futures::spawn_local(async move {
             if let Ok(value) = JsFuture::from(promise).await
                 && let Ok(space) = value.dyn_into::<XrReferenceSpace>()
             {
-                *fill.borrow_mut() = Space::resolved(space);
+                // The space itself says when its origin was recentered, and every pose measured in it is stale
+                // afterwards - so it is passed on as the session's news, because a core event has no space to
+                // arrive on.
+                let handler = Closure::<dyn FnMut(web_sys::Event)>::new(move |_| {
+                    reset
+                        .borrow_mut()
+                        .push_back(wxr::Event::Reset(wxr::ReferenceSpace::new(kind, id)));
+                });
+                space.set_onreset(Some(handler.as_ref().unchecked_ref()));
+                let mut slot = fill.borrow_mut();
+                slot.space = Some(space);
+                slot.promise = None;
+                slot.on_reset = Some(handler);
             }
         });
 
         self.spaces.push(slot);
-        Ok(wxr::ReferenceSpace::new(
-            kind,
-            (self.spaces.len() - 1) as u32,
-        ))
+        Ok(wxr::ReferenceSpace::new(kind, id))
     }
 
     fn offset_space(
@@ -854,6 +882,42 @@ impl wxr::Session for WebXrSession {
             return Ok(());
         };
         planes::detected(&frame, &reference, &self.planes, out);
+        Ok(())
+    }
+
+    fn bounds(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        out: &mut Vec<wxr::glam::Vec2>,
+    ) -> Result<(), wxr::Error> {
+        out.clear();
+        let Some(space) = self
+            .spaces
+            .get(space.id() as usize)
+            .and_then(|slot| slot.borrow().space.clone())
+        else {
+            return Ok(());
+        };
+        // `boundsGeometry` is on the bounded-floor space and nowhere else, so a space that is not one has an
+        // `undefined` where the outline would be - which is an outline with no points.
+        let Ok(bounds) = js_sys::Reflect::get(
+            space.unchecked_ref::<JsValue>(),
+            &JsValue::from_str("boundsGeometry"),
+        ) else {
+            return Ok(());
+        };
+        let Ok(Some(points)) = js_sys::try_iter(&bounds) else {
+            return Ok(());
+        };
+        for point in points.flatten() {
+            let at = |name: &str| {
+                js_sys::Reflect::get(&point, &JsValue::from_str(name))
+                    .ok()
+                    .and_then(|value| value.as_f64())
+                    .unwrap_or(0.0) as f32
+            };
+            out.push(wxr::glam::Vec2::new(at("x"), at("z")));
+        }
         Ok(())
     }
 
