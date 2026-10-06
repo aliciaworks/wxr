@@ -42,7 +42,7 @@
 //! breaking change to a public struct. Without that field a wgpu device cannot be an XR-compatible one, so it
 //! cannot be given to `XRGPUBinding`, and the images stay the browser's. It is a known and agreed gap rather
 //! than a mystery: wgpu's [issue #8329](https://github.com/gfx-rs/wgpu/issues/8329) is where the shape of the
-//! fix was settled - forward the flag on the web, ignore it on native. [`WebXr::gpu_binding`] is what an app
+//! fix was settled - forward the flag on the web, ignore it on native. `WebXr::gpu_binding` is what an app
 //! can ask in the meantime, and the three things a session will need are written down above.
 
 #![cfg(target_family = "wasm")]

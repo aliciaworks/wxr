@@ -36,6 +36,38 @@ pub fn texture_format(format: wxr::ColorFormat) -> Option<wgpu::TextureFormat> {
     }
 }
 
+/// The depth format every pass in this renderer uses.
+///
+/// One format and not a choice: `Depth32Float` is what every compositor this workspace draws into can take -
+/// visionOS's asks for it by name - and a depth buffer swapped per platform is one no pass can be written
+/// against.
+pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+
+/// What a depth buffer does for a projection convention.
+///
+/// The two fields are one decision and have to agree: a reverse projection puts the near plane at one and the
+/// far at zero, so nearer is *greater* and an empty buffer is zero. Getting one right and the other wrong is a
+/// picture where everything hides behind everything, or nothing does.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct DepthState {
+    pub compare: wgpu::CompareFunction,
+    pub clear: f32,
+}
+
+/// The depth state a projection convention needs.
+pub fn depth_state(depth: Depth) -> DepthState {
+    match depth {
+        Depth::Reverse => DepthState {
+            compare: wgpu::CompareFunction::Greater,
+            clear: 0.0,
+        },
+        Depth::ZeroToOne | Depth::MinusOneToOne => DepthState {
+            compare: wgpu::CompareFunction::Less,
+            clear: 1.0,
+        },
+    }
+}
+
 /// How a backend's images become wgpu textures.
 ///
 /// One call per image per session rather than per frame: a compositor's images are made once and presented
@@ -73,6 +105,11 @@ pub struct Renderer {
     /// What to draw, if anything. A renderer with no scene clears, which is what a frame loop wants to be
     /// able to do while the thing being drawn is still being written.
     scene: Option<scene::Scene>,
+    /// One depth buffer per image, made on first use - the same shape as the image it tests against.
+    depth_textures: Vec<Option<wgpu::Texture>>,
+    /// The convention the target insists on, which decides how the depth buffer compares and what an empty
+    /// one is worth.
+    depth: Depth,
 }
 
 impl Renderer {
@@ -86,6 +123,8 @@ impl Renderer {
             },
             cache: Vec::new(),
             scene: None,
+            depth_textures: Vec::new(),
+            depth: Depth::default(),
         }
     }
 
@@ -102,6 +141,7 @@ impl Renderer {
     ) -> Self {
         Self {
             scene: Some(scene::Scene::new(device, format, depth)),
+            depth,
             ..Self::new(clear)
         }
     }
@@ -128,6 +168,8 @@ impl Renderer {
         }
         let meta = session.images();
         self.cache.resize(session.image_count(), None);
+        self.depth_textures.resize(session.image_count(), None);
+        let clear_depth = depth_state(self.depth).clear;
 
         let mut drawn = 0;
         for view in frame.views() {
@@ -143,10 +185,18 @@ impl Renderer {
                 array_layer_count: Some(1),
                 ..Default::default()
             });
+            let Some(depth) = self.depth_texture(device, meta, view.image) else {
+                continue;
+            };
+            let depth_layer = depth.create_view(&wgpu::TextureViewDescriptor {
+                base_array_layer: view.layer,
+                array_layer_count: Some(1),
+                ..Default::default()
+            });
 
-            // A clear, and nothing else yet: the pipeline a scene needs - a camera, a depth buffer, the
-            // scene's own data - belongs to whatever is being drawn, and this crate's job is the part that
-            // is the same for all of them.
+            // The colour, the depth, and nothing else: what a scene *is* belongs to whatever is being drawn,
+            // and this crate's job is the part that is the same for all of them - the attachments, and what
+            // an empty buffer is worth in the convention this target insists on.
             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("wxr frame"),
             });
@@ -161,7 +211,14 @@ impl Renderer {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &depth_layer,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(clear_depth),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 // A frame that is one view per pass has nothing to multi-view, and the field is here so that a
@@ -178,6 +235,34 @@ impl Renderer {
 
         session.end(frame)?;
         Ok(drawn)
+    }
+
+    /// The depth buffer for an image, made once: the same extent and the same layers as the colour image, so
+    /// that a view's array layer means the same thing in both.
+    fn depth_texture(
+        &mut self,
+        device: &wgpu::Device,
+        meta: wxr::ImageMeta,
+        index: usize,
+    ) -> Option<&wgpu::Texture> {
+        if self.depth_textures.get(index).is_none_or(Option::is_none) {
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("wxr depth"),
+                size: wgpu::Extent3d {
+                    width: meta.extent.width,
+                    height: meta.extent.height,
+                    depth_or_array_layers: meta.layers.max(1),
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: DEPTH_FORMAT,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            });
+            *self.depth_textures.get_mut(index)? = Some(texture);
+        }
+        self.depth_textures[index].as_ref()
     }
 
     /// The texture for an image, made once.
@@ -200,6 +285,166 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The pixel at the centre of a pass that draws the near triangle first and the far one second.
+    ///
+    /// The depth buffer is the only reason the near one is what comes back: without it the second triangle
+    /// would paint over the first, which is what makes the buffer load-bearing rather than decorative. Both
+    /// conventions are drawn, because a reverse projection compared with `Less` is a picture where nothing is
+    /// in front of anything - and that is the failure this pins.
+    fn centre_pixel(device: &wgpu::Device, queue: &wgpu::Queue, depth: Depth) -> [u8; 3] {
+        let (width, height) = (64u32, 64u32);
+        let size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        let colour = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("test eye"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("test depth"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: DEPTH_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("test readback"),
+            size: 256,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        let scene = scene::Scene::new(device, format, depth);
+        let eye = wxr::View {
+            eye: wxr::Eye::Mono,
+            pose: wxr::Pose::IDENTITY,
+            fov: scene::DEFAULT_FOV,
+            viewport: wxr::Viewport {
+                x: 0,
+                y: 0,
+                width,
+                height,
+            },
+            image: 0,
+            layer: 0,
+        };
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        {
+            let colour_view = colour.create_view(&Default::default());
+            let depth_view = depth_texture.create_view(&Default::default());
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("test eye"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &colour_view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(depth_state(depth).clear),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                ..Default::default()
+            });
+            scene.draw(queue, &eye, &mut pass);
+        }
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &colour,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: width / 2,
+                    y: height / 2,
+                    z: 0,
+                },
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(256),
+                    rows_per_image: Some(1),
+                },
+            },
+            wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+        );
+        queue.submit(Some(encoder.finish()));
+
+        let slice = readback.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |_| {});
+        let _ = device.poll(wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: None,
+        });
+        let data = slice.get_mapped_range().expect("the readback is mapped");
+        let pixel = [data[0], data[1], data[2]];
+        drop(data);
+        readback.unmap();
+        pixel
+    }
+
+    #[test]
+    fn the_nearer_triangle_is_the_one_that_shows() {
+        let Some((device, queue)) = device() else {
+            return;
+        };
+        let expected = [
+            (scene::NEAR[0] * 255.0).round() as u8,
+            (scene::NEAR[1] * 255.0).round() as u8,
+            (scene::NEAR[2] * 255.0).round() as u8,
+        ];
+        for depth in [Depth::ZeroToOne, Depth::Reverse] {
+            let pixel = centre_pixel(&device, &queue, depth);
+            for (got, want) in pixel.iter().zip(expected.iter()) {
+                assert!(
+                    got.abs_diff(*want) <= 2,
+                    "{depth:?}: read {pixel:?}, and the near triangle is {expected:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_reverse_projection_compares_the_other_way_round() {
+        // The two halves of one decision: nearer is smaller in a `0..1` projection and larger in a reverse
+        // one, and an empty buffer is the far end of whichever it is.
+        assert_eq!(
+            depth_state(Depth::ZeroToOne).compare,
+            wgpu::CompareFunction::Less
+        );
+        assert_eq!(depth_state(Depth::ZeroToOne).clear, 1.0);
+        assert_eq!(
+            depth_state(Depth::Reverse).compare,
+            wgpu::CompareFunction::Greater
+        );
+        assert_eq!(depth_state(Depth::Reverse).clear, 0.0);
+    }
+
     use std::time::Duration;
     use wxr::{Backend as _, Session as _};
 

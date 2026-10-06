@@ -1,10 +1,16 @@
-//! A triangle, drawn with each eye's own projection.
+//! Two triangles, drawn with each eye's own projection and its own depth.
 //!
-//! The point of it is not the triangle. It is that the arithmetic below is the arithmetic above:
+//! The point of them is not the triangles. It is that the arithmetic below is the arithmetic above:
 //! [`crate::projection::perspective`] turns the eye's four half-angles into a matrix,
 //! [`crate::projection::view`] turns its pose into the other one, and the two are multiplied into the
 //! uniform the vertex shader is given. A renderer whose projection is only ever tested and never used is a
 //! renderer whose projection is a guess.
+//!
+//! The second triangle exists for the depth buffer's sake, and so does the order they are drawn in. One sits
+//! in front of the other and the *near* one is drawn *first* - so a pass without a depth buffer would let the
+//! far one paint over it, and a pass with one shows the near triangle, which is what a person in a room
+//! expects. Their colours differ for the same reason: an occlusion nobody can see in a picture is an
+//! occlusion nobody has tested.
 //!
 //! One pipeline for every eye and a different matrix per eye, because that is the whole shape of stereo: the
 //! eyes differ in where they are, not in what they are drawing.
@@ -13,27 +19,48 @@ use wxr::FieldOfView;
 
 use crate::projection::{Depth, perspective};
 
-/// The shader, inline because it is four lines and a build script for four lines is a build script.
+/// The shader, inline because it is a dozen lines and a build script for a dozen lines is a build script.
 const SHADER: &str = r#"
 struct Camera {
     view_projection: mat4x4<f32>,
 };
 
+struct Vertex {
+    @builtin(position) position: vec4<f32>,
+    @location(0) colour: vec3<f32>,
+};
+
 @group(0) @binding(0) var<uniform> camera: Camera;
 
 @vertex
-fn vertex(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
-    return camera.view_projection * vec4(position, 1.0);
+fn vertex(@location(0) position: vec3<f32>, @location(1) colour: vec3<f32>) -> Vertex {
+    var out: Vertex;
+    out.position = camera.view_projection * vec4(position, 1.0);
+    out.colour = colour;
+    return out;
 }
 
 @fragment
-fn fragment() -> @location(0) vec4<f32> {
-    return vec4(0.25, 0.55, 1.0, 1.0);
+fn fragment(in: Vertex) -> @location(0) vec4<f32> {
+    return vec4(in.colour, 1.0);
 }
 "#;
 
-/// A triangle in front of the origin, at about where a person sitting at a desk would be looking.
-const TRIANGLE: [[f32; 3]; 3] = [[0.0, 0.35, -1.5], [-0.35, -0.25, -1.5], [0.35, -0.25, -1.5]];
+/// A triangle in front of the origin and the same shape behind it, as `[x, y, z, r, g, b]` per vertex.
+///
+/// Roughly where a person sitting at a desk would be looking, and far enough apart that the depth buffer has
+/// something to decide: with no buffer at all the second triangle would win, because it is drawn second.
+pub const TRIANGLES: [[f32; 6]; 6] = [
+    [0.0, 0.35, -1.0, 0.25, 0.55, 1.0],
+    [-0.35, -0.25, -1.0, 0.25, 0.55, 1.0],
+    [0.35, -0.25, -1.0, 0.25, 0.55, 1.0],
+    [0.0, 0.35, -2.5, 1.0, 0.35, 0.2],
+    [-0.35, -0.25, -2.5, 1.0, 0.35, 0.2],
+    [0.35, -0.25, -2.5, 1.0, 0.35, 0.2],
+];
+
+/// The colour of the near triangle, which is what a picture of this scene should show where they overlap.
+pub const NEAR: [f32; 3] = [0.25, 0.55, 1.0];
 
 /// Everything a scene needs that is the same for every eye.
 pub struct Scene {
@@ -54,7 +81,7 @@ pub struct Scene {
 impl Scene {
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat, depth: Depth) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("wxr triangle"),
+            label: Some("wxr scene"),
             source: wgpu::ShaderSource::Wgsl(SHADER.into()),
         });
         let camera = device.create_buffer(&wgpu::BufferDescriptor {
@@ -88,31 +115,41 @@ impl Scene {
         let vertices = wgpu::util::DeviceExt::create_buffer_init(
             device,
             &wgpu::util::BufferInitDescriptor {
-                label: Some("wxr triangle"),
-                contents: bytemuck_cast(&TRIANGLE),
+                label: Some("wxr triangles"),
+                contents: bytemuck_cast(&TRIANGLES),
                 usage: wgpu::BufferUsages::VERTEX,
             },
         );
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("wxr triangle"),
+            label: Some("wxr scene"),
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
+        // The pipeline declares the depth buffer the pass has to attach, and how it compares - which is the
+        // one thing the projection convention decides about a pipeline.
+        let depth_state = crate::depth_state(depth);
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("wxr triangle"),
+            label: Some("wxr scene"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vertex"),
                 compilation_options: Default::default(),
                 buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: 12,
+                    array_stride: 24,
                     step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[wgpu::VertexAttribute {
-                        format: wgpu::VertexFormat::Float32x3,
-                        offset: 0,
-                        shader_location: 0,
-                    }],
+                    attributes: &[
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x3,
+                            offset: 0,
+                            shader_location: 0,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x3,
+                            offset: 12,
+                            shader_location: 1,
+                        },
+                    ],
                 })],
             },
             fragment: Some(wgpu::FragmentState {
@@ -126,7 +163,13 @@ impl Scene {
                 })],
             }),
             primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: crate::DEPTH_FORMAT,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(depth_state.compare),
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
             multisample: wgpu::MultisampleState::default(),
             multiview_mask: None,
             cache: None,
@@ -145,7 +188,7 @@ impl Scene {
         }
     }
 
-    /// Draw the scene for one eye: its own field of view, its own place, the same triangle.
+    /// Draw the scene for one eye: its own field of view, its own place, the same geometry.
     pub fn draw(&self, queue: &wgpu::Queue, view: &wxr::View, pass: &mut wgpu::RenderPass<'_>) {
         let camera = perspective(view.fov, self.near, self.far, self.depth)
             * crate::projection::view(view.pose);
@@ -153,7 +196,7 @@ impl Scene {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, self.vertices.slice(..));
-        pass.draw(0..3, 0..1);
+        pass.draw(0..TRIANGLES.len() as u32, 0..1);
     }
 }
 
@@ -164,15 +207,15 @@ pub fn planes() -> (f32, f32) {
 
 /// The triangles and the matrices as bytes.
 ///
-/// `bytemuck` is not a dependency of this crate and the two types are plain, so this is the cast rather than
-/// a crate to do it: a `[[f32; 3]; 3]` and a `Mat4` are both contiguous little-endian floats.
+/// `bytemuck` is not a dependency of this crate and the types are plain, so this is the cast rather than a
+/// crate to do it: a `[[f32; 6]; 6]` and a `Mat4` are both contiguous little-endian floats.
 fn bytemuck_cast<T: Copy>(value: &T) -> &[u8] {
-    // SAFETY: every type this is called with is `Copy` and has no padding - an array of `[f32; 3]` and a
+    // SAFETY: every type this is called with is `Copy` and has no padding - an array of `[f32; 6]` and a
     // `Mat4`, which is sixteen `f32`s. A type with padding or a pointer would make this a lie.
     unsafe { std::slice::from_raw_parts(value as *const T as *const u8, std::mem::size_of::<T>()) }
 }
 
-/// A field of view big enough to see the triangle from where an eye usually is.
+/// A field of view big enough to see the triangles from where an eye usually is.
 pub const DEFAULT_FOV: FieldOfView = FieldOfView {
     up: 0.9,
     down: 0.9,

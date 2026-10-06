@@ -160,9 +160,11 @@ three has drawn a frame on real hardware, because none of them has.
   run frames until the space closes, with a callback for the app's own work. What is left is the SwiftUI file
   around it, its `Info.plist` - `NSWorldSensingUsageDescription` is what ARKit refuses without - and the
   app's choice of how to get the compositor's device into wgpu, which `AppleBackend::device` documents.
-- **A real scene.** `wxr-render` draws one triangle with no depth buffer and a fixed near and far. A scene
-  with depth is where `Depth` stops being an argument nobody passes, and where the reverse-Z requirement
-  stops being a comment.
+- **A real scene.** `wxr-render` draws two triangles with a depth buffer and a fixed near and far: enough
+  for `Depth` to be load-bearing - the nearer one wins whichever order they are drawn in, in both conventions,
+  and that is read back off the GPU in a test - and not a scene. Lighting, textures, instancing and a tone map
+  are a renderer's business and this one is a seam. What is missing in the same tier is *submitting* the depth
+  to the compositor: all three runtimes can take it and none of this does.
 - **Input beyond the intersection.** Gestures, the hand skeleton, foveation and haptics are all real platform
   features that this core says nothing about on purpose. The day one of them is needed, it is one `cfg` away
   - and the seam it should come through is worth choosing then rather than now.
