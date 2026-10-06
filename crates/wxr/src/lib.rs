@@ -36,6 +36,8 @@ pub use frame::{Eye, FieldOfView, Frame, FrameState, View, Viewport};
 pub use input::{
     Axes, Buttons, Hand, HandJoint, Handedness, InputId, InputSource, Joint, TargetRayMode,
 };
-pub use session::{Backend, Blend, Error, Event, Presentation, Session, State, Visibility};
+pub use session::{
+    Backend, Blend, Error, Event, Presentation, Session, SessionMode, State, Visibility,
+};
 pub use space::{Pose, ReferenceSpace, SpaceKind};
 pub use target::{ColorFormat, Extent2d, ImageMeta};

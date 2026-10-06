@@ -474,7 +474,7 @@ mod tests {
             return;
         };
         let mut session = wxr::mock::MockBackend::default()
-            .connect(())
+            .connect((), wxr::SessionMode::ImmersiveVr)
             .expect("the mock connects");
         while let Some(event) = session.poll() {
             if matches!(
@@ -584,7 +584,7 @@ mod tests {
             return;
         };
         let mut session = wxr::mock::MockBackend::default()
-            .connect(())
+            .connect((), wxr::SessionMode::ImmersiveVr)
             .expect("the mock connects");
         while let Some(event) = session.poll() {
             if matches!(
@@ -686,7 +686,7 @@ mod tests {
         // The mock is what makes this a test of the renderer rather than of a headset: it is a session with
         // two eyes and an image, and the renderer cannot tell it from any other.
         let mut session = wxr::mock::MockBackend::default()
-            .connect(())
+            .connect((), wxr::SessionMode::ImmersiveVr)
             .expect("the mock connects");
         while let Some(event) = session.poll() {
             if matches!(
@@ -715,7 +715,9 @@ mod tests {
         let Some((device, queue)) = device() else {
             return;
         };
-        let mut session = wxr::mock::MockBackend::default().connect(()).unwrap();
+        let mut session = wxr::mock::MockBackend::default()
+            .connect((), wxr::SessionMode::ImmersiveVr)
+            .unwrap();
         while let Some(event) = session.poll() {
             if matches!(
                 event,

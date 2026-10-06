@@ -46,10 +46,13 @@ mod native {
             backend.recommended_extent()
         );
 
-        let mut session = backend.connect(wxr_openxr::Device {
-            instance: instance.clone(),
-            device,
-        })?;
+        let mut session = backend.connect(
+            wxr_openxr::Device {
+                instance: instance.clone(),
+                device,
+            },
+            wxr::SessionMode::ImmersiveVr,
+        )?;
         println!(
             "connected: {:?}, visibility {:?}, presentation {:?}, images {:?}",
             session.state(),

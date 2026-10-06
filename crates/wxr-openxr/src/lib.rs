@@ -181,7 +181,14 @@ impl wxr::Backend for OpenXr {
     type Device = Device;
     type Session = OpenXrSession;
 
-    fn connect(&self, device: Device) -> Result<OpenXrSession, wxr::Error> {
+    /// OpenXR has no session mode to ask for. The system's configuration decides the form factor and the
+    /// runtime decides how the picture blends, and `blend` is what reports what it chose - so the mode is taken
+    /// and ignored, which is the honest answer for a platform that decides this itself.
+    fn connect(
+        &self,
+        device: Device,
+        _mode: wxr::SessionMode,
+    ) -> Result<OpenXrSession, wxr::Error> {
         OpenXrSession::new(self, &device).map_err(wxr::Error::from)
     }
 }

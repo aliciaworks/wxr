@@ -36,7 +36,7 @@ pub fn run(
     // The queue goes to the session, because presenting is committing a command buffer on the renderer's own
     // queue; the device stays here, because drawing is this function's. It is cloned rather than moved
     // because drawing needs it too, and a `wgpu::Queue` is a handle.
-    let mut session = backend.connect(queue.clone())?;
+    let mut session = backend.connect(queue.clone(), wxr::SessionMode::ImmersiveVr)?;
     // The planes the scene draws with, told to the compositor so that it can reproject with the depth the
     // renderer submits. One place and not two: the scene uses these numbers to build its projection, and the
     // compositor uses them to read what came out of it.

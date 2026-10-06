@@ -107,6 +107,28 @@ pub enum Event {
     Lost,
 }
 
+/// What kind of session to ask for, which is WebXR's `XRSessionMode`.
+///
+/// The three are not three amounts of one thing. `Inline` is a session in the page, with no display of its own
+/// and no headset at all; the two immersive ones are a headset, and they differ in what the picture *is* -
+/// `ImmersiveVr` where it is the world, `ImmersiveAr` where it is drawn over one. That difference is what a
+/// runtime reads to decide whether to offer surfaces and raycasts and the camera, so it has to be asked for
+/// before there is a session to ask.
+///
+/// A platform that decides this itself - OpenXR by the system's configuration, a compositor platform by the
+/// immersive space the app made in its own language - takes the mode and answers as though it had been asked
+/// in its own terms. It is a request, not a switch.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum SessionMode {
+    /// A session in the page, with no display of its own. No headset.
+    Inline,
+    /// A headset, and the picture is the world. The default, because it is what a session is for.
+    #[default]
+    ImmersiveVr,
+    /// A headset, and the picture is drawn over the world.
+    ImmersiveAr,
+}
+
 /// How the picture reaches the display, which is the one thing the platforms do not agree about.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Presentation {
@@ -162,8 +184,12 @@ pub trait Backend {
     type Device;
     type Session: Session;
 
-    /// Connect, which is not the same as running: the session that comes back is `Idle`.
-    fn connect(&self, device: Self::Device) -> Result<Self::Session, Error>;
+    /// Connect, which is not the same as running: a session that arrives asynchronously comes back
+    /// `Connecting` and is polled like everything else.
+    ///
+    /// The mode is WebXR's `requestSession` argument - and it is a request: a platform that decides this itself
+    /// takes it and answers in its own terms.
+    fn connect(&self, device: Self::Device, mode: SessionMode) -> Result<Self::Session, Error>;
 }
 
 /// A live session.
@@ -194,7 +220,9 @@ pub trait Session: Any {
     /// ```
     /// use wxr::{Backend as _, Session as _};
     ///
-    /// let session = wxr::mock::MockBackend::default().connect(()).unwrap();
+    /// let session = wxr::mock::MockBackend::default()
+    ///     .connect((), wxr::SessionMode::ImmersiveVr)
+    ///     .unwrap();
     /// // The core's vocabulary...
     /// assert_eq!(session.state(), wxr::State::Connecting);
     /// // ...and the backend's own type, when the platform is what matters.

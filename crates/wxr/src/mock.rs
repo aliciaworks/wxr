@@ -12,7 +12,9 @@ use glam::{Quat, Vec3};
 
 use crate::frame::{Eye, FieldOfView, Frame, FrameState, View, Viewport};
 use crate::input::{Axes, Buttons, Handedness, InputId, InputSource, TargetRayMode};
-use crate::session::{Backend, Error, Event, Presentation, Session, State, Visibility};
+use crate::session::{
+    Backend, Error, Event, Presentation, Session, SessionMode, State, Visibility,
+};
 use crate::space::{Pose, ReferenceSpace, SpaceKind};
 use crate::target::{ColorFormat, Extent2d, ImageMeta};
 
@@ -55,7 +57,7 @@ impl Backend for MockBackend {
     type Device = ();
     type Session = MockSession;
 
-    fn connect(&self, _device: ()) -> Result<Self::Session, Error> {
+    fn connect(&self, _device: (), mode: SessionMode) -> Result<Self::Session, Error> {
         // Two ladders, in the order they happen: the session arrives, and then it is shown.
         let pending: VecDeque<Event> = self
             .states
@@ -70,6 +72,7 @@ impl Backend for MockBackend {
             )
             .collect();
         Ok(MockSession {
+            mode,
             state: State::Connecting,
             visibility: Visibility::Hidden,
             pending,
@@ -87,6 +90,7 @@ impl Backend for MockBackend {
 /// Its `Image` is a number, because there is nothing to name: the point of the mock is that the core never
 /// asks what an image *is*.
 pub struct MockSession {
+    mode: SessionMode,
     state: State,
     visibility: Visibility,
     pending: VecDeque<Event>,
@@ -282,6 +286,11 @@ impl MockSession {
         self.frames
     }
 
+    /// The mode the session was asked for, which a mock can hold even though nothing acts on it.
+    pub fn mode(&self) -> SessionMode {
+        self.mode
+    }
+
     /// Pretend the primary action was pressed and released on `id`.
     ///
     /// A real runtime makes these events out of a controller; a test needs them without one, and they are the
@@ -305,7 +314,7 @@ mod tests {
     /// Drive the mock the way an app would: poll to `Visible`, then run frames.
     fn running() -> MockSession {
         let mut session = MockBackend::default()
-            .connect(())
+            .connect((), SessionMode::ImmersiveVr)
             .expect("the mock connects");
         while let Some(event) = session.poll() {
             if let Event::VisibilityChanged(Visibility::Visible) = event {
@@ -317,7 +326,9 @@ mod tests {
 
     #[test]
     fn the_lifecycle_and_the_visibility_are_two_ladders() {
-        let mut session = MockBackend::default().connect(()).unwrap();
+        let mut session = MockBackend::default()
+            .connect((), SessionMode::ImmersiveVr)
+            .unwrap();
         assert_eq!(session.state(), State::Connecting);
         assert_eq!(session.visibility(), Visibility::Hidden);
 
@@ -344,7 +355,9 @@ mod tests {
 
     #[test]
     fn the_escape_hatch_hands_back_the_backends_own_type() {
-        let mut session = MockBackend::default().connect(()).unwrap();
+        let mut session = MockBackend::default()
+            .connect((), SessionMode::ImmersiveVr)
+            .unwrap();
 
         // The core's type says one thing...
         assert_eq!(session.state(), State::Connecting);
@@ -386,6 +399,14 @@ mod tests {
         assert_eq!(session.poll(), Some(Event::SelectEnd(id)));
         assert_eq!(session.poll(), Some(Event::Select(id)));
         assert_eq!(session.poll(), None);
+    }
+
+    #[test]
+    fn a_session_is_asked_for_in_a_mode_and_the_mock_remembers_it() {
+        let session = MockBackend::default()
+            .connect((), SessionMode::ImmersiveAr)
+            .expect("the mock connects");
+        assert_eq!(session.mode(), SessionMode::ImmersiveAr);
     }
 
     #[test]
@@ -482,7 +503,7 @@ mod tests {
             states: vec![State::Ready, State::Ended],
             ..Default::default()
         }
-        .connect(())
+        .connect((), SessionMode::ImmersiveVr)
         .unwrap();
         session.poll();
         session.poll();

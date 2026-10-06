@@ -118,7 +118,7 @@ impl wxr::Backend for WebXr {
     type Device = Device;
     type Session = WebXrSession;
 
-    fn connect(&self, device: Device) -> Result<WebXrSession, wxr::Error> {
+    fn connect(&self, device: Device, mode: wxr::SessionMode) -> Result<WebXrSession, wxr::Error> {
         // The session is asked for and *not* waited for: blocking on a promise in a browser is not a thing
         // that can be done, and a `Connecting` session that is polled is the same ladder a session is
         // climbed by anyway.
@@ -127,14 +127,18 @@ impl wxr::Backend for WebXr {
         // where the floor is would put the player's feet at their eyes, and a session that is refused for
         // asking is a session that was never going to be usable.
         let init = web_sys::XrSessionInit::new();
-        init.set_required_features(&[JsValue::from_str("local-floor")]);
+        // A floor is asked for only where there is a room to have one: an inline session has no floor, and a
+        // required feature a runtime will not grant is a session that does not exist at all.
+        if mode != wxr::SessionMode::Inline {
+            init.set_required_features(&[JsValue::from_str("local-floor")]);
+        }
         // `webgpu` is asked for as an *optional* feature: a browser that will not grant it is a browser that
         // renders WebGL, and a required feature that is not there is a session that does not exist at all. What
         // came back is what `gpu::has_feature` asks about before any of the binding is attempted.
         init.set_optional_features(&[JsValue::from_str("webgpu")]);
         let requested = self
             .system
-            .request_session_with_options(XrSessionMode::ImmersiveVr, &init);
+            .request_session_with_options(session_mode(mode), &init);
         let requested: js_sys::Promise = requested.unchecked_into();
 
         let slot = result.clone();
@@ -820,6 +824,15 @@ impl wxr::Session for WebXrSession {
         // which is what keeps the session running.
         self.request_frame();
         Ok(())
+    }
+}
+
+/// Which browser session mode a core one is, which is WebXR's own three values.
+fn session_mode(mode: wxr::SessionMode) -> XrSessionMode {
+    match mode {
+        wxr::SessionMode::Inline => XrSessionMode::Inline,
+        wxr::SessionMode::ImmersiveVr => XrSessionMode::ImmersiveVr,
+        wxr::SessionMode::ImmersiveAr => XrSessionMode::ImmersiveAr,
     }
 }
 

@@ -79,7 +79,13 @@ impl wxr::Backend for AppleBackend {
     type Device = wgpu::Queue;
     type Session = AppleSession;
 
-    fn connect(&self, queue: wgpu::Queue) -> Result<AppleSession, wxr::Error> {
+    /// The immersive space's style is the app's choice in its own language, and `set_blend` is how it reaches
+    /// this session afterwards - so there is no mode to ask for here either.
+    fn connect(
+        &self,
+        queue: wgpu::Queue,
+        _mode: wxr::SessionMode,
+    ) -> Result<AppleSession, wxr::Error> {
         Ok(AppleSession::new(self.renderer.clone(), queue))
     }
 }
