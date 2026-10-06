@@ -82,6 +82,13 @@ impl OpenXrSession {
             )));
         }
 
+        // The runtime will not make a session until it has been asked what Vulkan version it needs: Monado
+        // refuses with `Has not called xrGetVulkanGraphicsRequirementsKHR`. That query is how an app *decides*
+        // which device to make, so it is an app's to call first - and it is asked again here, because a session
+        // that cannot be created over a precondition the backend could have met is a footgun rather than a
+        // contract. Asking twice is a query, not a side effect.
+        backend.requirements()?;
+
         let info = xr::vulkan::SessionCreateInfo {
             instance: native.instance,
             physical_device: native.physical_device,

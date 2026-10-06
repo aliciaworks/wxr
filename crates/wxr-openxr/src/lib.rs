@@ -143,6 +143,9 @@ impl OpenXr {
     /// This has to be asked *before* a device is made: one below the minimum is a session that cannot be
     /// created, and the maximum is what the runtime can be handed. It is the first thing a renderer does,
     /// and the reason `load` and `connect` are two calls rather than one.
+    ///
+    /// A session cannot be created until it has been asked, so `connect` asks it too, for an app that did not.
+    /// The answer is the same either way, and only an app can *act* on it - which is what this call is for.
     pub fn requirements(&self) -> Result<(xr::Version, xr::Version), Error> {
         let requirements = self
             .instance
