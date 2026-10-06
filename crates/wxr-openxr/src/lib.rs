@@ -18,6 +18,7 @@
 
 mod hal;
 mod import;
+mod input;
 
 use std::time::Duration;
 
@@ -186,6 +187,9 @@ pub struct OpenXrSession {
     extent: wxr::Extent2d,
     blend: xr::EnvironmentBlendMode,
     spaces: Vec<xr::Space>,
+    /// The hands, which are declared once and read once a frame. `None` when the runtime would not take
+    /// the action set - a runtime with no controllers is a session with no inputs rather than no session.
+    hands: Option<input::Hands>,
     /// The views the runtime located for the frame in progress. Kept because the composition layer is
     /// built from them, and they cannot be recovered from the core's view type without a round trip that
     /// would have to be exact to be honest.
@@ -254,6 +258,16 @@ impl OpenXrSession {
             .enumerate_images()
             .map_err(|error| Error::runtime("enumerate the swapchain's images", error))?;
 
+        // Inputs are declared here and not in the constructor: they need a session, and a runtime that will
+        // not take them is a session without hands rather than a session that failed.
+        let hands = match input::Hands::new(&backend.instance, &session) {
+            Ok(hands) => Some(hands),
+            Err(error) => {
+                log::warn!("wxr-openxr: no inputs: {error}");
+                None
+            }
+        };
+
         Ok(Self {
             instance: backend.instance.clone(),
             events: xr::EventDataBuffer::new(),
@@ -262,6 +276,7 @@ impl OpenXrSession {
             stream,
             swapchain,
             images,
+            hands,
             extent,
             blend: backend.blend,
             spaces: Vec::new(),
@@ -370,6 +385,14 @@ impl wxr::Session for OpenXrSession {
             return Ok(());
         }
 
+        // Once a frame and before anything is read: OpenXR resolves the bindings here, and a pose read
+        // before this is the pose from the frame before.
+        if let Some(hands) = &self.hands
+            && let Err(error) = hands.sync(&self.session)
+        {
+            log::debug!("wxr-openxr: syncing the actions: {error}");
+        }
+
         self.stream
             .begin()
             .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
@@ -431,6 +454,21 @@ impl wxr::Session for OpenXrSession {
             });
         }
         self.located = located;
+        Ok(())
+    }
+
+    fn inputs(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        out: &mut Vec<wxr::InputSource>,
+    ) -> Result<(), wxr::Error> {
+        let Some(hands) = &self.hands else {
+            return Ok(());
+        };
+        let Some(reference) = self.spaces.get(space.id() as usize) else {
+            return Err(wxr::Error::NoSpace(space.kind));
+        };
+        hands.read(reference, self.predicted, out);
         Ok(())
     }
 
