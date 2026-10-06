@@ -52,6 +52,20 @@ object is lit by the room rather than by a guess. Both are asked for by
 and both are WebXR's alone today, because OpenXR's are extensions the crate leaves as raw pointers and Apple's
 are behind a header that is not to hand.
 
+Which of those a session actually has is `Features` - a set of bits rather than a method per capability that
+errors when it is missing, the shape `wgpu` uses and WebXR's `enabledFeatures` uses. Until there was one, "this
+runtime cannot do this" was said three different ways: `Error::Unsupported` where a method hands out a handle,
+an empty list where it hands out many, and `None` where it hands out a thing. A session is usable without any of
+them; the set is how an app knows what to offer rather than what it can survive.
+
+Depth is the one place the specification hands over a *delivery* as well as a thing, and it is worth naming.
+WebXR can give depth as bytes (`cpu-optimized`) or as a texture (`gpu-optimized`), one per session, and mirroring
+that split into the core was a mistake: it is the web platform's constraint, not the concept. `Session::Depth`
+is the runtime's own buffer - the same associated type `Session::Image` is for colour - and the backend picks the
+delivery, which for WebXR is the texture, because a texture is what a renderer can test against. A scalar
+distance is a convenience of the bytes mode and is not in the core: reading a buffer back is a `copy`, the way
+`wgpu`'s is, not a second way to ask.
+
 Three things the core deliberately does not know:
 
 **What a graphics API is.** `Session::Image` is an associated type. OpenXR's images are Vulkan or D3D12
