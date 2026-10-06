@@ -22,6 +22,9 @@
 //!
 //! What is left is small enough to test without a headset, which is what [`mock`] is for.
 
+// The math the core speaks, so a backend does not have to guess which `glam` it means.
+pub use glam;
+
 pub mod frame;
 pub mod mock;
 pub mod session;

@@ -42,9 +42,11 @@ impl Default for MockBackend {
 }
 
 impl Backend for MockBackend {
+    /// Nothing to hand over: there is no device, because there is no renderer.
+    type Device = ();
     type Session = MockSession;
 
-    fn connect(&self) -> Result<Self::Session, Error> {
+    fn connect(&self, _device: ()) -> Result<Self::Session, Error> {
         Ok(MockSession {
             state: State::Idle,
             pending: self
@@ -206,7 +208,9 @@ mod tests {
 
     /// Drive the mock the way an app would: poll to `Visible`, then run frames.
     fn running() -> MockSession {
-        let mut session = MockBackend::default().connect().expect("the mock connects");
+        let mut session = MockBackend::default()
+            .connect(())
+            .expect("the mock connects");
         while let Some(event) = session.poll() {
             if let Event::StateChanged(State::Focused) = event {
                 break;
@@ -217,7 +221,7 @@ mod tests {
 
     #[test]
     fn the_state_ladder_is_climbed_by_polling() {
-        let mut session = MockBackend::default().connect().unwrap();
+        let mut session = MockBackend::default().connect(()).unwrap();
         assert_eq!(session.state(), State::Idle);
         session.poll();
         assert_eq!(session.state(), State::Synchronized);
@@ -272,7 +276,7 @@ mod tests {
             states: vec![State::Visible, State::Stopping],
             ..Default::default()
         }
-        .connect()
+        .connect(())
         .unwrap();
         session.poll();
         session.poll();

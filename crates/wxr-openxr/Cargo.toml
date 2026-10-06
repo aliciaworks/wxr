@@ -1,0 +1,24 @@
+[package]
+name = "wxr-openxr"
+description = "An OpenXR backend for wxr, rendering with wgpu."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+wxr = { path = "../wxr" }
+# The renderer's layer. The device a session is given is a wgpu device; nothing here creates one.
+wgpu = { workspace = true, features = ["vulkan"] }
+# `loaded` (the default) loads the runtime at run time rather than linking it, so this builds on a machine
+# with no XR runtime and says so when it connects.
+openxr = { version = "0.22", default-features = false, features = ["loaded"] }
+thiserror = { workspace = true }
+log = { workspace = true }
+
+# The one Vulkan thing in the workspace, and its job is to *read* rather than to make: wgpu's HAL hands out
+# `ash` handle types and `openxr-sys` wants `*const c_void`, and those fields are private on one side and
+# raw pointers on the other, so the trait in between is the only way across. See `hal.rs`.
+ash = "0.38"
+
+# The examples block on async device creation, which is all this is for.
+[dev-dependencies]
+pollster = "0.4"

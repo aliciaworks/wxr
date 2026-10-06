@@ -1,0 +1,513 @@
+//! An OpenXR backend for [`wxr`], rendering with wgpu.
+//!
+//! The whole of this crate is shaped by one decision the core made: **the renderer makes the device, and
+//! the session is told about it.** OpenXR offers the other order - `XR_KHR_vulkan_enable2` has the runtime
+//! create the `VkInstance` and `VkDevice` for the app to adopt - and that is not the one this is built on,
+//! because a runtime that makes the device also gets to decide what the device can do.
+//!
+//! So a session is created from `XR_KHR_vulkan_enable`, which takes handles that already exist. They come
+//! from the wgpu device the renderer was given, read out through wgpu's HAL ([`hal`]), which is the only
+//! place in the workspace that names a Vulkan type. Nothing here creates a device, and nothing here
+//! outlives one.
+//!
+//! The frames are the other half, and they are where the core's [`wxr::Session::Image`] pulls its weight: a
+//! session hands out images the compositor will present and nothing else. The renderer wraps them as `wgpu`
+//! textures; the core carries them and never looks inside.
+
+mod hal;
+
+use std::time::Duration;
+
+use wxr::glam::{Quat, Vec3};
+
+use openxr as xr;
+
+/// What the renderer hands over: the wgpu objects it made, and owns.
+#[derive(Clone, Debug)]
+pub struct Device {
+    pub instance: wgpu::Instance,
+    pub device: wgpu::Device,
+}
+
+/// An OpenXR runtime, connected to but not yet in a session.
+pub struct OpenXr {
+    instance: xr::Instance,
+    system: xr::SystemId,
+    views: Vec<xr::ViewConfigurationView>,
+    blend: xr::EnvironmentBlendMode,
+}
+
+impl OpenXr {
+    /// Load the runtime this machine has and take the first headset it offers.
+    ///
+    /// An `Entry` is the loader rather than a runtime: which runtime it is belongs to the machine, and a
+    /// machine with none is [`wxr::Error::Unavailable`] rather than a panic.
+    pub fn load() -> Result<Self, Error> {
+        // SAFETY: the loader the dynamic loader finds must be an OpenXR one, which is what the runtime
+        // the machine has configured is. On platforms with a different loader story this is where that
+        // would be said; `()` is the "ask the system" answer everywhere but Android.
+        let entry =
+            unsafe { xr::Entry::load(&()) }.map_err(|error| Error::runtime("load", error))?;
+
+        // Both Vulkan extensions are asked for. The runtime decides which it has, and it is the *first* this
+        // needs - the one that takes handles that already exist. Asking for it alone would fail on a runtime
+        // that only has the second, and that failure would be about the extension rather than about what
+        // this crate needs.
+        let mut extensions = xr::ExtensionSet::default();
+        extensions.khr_vulkan_enable = true;
+        extensions.khr_vulkan_enable2 = true;
+
+        // The loader validates this: an application with no name is not an application it will make an
+        // instance for, and that is a real check rather than a formality - a runtime's logs are read by
+        // whoever has to find out why the headset is not working.
+        let app_info = xr::ApplicationInfo {
+            application_name: "wxr",
+            application_version: 1,
+            engine_name: "wxr",
+            engine_version: 1,
+            ..Default::default()
+        };
+        let instance = entry
+            .create_instance(&app_info, &extensions, &[], &())
+            .map_err(|error| Error::runtime("create the instance", error))?;
+
+        let system = instance
+            .system(xr::FormFactor::HEAD_MOUNTED_DISPLAY)
+            .map_err(|error| Error::runtime("find a headset", error))?;
+
+        let views = instance
+            .enumerate_view_configuration_views(system, xr::ViewConfigurationType::PRIMARY_STEREO)
+            .map_err(|error| Error::runtime("enumerate the views", error))?;
+        if views.len() != 2 {
+            return Err(Error::Unsupported(format!(
+                "the runtime offers {} views; this backend draws two",
+                views.len()
+            )));
+        }
+
+        let blend = *instance
+            .enumerate_environment_blend_modes(system, xr::ViewConfigurationType::PRIMARY_STEREO)
+            .map_err(|error| Error::runtime("enumerate blend modes", error))?
+            .first()
+            .ok_or_else(|| Error::Unsupported("the runtime offers no blend mode".into()))?;
+
+        Ok(Self {
+            instance,
+            system,
+            views,
+            blend,
+        })
+    }
+
+    /// The Vulkan API version the runtime needs, as `(minimum, maximum)`.
+    ///
+    /// This has to be asked *before* a device is made: one below the minimum is a session that cannot be
+    /// created, and the maximum is what the runtime can be handed. It is the first thing a renderer does,
+    /// and the reason `load` and `connect` are two calls rather than one.
+    pub fn requirements(&self) -> Result<(xr::Version, xr::Version), Error> {
+        let requirements = self
+            .instance
+            .graphics_requirements::<xr::Vulkan>(self.system)
+            .map_err(|error| Error::runtime("ask the graphics requirements", error))?;
+        Ok((
+            requirements.min_api_version_supported,
+            requirements.max_api_version_supported,
+        ))
+    }
+
+    /// The size the runtime recommends for each eye, which is what a swapchain is made at.
+    pub fn recommended_extent(&self) -> wxr::Extent2d {
+        wxr::Extent2d::new(
+            self.views[0].recommended_image_rect_width,
+            self.views[0].recommended_image_rect_height,
+        )
+    }
+}
+
+impl wxr::Backend for OpenXr {
+    type Device = Device;
+    type Session = OpenXrSession;
+
+    fn connect(&self, device: Device) -> Result<OpenXrSession, wxr::Error> {
+        OpenXrSession::new(self, &device).map_err(wxr::Error::from)
+    }
+}
+
+/// What went wrong before a session existed.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("the OpenXR runtime could not {action}: {message}")]
+    Runtime { action: String, message: String },
+    #[error("{0}")]
+    Unsupported(String),
+}
+
+impl Error {
+    fn runtime(action: &str, error: impl std::fmt::Debug) -> Self {
+        Self::Runtime {
+            action: action.to_string(),
+            message: format!("{error:?}"),
+        }
+    }
+}
+
+impl From<Error> for wxr::Error {
+    fn from(error: Error) -> Self {
+        match error {
+            Error::Runtime { action, message } => {
+                wxr::Error::Unavailable(format!("{action}: {message}"))
+            }
+            Error::Unsupported(what) => wxr::Error::Rejected(what),
+        }
+    }
+}
+
+/// A live session, with a stereo swapchain the compositor presents.
+pub struct OpenXrSession {
+    /// The instance is kept for its event queue: OpenXR polls events from the instance, not the session.
+    instance: xr::Instance,
+    events: xr::EventDataBuffer,
+    session: xr::Session<xr::Vulkan>,
+    /// Waiting and submitting are two handles, and the wait is where the frame's timing comes from.
+    waiter: xr::FrameWaiter,
+    stream: xr::FrameStream<xr::Vulkan>,
+    swapchain: xr::Swapchain<xr::Vulkan>,
+    /// The compositor's images, as the runtime names them - a `VkImage`, which on this platform is an
+    /// integer. The renderer wraps these; the core carries them.
+    images: Vec<u64>,
+    extent: wxr::Extent2d,
+    blend: xr::EnvironmentBlendMode,
+    spaces: Vec<xr::Space>,
+    /// The views the runtime located for the frame in progress. Kept because the composition layer is
+    /// built from them, and they cannot be recovered from the core's view type without a round trip that
+    /// would have to be exact to be honest.
+    located: Vec<xr::View>,
+    state: wxr::State,
+    predicted: xr::Time,
+    /// Which image the frame took, until it is given back.
+    held: Option<u32>,
+}
+
+impl OpenXrSession {
+    fn new(backend: &OpenXr, device: &Device) -> Result<Self, Error> {
+        let native = unsafe { hal::vulkan(&device.instance, &device.device) }.ok_or_else(|| {
+            Error::Unsupported(
+                "the device is not a Vulkan one, and OpenXR's binding on this platform is".into(),
+            )
+        })?;
+
+        let info = xr::vulkan::SessionCreateInfo {
+            instance: native.instance,
+            physical_device: native.physical_device,
+            device: native.device,
+            queue_family_index: native.queue_family_index,
+            queue_index: native.queue_index,
+        };
+
+        // SAFETY: these are a live wgpu device, and the caller keeps it alive for as long as the session -
+        // which is the contract `hal::vulkan` documents, and the reason a backend is given a device rather
+        // than making one.
+        let (session, waiter, stream) = unsafe {
+            backend
+                .instance
+                .create_session::<xr::Vulkan>(backend.system, &info)
+        }
+        .map_err(|error| Error::runtime("create a session", error))?;
+
+        // 43 is `VK_FORMAT_R8G8B8A8_SRGB`: eight bits each and sRGB-encoded, the format every compositor
+        // must accept. A headset wants more than eight bits, and that is a thing to add together with the
+        // tone map that makes it usable rather than a format to ask for and hope for.
+        const RGBA8_SRGB: u32 = 43;
+        let formats = session
+            .enumerate_swapchain_formats()
+            .map_err(|error| Error::runtime("enumerate swapchain formats", error))?;
+        let format = formats
+            .iter()
+            .find(|format| **format == RGBA8_SRGB)
+            .or_else(|| formats.first())
+            .copied()
+            .ok_or_else(|| Error::Unsupported("the runtime offers no swapchain format".into()))?;
+
+        let extent = backend.recommended_extent();
+        let swapchain = session
+            .create_swapchain(&xr::SwapchainCreateInfo {
+                create_flags: xr::SwapchainCreateFlags::EMPTY,
+                usage_flags: xr::SwapchainUsageFlags::COLOR_ATTACHMENT
+                    | xr::SwapchainUsageFlags::SAMPLED,
+                format,
+                sample_count: 1,
+                width: extent.width,
+                height: extent.height,
+                face_count: 1,
+                // Two eyes, one array layer each: the compositor presents one image and reads a layer per
+                // eye, which is what makes `ImageMeta::layers` two.
+                array_size: 2,
+                mip_count: 1,
+            })
+            .map_err(|error| Error::runtime("create the swapchain", error))?;
+
+        let images = swapchain
+            .enumerate_images()
+            .map_err(|error| Error::runtime("enumerate the swapchain's images", error))?;
+
+        Ok(Self {
+            instance: backend.instance.clone(),
+            events: xr::EventDataBuffer::new(),
+            session,
+            waiter,
+            stream,
+            swapchain,
+            images,
+            extent,
+            blend: backend.blend,
+            spaces: Vec::new(),
+            located: Vec::new(),
+            state: wxr::State::Ready,
+            predicted: xr::Time::from_nanos(0),
+            held: None,
+        })
+    }
+}
+
+impl wxr::Session for OpenXrSession {
+    type Image = u64;
+
+    fn presentation(&self) -> wxr::Presentation {
+        wxr::Presentation::Composited
+    }
+
+    fn state(&self) -> wxr::State {
+        self.state
+    }
+
+    fn poll(&mut self) -> Option<wxr::Event> {
+        // Events come off the instance, one at a time, and a state change is the one a frame loop acts on.
+        // The rest - an interaction profile changing, an event lost - are the runtime's business for now,
+        // and skipping them is better than inventing a mapping for them.
+        loop {
+            match self.instance.poll_event(&mut self.events) {
+                Ok(Some(xr::Event::SessionStateChanged(event))) => {
+                    let state = match event.state() {
+                        xr::SessionState::IDLE => wxr::State::Idle,
+                        xr::SessionState::READY => wxr::State::Ready,
+                        xr::SessionState::SYNCHRONIZED => wxr::State::Synchronized,
+                        xr::SessionState::VISIBLE => wxr::State::Visible,
+                        xr::SessionState::FOCUSED => wxr::State::Focused,
+                        xr::SessionState::STOPPING => wxr::State::Stopping,
+                        xr::SessionState::LOSS_PENDING | xr::SessionState::EXITING => {
+                            wxr::State::Ended
+                        }
+                        // A state this crate has not learned is not a state to guess at: the session is
+                        // still whatever it was, and the next event will say what happened.
+                        _ => continue,
+                    };
+                    self.state = state;
+                    return Some(wxr::Event::StateChanged(state));
+                }
+                Ok(Some(_)) => continue,
+                Ok(None) => return None,
+                Err(error) => {
+                    log::error!("wxr-openxr: polling events: {error:?}");
+                    self.state = wxr::State::Ended;
+                    return Some(wxr::Event::Lost);
+                }
+            }
+        }
+    }
+
+    fn images(&self) -> wxr::ImageMeta {
+        wxr::ImageMeta {
+            format: wxr::ColorFormat::Rgba8Srgb,
+            extent: self.extent,
+            layers: 2,
+        }
+    }
+
+    fn image_count(&self) -> usize {
+        1
+    }
+
+    fn image(&self, index: usize) -> Option<&Self::Image> {
+        self.images.get(index)
+    }
+
+    fn space(&mut self, kind: wxr::SpaceKind) -> Result<wxr::ReferenceSpace, wxr::Error> {
+        let space = self
+            .session
+            .create_reference_space(reference_space(kind), xr::Posef::IDENTITY)
+            .map_err(|_| wxr::Error::NoSpace(kind))?;
+        self.spaces.push(space);
+        Ok(wxr::ReferenceSpace::new(
+            kind,
+            (self.spaces.len() - 1) as u32,
+        ))
+    }
+
+    fn begin(&mut self, _now: Duration, out: &mut wxr::Frame) -> Result<(), wxr::Error> {
+        // The runtime is asked to wait, and it answers with the frame's timing: when the picture will be
+        // shown, and whether there is anything to draw at all. `now` is not used - OpenXR's clock is the
+        // runtime's, and comparing a wall clock against it is a comparison between two unrelated epochs.
+        let state = self
+            .waiter
+            .wait()
+            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+        self.predicted = state.predicted_display_time;
+
+        out.state = if state.should_render {
+            wxr::FrameState::Render
+        } else {
+            wxr::FrameState::Wait
+        };
+        out.predicted_display_time =
+            Duration::from_nanos(state.predicted_display_time.as_nanos().max(0) as u64);
+        out.views_mut().clear();
+
+        if out.state != wxr::FrameState::Render {
+            return Ok(());
+        }
+
+        self.stream
+            .begin()
+            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+
+        let held = self
+            .swapchain
+            .acquire_image()
+            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+        // Unbounded: the runtime is the one that knows when the image is free, and a timeout here would be
+        // this code deciding it knows better.
+        self.swapchain
+            .wait_image(xr::Duration::INFINITE)
+            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+        self.held = Some(held);
+        Ok(())
+    }
+
+    fn views(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        out: &mut wxr::Frame,
+    ) -> Result<(), wxr::Error> {
+        let Some(reference) = self.spaces.get(space.id() as usize) else {
+            return Err(wxr::Error::NoSpace(space.kind));
+        };
+        let (_, located) = self
+            .session
+            .locate_views(
+                xr::ViewConfigurationType::PRIMARY_STEREO,
+                self.predicted,
+                reference,
+            )
+            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+        if located.len() != 2 {
+            return Err(wxr::Error::Present(
+                "the runtime located an odd number of views".into(),
+            ));
+        }
+
+        let image = self.held.unwrap_or(0);
+        let views = out.views_mut();
+        for (index, view) in located.iter().enumerate() {
+            views.push(wxr::View {
+                eye: if index == 0 {
+                    wxr::Eye::Left
+                } else {
+                    wxr::Eye::Right
+                },
+                pose: pose(view.pose),
+                fov: field_of_view(view.fov),
+                viewport: wxr::Viewport {
+                    x: 0,
+                    y: 0,
+                    width: self.extent.width,
+                    height: self.extent.height,
+                },
+                image: image as usize,
+                layer: index as u32,
+            });
+        }
+        self.located = located;
+        Ok(())
+    }
+
+    fn end(&mut self, _frame: &mut wxr::Frame) -> Result<(), wxr::Error> {
+        self.held = None;
+        self.swapchain
+            .release_image()
+            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+
+        // The layer borrows this frame's views, so it is built here and lives only until it is submitted.
+        // Each eye is a rectangle of the one image, in its own array layer.
+        let extent = xr::Extent2Di {
+            width: self.extent.width as i32,
+            height: self.extent.height as i32,
+        };
+        let views: Vec<_> = self
+            .located
+            .iter()
+            .enumerate()
+            .map(|(index, view)| {
+                xr::CompositionLayerProjectionView::new()
+                    .pose(view.pose)
+                    .fov(view.fov)
+                    .sub_image(
+                        xr::SwapchainSubImage::new()
+                            .swapchain(&self.swapchain)
+                            .image_array_index(index as u32)
+                            .image_rect(xr::Rect2Di {
+                                offset: xr::Offset2Di { x: 0, y: 0 },
+                                extent,
+                            }),
+                    )
+            })
+            .collect();
+        let layer = xr::CompositionLayerProjection::new()
+            .space(&self.spaces[0])
+            .views(&views);
+
+        self.stream
+            .end(self.predicted, self.blend, &[&layer])
+            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+        Ok(())
+    }
+}
+
+/// Which OpenXR reference space a core one is.
+fn reference_space(kind: wxr::SpaceKind) -> xr::ReferenceSpaceType {
+    match kind {
+        wxr::SpaceKind::Viewer => xr::ReferenceSpaceType::VIEW,
+        wxr::SpaceKind::Local => xr::ReferenceSpaceType::LOCAL,
+        wxr::SpaceKind::LocalFloor => xr::ReferenceSpaceType::LOCAL_FLOOR,
+        // `STAGE` is the floor *and* the room the user walked in to define it, which is what bounded means.
+        wxr::SpaceKind::BoundedFloor => xr::ReferenceSpaceType::STAGE,
+        // An unbounded space is an extension; a runtime without it has `LOCAL`, and a caller that asked for
+        // unbounded has got the space it asked for as closely as it exists.
+        wxr::SpaceKind::Unbounded => xr::ReferenceSpaceType::LOCAL,
+    }
+}
+
+/// An OpenXR pose in the core's terms.
+fn pose(pose: xr::Posef) -> wxr::Pose {
+    wxr::Pose {
+        position: Vec3::new(pose.position.x, pose.position.y, pose.position.z),
+        orientation: Quat::from_xyzw(
+            pose.orientation.x,
+            pose.orientation.y,
+            pose.orientation.z,
+            pose.orientation.w,
+        ),
+    }
+}
+
+/// An OpenXR field of view in the core's terms.
+///
+/// OpenXR gives the four directions as angles from the centre, with up and right positive; the core keeps
+/// them as the four openings, which is what a projection is built from.
+fn field_of_view(fov: xr::Fovf) -> wxr::FieldOfView {
+    wxr::FieldOfView {
+        up: fov.angle_up,
+        down: -fov.angle_down,
+        left: fov.angle_left,
+        right: -fov.angle_right,
+    }
+}

@@ -5,7 +5,7 @@
 # boundary have to agree on what those are.
 [workspace]
 resolver = "3"
-members = ["crates/wxr"]
+members = ["crates/wxr", "crates/wxr-openxr"]
 
 [workspace.package]
 edition = "2024"
@@ -15,6 +15,9 @@ version = "0.1.0"
 # A pose is not a bevy transform or an OpenXR `XrPosef`; it is a position and an orientation, and the crates
 # that carry one across a boundary should not have to convert between three spellings of that.
 glam = "0.30"
+# The renderer's layer, and the reason the core does not need one: a backend is *given* a device, and what
+# it is given is a wgpu device. Named at the version the rest of the stack is on so the two can share one.
+wgpu = "27"
 thiserror = "2"
 log = "0.4"
 

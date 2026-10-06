@@ -83,10 +83,17 @@ pub enum Error {
 
 /// An XR runtime that can be connected to.
 pub trait Backend {
+    /// What the renderer has to hand over.
+    ///
+    /// An associated type for the same reason [`Session::Image`] is one: a Vulkan device, a D3D12 device
+    /// and nothing at all are not one thing. What it says is *who makes it* - the renderer does, and the
+    /// backend is told afterwards. The other order, where the runtime makes a device for the renderer to
+    /// adopt, is how an XR layer ends up owning every graphics decision above it.
+    type Device;
     type Session: Session;
 
     /// Connect, which is not the same as running: the session that comes back is `Idle`.
-    fn connect(&self) -> Result<Self::Session, Error>;
+    fn connect(&self, device: Self::Device) -> Result<Self::Session, Error>;
 }
 
 /// A live session.

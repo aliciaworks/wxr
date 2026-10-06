@@ -62,7 +62,10 @@ crates/wxr-render/     the renderer: takes a frame and a device, draws into the 
 apple/                 the Swift half of the Apple backend, which is where RealityKit has to live.
 ```
 
-Only `wxr` exists yet.
+`wxr-openxr` is the first backend, and it is where the core's one architectural decision is cashed in: the
+renderer makes the device and the session is told about it, through `XR_KHR_vulkan_enable`. It compiles and
+reaches a real runtime; `examples/headless.rs` is the proof, and it needs a machine whose runtime is
+running.
 
 ## What `wxr` is now
 
