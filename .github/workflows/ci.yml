@@ -19,10 +19,23 @@ jobs:
     name: host
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+      # The registry and the git checkouts, not `target/` - the same choice revp-rust's CI makes, and it
+      # matters more here: this workspace's wgpu comes from a git fork, so without this every run clones and
+      # rebuilds wgpu. The key is the lock, which is the resolved graph the cache actually holds.
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-host-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-host-cargo-
+
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
@@ -34,11 +47,24 @@ jobs:
     name: wasm32
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
           components: clippy
+      # The registry and the git checkouts, not `target/` - the same choice revp-rust's CI makes, and it
+      # matters more here: this workspace's wgpu comes from a git fork, so without this every run clones and
+      # rebuilds wgpu. The key is the lock, which is the resolved graph the cache actually holds.
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-wasm-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-wasm-cargo-
+
       # The whole workspace, because a host-only crate is empty here and a wasm-only one is not.
       - run: cargo clippy --workspace --all-targets --target wasm32-unknown-unknown -- -D warnings
 
@@ -46,11 +72,24 @@ jobs:
     name: visionos
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-visionos
           components: clippy
+      # The registry and the git checkouts, not `target/` - the same choice revp-rust's CI makes, and it
+      # matters more here: this workspace's wgpu comes from a git fork, so without this every run clones and
+      # rebuilds wgpu. The key is the lock, which is the resolved graph the cache actually holds.
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-visionos-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-visionos-cargo-
+
       # `wxr-apple` alone: it is empty off Apple, and the OpenXR backend is not - it would be built for a
       # platform it has no reason to be on.
       - run: cargo clippy -p wxr-apple --target aarch64-apple-visionos --all-targets -- -D warnings
