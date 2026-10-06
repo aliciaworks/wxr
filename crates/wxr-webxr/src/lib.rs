@@ -50,6 +50,7 @@
 mod gpu;
 mod import;
 mod input;
+mod planes;
 
 pub use import::Images;
 
@@ -135,7 +136,14 @@ impl wxr::Backend for WebXr {
         // `webgpu` is asked for as an *optional* feature: a browser that will not grant it is a browser that
         // renders WebGL, and a required feature that is not there is a session that does not exist at all. What
         // came back is what `gpu::has_feature` asks about before any of the binding is attempted.
-        init.set_optional_features(&[JsValue::from_str("webgpu")]);
+        let mut optional = vec![JsValue::from_str("webgpu")];
+        // Surfaces are asked for in the session that is drawn over the world, which is the only kind that has
+        // them - and as optional, because a browser that will not grant them is a session with no table in it
+        // rather than no session.
+        if mode == wxr::SessionMode::ImmersiveAr {
+            optional.push(JsValue::from_str("plane-detection"));
+        }
+        init.set_optional_features(&optional);
         let requested = self
             .system
             .request_session_with_options(session_mode(mode), &init);
@@ -269,6 +277,9 @@ pub struct WebXrSession {
     sources: input::Sources,
     /// The subscription to the session's six input events, once there is a session to subscribe to.
     input: Option<input::Events>,
+    /// The surfaces this session has seen, for the same reason as the sources: WebXR names one by the object it
+    /// is, and a core plane carries a number.
+    planes: planes::Ids,
     /// The views the frame located, for the layer the compositor would be given.
     located: usize,
     /// The device the app made, kept because a WebXR/WebGPU session needs it: the binding that hands out the
@@ -300,6 +311,7 @@ impl WebXrSession {
             visibility: wxr::Visibility::Hidden,
             sources: input::Sources::new(),
             input: None,
+            planes: planes::Ids::default(),
             located: 0,
             device: Some(device),
             gpu: None,
@@ -816,6 +828,26 @@ impl wxr::Session for WebXrSession {
                 });
             }
         }
+        Ok(())
+    }
+
+    fn planes(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        out: &mut Vec<wxr::Plane>,
+    ) -> Result<(), wxr::Error> {
+        out.clear();
+        let Some(reference) = self
+            .spaces
+            .get(space.id() as usize)
+            .and_then(|slot| slot.borrow().space.clone())
+        else {
+            return Ok(());
+        };
+        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
+            return Ok(());
+        };
+        planes::detected(&frame, &reference, &self.planes, out);
         Ok(())
     }
 

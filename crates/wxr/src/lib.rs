@@ -28,6 +28,7 @@ pub use glam;
 pub mod frame;
 pub mod input;
 pub mod mock;
+pub mod plane;
 pub mod session;
 pub mod space;
 pub mod target;
@@ -36,6 +37,7 @@ pub use frame::{Eye, FieldOfView, Frame, FrameState, View, Viewport};
 pub use input::{
     Axes, Buttons, Hand, HandJoint, Handedness, InputId, InputSource, Joint, TargetRayMode,
 };
+pub use plane::{Plane, PlaneOrientation};
 pub use session::{
     Backend, Blend, Error, Event, Presentation, Session, SessionMode, State, Visibility,
 };

@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use crate::frame::Frame;
 use crate::input::{Hand, InputId, InputSource};
+use crate::plane::Plane;
 use crate::space::{Pose, ReferenceSpace, SpaceKind};
 use crate::target::ImageMeta;
 
@@ -338,6 +339,16 @@ pub trait Session: Any {
         _space: ReferenceSpace,
         out: &mut Hand,
     ) -> Result<(), Error> {
+        out.clear();
+        Ok(())
+    }
+
+    /// Fill in the surfaces the runtime has found, in the space given.
+    ///
+    /// WebXR's `XRFrame.detectedPlanes`, and the same shape a frame's views have: what is detected *this* frame
+    /// rather than a list to keep. Empty for a session that has found none and for a backend that has not been
+    /// taught surfaces - which are the same thing to a caller only asking whether there is a table here.
+    fn planes(&mut self, _space: ReferenceSpace, out: &mut Vec<Plane>) -> Result<(), Error> {
         out.clear();
         Ok(())
     }
