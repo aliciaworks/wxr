@@ -5,7 +5,7 @@
 # boundary have to agree on what those are.
 [workspace]
 resolver = "3"
-members = ["crates/wxr", "crates/wxr-openxr", "crates/wxr-webxr", "crates/wxr-render"]
+members = ["crates/wxr", "crates/wxr-openxr", "crates/wxr-webxr", "crates/wxr-render", "crates/wxr-apple"]
 
 [workspace.package]
 edition = "2024"

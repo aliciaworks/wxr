@@ -24,7 +24,7 @@ impl wxr_render::Import for OpenXrSession {
         meta: wxr::ImageMeta,
         image: &Self::Image,
     ) -> Option<wgpu::Texture> {
-        let format = format(meta.format)?;
+        let format = wxr_render::texture_format(meta.format)?;
         let size = wgpu::Extent3d {
             width: meta.extent.width,
             height: meta.extent.height,
@@ -78,19 +78,5 @@ impl wxr_render::Import for OpenXrSession {
                 wgpu::TextureUses::UNINITIALIZED,
             )
         })
-    }
-}
-
-/// A core colour format as wgpu's.
-///
-/// `None` for a format this renderer has not learned: an image it cannot draw into is a frame it does not
-/// draw, which is better than one drawn in the wrong colour space.
-fn format(format: wxr::ColorFormat) -> Option<wgpu::TextureFormat> {
-    match format {
-        wxr::ColorFormat::Rgba8Srgb => Some(wgpu::TextureFormat::Rgba8UnormSrgb),
-        wxr::ColorFormat::Rgba8Unorm => Some(wgpu::TextureFormat::Rgba8Unorm),
-        wxr::ColorFormat::Rgba16Float => Some(wgpu::TextureFormat::Rgba16Float),
-        wxr::ColorFormat::Rgb10a2Unorm => Some(wgpu::TextureFormat::Rgb10a2Unorm),
-        wxr::ColorFormat::Unknown => None,
     }
 }

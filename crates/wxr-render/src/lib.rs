@@ -16,6 +16,21 @@ pub use projection::{Depth, angles, forward, from_gl, perspective, view};
 
 use wxr::ImageMeta;
 
+/// A core colour format as wgpu's.
+///
+/// `None` for a format this renderer has not learned: an image it cannot draw into is a frame it does not
+/// draw, which is better than one drawn in the wrong colour space. It lives here and not in a backend
+/// because every backend needs the same answer and two copies of it would be two answers.
+pub fn texture_format(format: wxr::ColorFormat) -> Option<wgpu::TextureFormat> {
+    match format {
+        wxr::ColorFormat::Rgba8Srgb => Some(wgpu::TextureFormat::Rgba8UnormSrgb),
+        wxr::ColorFormat::Rgba8Unorm => Some(wgpu::TextureFormat::Rgba8Unorm),
+        wxr::ColorFormat::Rgba16Float => Some(wgpu::TextureFormat::Rgba16Float),
+        wxr::ColorFormat::Rgb10a2Unorm => Some(wgpu::TextureFormat::Rgb10a2Unorm),
+        wxr::ColorFormat::Unknown => None,
+    }
+}
+
 /// How a backend's images become wgpu textures.
 ///
 /// One call per image per session rather than per frame: a compositor's images are made once and presented

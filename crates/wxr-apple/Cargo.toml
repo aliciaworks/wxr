@@ -1,0 +1,17 @@
+[package]
+name = "wxr-apple"
+description = "The Apple backend for wxr: CompositorServices to present, Metal to draw, ARKit for tracking."
+version.workspace = true
+edition.workspace = true
+
+# Apple only, and empty everywhere else, for the same reason `wxr-openxr` is empty on the web: there is no
+# CompositorServices off an Apple platform, and a build machine should not have to know what one is.
+[target.'cfg(target_vendor = "apple")'.dependencies]
+wxr = { path = "../wxr" }
+# The renderer's formats, so that the two backends cannot disagree about what a colour format is.
+wxr-render = { path = "../wxr-render" }
+wgpu = { workspace = true, features = ["metal"] }
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSObject"] }
+objc2-metal = "0.3"
+log = { workspace = true }
