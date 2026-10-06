@@ -67,6 +67,10 @@ async fn setup() {
         Ok(backend) => backend,
         Err(error) => return say(&format!("no WebXR here: {error}")),
     };
+    say(&format!(
+        "browser has the WebXR/WebGPU binding: {}",
+        wxr_webxr::WebXr::gpu_binding()
+    ));
 
     // The device, which the core gives every backend: on this platform it is the page's WebGPU device, and
     // the session is told about it like every other backend's is.

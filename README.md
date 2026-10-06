@@ -143,8 +143,12 @@ three has drawn a frame on real hardware, because none of them has.
 
 ## What is not decided yet
 
-- **WebXR's images.** The binding is not shipped; when it is, `wxr-webxr`'s `Image` becomes a sub-image and
-  the `Import` that wraps it is written beside it, which is the same shape the other two already have.
+- **WebXR's images.** The binding is behind a developer flag rather than unshipped, and the import path is
+  already in wgpu - `Device::create_texture_from_webgpu_handle`, the counterpart of the `texture_from_raw`
+  the other two backends wrap their compositors' images with, and with the same contract. What is missing is
+  one field: a WebGPU-compatible session wants a device from an adapter requested with `xrCompatible: true`,
+  and wgpu's public adapter options have no such option. That is a small upstream change, and it is the whole
+  of what stands between this backend and a picture.
 - **The Apple app.** The Rust half of its entry point is `wxr_apple::entry::run`: connect, pick a space, and
   run frames until the space closes, with a callback for the app's own work. What is left is the SwiftUI file
   around it, its `Info.plist` - `NSWorldSensingUsageDescription` is what ARKit refuses without - and the

@@ -27,6 +27,16 @@
 //! zero times, which is the spec's design and not a bug in anybody's code. And such a session reports
 //! projection matrices in a `0..w` clip depth range instead of WebGL's `-w..w`, so the conversion a WebGL
 //! session needs is the wrong one for it.
+//!
+//! **The import path for those images exists**, which took checking rather than assuming: wgpu 30 has
+//! `Device::create_texture_from_webgpu_handle`, the WebGPU counterpart of the `texture_from_raw` the other
+//! two backends wrap their compositors' images with, and its contract is the same one - same device, a
+//! descriptor that matches, and the handle kept alive for as long as wgpu may use it. What is missing is one
+//! field: a WebGPU-compatible session requires a device made from an adapter requested with
+//! `xrCompatible: true`, and wgpu's public `RequestAdapterOptions` has no such option - its *generated*
+//! options type does, which is what makes it look like it is there. So a wgpu device cannot be handed to
+//! `XRGPUBinding` today, and the images stay the browser's until wgpu exposes it. [`WebXr::gpu_binding`] is
+//! how an app can at least find out whether the browser on the other side of that has one.
 
 #![cfg(target_family = "wasm")]
 
@@ -75,6 +85,16 @@ impl WebXr {
     /// answer - the promise is the answer.
     pub fn is_supported(&self, mode: XrSessionMode) -> js_sys::Promise<js_sys::Boolean> {
         self.system.is_session_supported(mode)
+    }
+
+    /// Whether the page has the WebXR/WebGPU binding at all.
+    ///
+    /// `XRGPUBinding` is in Chromium behind the `webxr-webgpu-binding` flag, so this is a question with two
+    /// answers on the same browser run twice. It says the *browser* could hand over images; it does not say
+    /// this crate can use them, and the module documentation says exactly where that stands - one missing
+    /// field in wgpu's adapter options, and not on this side of the boundary.
+    pub fn gpu_binding() -> bool {
+        js_sys::Reflect::has(&js_sys::global(), &JsValue::from_str("XRGPUBinding")).unwrap_or(false)
     }
 }
 
