@@ -386,6 +386,16 @@ impl wxr::Session for OpenXrSession {
     }
 
     fn begin(&mut self, _now: Duration, out: &mut wxr::Frame) -> Result<(), wxr::Error> {
+        // A runtime is not asked to wait for a frame until the session has been begun. `xrWaitFrame` before
+        // `xrBeginSession` is an error at best, and the event that says to begin arrives on the same poll the
+        // caller is not making while it waits - so waiting on it is a deadlock rather than a frame. A session
+        // that has not begun is a frame to wait for.
+        if !self.begun {
+            out.views_mut().clear();
+            out.state = wxr::FrameState::Wait;
+            return Ok(());
+        }
+
         // The runtime is asked to wait, and it answers with the frame's timing: when the picture will be
         // shown, and whether there is anything to draw at all. `now` is not used - OpenXR's clock is the
         // runtime's, and comparing a wall clock against it is a comparison between two unrelated epochs.
