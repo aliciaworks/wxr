@@ -14,10 +14,19 @@
 //!   `wxr::Session::begin` drains it, and the next one is asked for when the frame is handed back.
 //!
 //! And there is one thing this cannot do at all yet: **images**. WebXR's binding for WebGPU
-//! (`XRGPUBinding`) is not in `web-sys` and not in browsers, and the WebGL one gives a framebuffer that
-//! wgpu cannot draw into. So the session is `wxr::Presentation::Composited` with no images: it hands a
-//! renderer the head, the eyes and the timing, and where the picture goes until the binding ships is the
-//! renderer's own canvas. Saying that plainly is better than an `Image` type that is not one.
+//! (`XRGPUBinding`) is not in `web-sys`, and in a browser it is behind the `webxr-webgpu-binding` flag -
+//! a developer feature that has to be asked for, which *does* work on Linux even though the announcement
+//! named Windows and Android. The WebGL one gives a framebuffer that wgpu cannot draw into. So the session
+//! is `wxr::Presentation::Composited` with no images: it hands a renderer the head, the eyes and the timing,
+//! and where the picture goes until the binding is on by default is the renderer's own canvas. Saying that
+//! plainly is better than an `Image` type that is not one.
+//!
+//! Two things about that binding are worth writing down before it is wired in, because both are surprises.
+//! A WebGPU-compatible session is **layers-only**: `baseLayer` must not be set, and a projection layer made
+//! through `XRGPUBinding` is what a session needs - *without* a layer, `requestAnimationFrame` calls back
+//! zero times, which is the spec's design and not a bug in anybody's code. And such a session reports
+//! projection matrices in a `0..w` clip depth range instead of WebGL's `-w..w`, so the conversion a WebGL
+//! session needs is the wrong one for it.
 
 #![cfg(target_family = "wasm")]
 

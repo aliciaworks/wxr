@@ -12,7 +12,10 @@ Three steps, and each exists for a reason:
   drift apart, and so that the directory served is a build artifact.
 
 It binds to loopback, and a browser needs a WebXR device to hand over: on a desktop that means the
-Immersive Web Emulator extension, loaded with `--load-extension`.
+Immersive Web Emulator extension, loaded with `--load-extension`. Two flags are worth knowing about:
+`--enable-webgpu-developer-features` is *not* the one for WebXR (it is about WebGPU's own developer features),
+and `--enable-features=WebXRWebGPUBinding` *is* - it is what puts `XRGPUBinding` in a page, which is what a
+session would need to have images at all.
 """
 
 import argparse
