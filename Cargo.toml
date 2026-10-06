@@ -1,0 +1,22 @@
+# An XR core.
+#
+# The workspace, and why it is shaped this way, is in the README. What matters here is the one dependency
+# every crate shares: the math, because a pose is a position and an orientation and both sides of every
+# boundary have to agree on what those are.
+[workspace]
+resolver = "3"
+members = ["crates/wxr"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+
+[workspace.dependencies]
+# A pose is not a bevy transform or an OpenXR `XrPosef`; it is a position and an orientation, and the crates
+# that carry one across a boundary should not have to convert between three spellings of that.
+glam = "0.30"
+thiserror = "2"
+log = "0.4"
+
+[profile.dev]
+opt-level = 1

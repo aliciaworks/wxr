@@ -1,0 +1,12 @@
+[package]
+name = "wxr"
+description = "An XR core: what a session is, and nothing about who provides one."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+glam = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+log = { workspace = true }
