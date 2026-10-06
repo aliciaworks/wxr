@@ -194,6 +194,16 @@ struct Inner {
     frame: Option<(XrFrame, Duration)>,
 }
 
+/// One of the frame's images: the colour texture, and the depth buffer the layer gave with it.
+///
+/// They are one thing here because the compositor hands them over as one - both come from the same sub-image -
+/// and because that is what lets an importer answer for both. A layer made without a depth format has no depth
+/// texture, which is why this one is an `Option`: the specification says it is nullable.
+pub struct FrameImage {
+    pub color: JsValue,
+    pub depth: Option<JsValue>,
+}
+
 /// The binding and the layer, which only exist together: a binding with no layer presents nothing.
 struct Gpu {
     binding: gpu::XrGpuBinding,
@@ -218,8 +228,8 @@ pub struct WebXrSession {
     /// The binding and the layer, when the browser gave both. `None` is a session with a head, two eyes and a
     /// clock and no picture - which is what this backend has always been able to be, and says so.
     gpu: Option<Gpu>,
-    /// This frame's colour texture, which both eyes share.
-    texture: Option<JsValue>,
+    /// This frame's image, which both eyes share: one colour texture, and the depth that came with it.
+    image: Option<FrameImage>,
     /// What that texture said about itself, so `images` does not have to ask it twice.
     meta: wxr::ImageMeta,
 }
@@ -235,7 +245,7 @@ impl WebXrSession {
             located: 0,
             device: Some(device),
             gpu: None,
-            texture: None,
+            image: None,
             // `Unknown` rather than the default, because a session with no binding has no format and saying
             // `Rgba8Srgb` would be a plausible size dressed up as a fact - which is the one thing this
             // backend's `images` has always refused to do.
@@ -273,7 +283,10 @@ impl WebXrSession {
                 return;
             }
         };
-        let init = gpu::projection_layer_init(&binding.get_preferred_color_format());
+        let init = gpu::projection_layer_init(
+            &binding.get_preferred_color_format(),
+            gpu::DEPTH_FORMAT_NAME,
+        );
         let layer = match binding.create_projection_layer(&init) {
             Ok(layer) => layer,
             Err(error) => {
@@ -304,10 +317,10 @@ impl WebXrSession {
 }
 
 impl wxr::Session for WebXrSession {
-    /// The browser's `GPUTexture`, which is one texture for both eyes: a WebXR/WebGPU projection layer gives
-    /// a sub-image per view that shares the texture and differs in which part of it the view draws into - so a
-    /// frame here is one image, two viewports, and two array layers when the layer is laid out stereo.
-    type Image = JsValue;
+    /// The browser's `GPUTexture`, and the depth that came with it: a WebXR/WebGPU projection layer gives a
+    /// sub-image per view that shares both and differs only in which part of the colour one the view draws
+    /// into - so a frame here is one image, two viewports, and two array layers when the layer is stereo.
+    type Image = FrameImage;
 
     fn presentation(&self) -> wxr::Presentation {
         wxr::Presentation::Composited
@@ -361,11 +374,11 @@ impl wxr::Session for WebXrSession {
     fn image_count(&self) -> usize {
         // One: both eyes draw into the same texture. Which part of it is a view's business, and a view says so
         // with its viewport and its layer.
-        usize::from(self.texture.is_some())
+        usize::from(self.image.is_some())
     }
 
     fn image(&self, index: usize) -> Option<&Self::Image> {
-        (index == 0).then_some(self.texture.as_ref()).flatten()
+        (index == 0).then_some(self.image.as_ref()).flatten()
     }
 
     fn space(&mut self, kind: wxr::SpaceKind) -> Result<wxr::ReferenceSpace, wxr::Error> {
@@ -447,10 +460,14 @@ impl wxr::Session for WebXrSession {
             let (viewport, layer) = match &self.gpu {
                 Some(gpu) => {
                     let sub = gpu.binding.get_view_sub_image(&gpu.layer, &view);
-                    let texture = sub.color_texture();
+                    let color = sub.color_texture();
+                    let depth = sub.depth_stencil_texture();
                     let viewport = sub.viewport();
-                    self.meta = gpu::image_meta(&texture);
-                    self.texture = Some(texture);
+                    self.meta = gpu::image_meta(&color);
+                    self.image = Some(FrameImage {
+                        color,
+                        depth: (!depth.is_null_or_undefined()).then_some(depth),
+                    });
                     (
                         wxr::Viewport {
                             x: viewport.x().max(0) as u32,

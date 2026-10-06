@@ -35,6 +35,11 @@ pub struct Float4x4(pub [f32; 16]);
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Float4(pub [f32; 4]);
 
+/// `simd_float2`: two floats, eight-byte aligned.
+#[repr(C, align(8))]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Float2(pub [f32; 2]);
+
 /// An ARKit object, as the C API sees it: a reference-counted object whose class this crate never needs to
 /// name. Every `*_create` hands back one of these, and `ar_release` is what gives it back.
 pub type ArSession = *mut c_void;
@@ -82,6 +87,16 @@ unsafe extern "C-unwind" {
     /// The head position and orientation to apply to the frame, which the compositor uses to reproject it
     /// if the prediction the app made turns out to be off.
     pub fn cp_drawable_set_device_anchor(drawable: cp_drawable_t, device_anchor: ArDeviceAnchor);
+
+    /// The near and far planes the app drew with, so that the compositor can use the drawable's own depth
+    /// buffer to reproject the frame.
+    ///
+    /// The pair is a `simd_float2` whose *first* component is the far plane and whose second is the near -
+    /// which reads like a mistake and is not: the depth a `CompositorServices` drawable wants is reverse-Z,
+    /// where nearer is the larger value. Apple's own guide reads the getter's pair the same way round
+    /// (`depth_range[0]` far, `depth_range[1]` near), and a setter that disagreed with its own getter would be
+    /// a trap.
+    pub fn cp_drawable_set_depth_range(drawable: cp_drawable_t, depth_range: Float2);
 }
 
 #[link(name = "ARKit", kind = "framework")]

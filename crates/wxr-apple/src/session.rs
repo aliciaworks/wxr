@@ -84,6 +84,16 @@ impl wxr::Backend for AppleBackend {
     }
 }
 
+/// One of the frame's images: the colour texture, and the depth buffer the compositor gave with it.
+///
+/// They are one thing here because the compositor hands them over as one - both come from the drawable, per
+/// texture index - and because that is what lets an importer answer for both. The depth is the drawable's own,
+/// not one this renderer made, which is the entire difference between submitting depth and keeping it.
+pub struct FrameImage {
+    pub color: Retained<ProtocolObject<dyn MTLTexture>>,
+    pub depth: Retained<ProtocolObject<dyn MTLTexture>>,
+}
+
 /// A live session, with a compositor presenting what the renderer draws.
 pub struct AppleSession {
     renderer: Retained<cp_layer_renderer_t>,
@@ -94,9 +104,12 @@ pub struct AppleSession {
     /// layer's and are given back in `end`.
     frame: cp_frame_t,
     drawable: cp_drawable_t,
-    /// The frame's colour textures, retained while the frame is in flight: the drawable's own reference is
-    /// not ours to keep, and the renderer wraps these between `begin` and `end`.
-    textures: Vec<Retained<ProtocolObject<dyn MTLTexture>>>,
+    /// The frame's images, retained while the frame is in flight: the drawable's own references are not ours
+    /// to keep, and the renderer wraps these between `begin` and `end`.
+    textures: Vec<FrameImage>,
+    /// The near and far planes the app draws with, which the compositor is told each frame so that it can
+    /// reproject with the depth buffer. `None` until an app says - see `set_depth_range`.
+    depth_range: Option<(f32, f32)>,
     /// ARKit, when it came up. `None` means every pose is relative to the wearer's head and there are no
     /// hands.
     arkit: Option<ArKit>,
@@ -130,6 +143,7 @@ impl AppleSession {
             frame: std::ptr::null_mut(),
             drawable: std::ptr::null_mut(),
             textures: Vec::new(),
+            depth_range: None,
             // Tracking that will not start is a head-locked scene, not a session that failed.
             arkit: ArKit::new(),
             configured,
@@ -138,6 +152,16 @@ impl AppleSession {
             reported: wxr::State::Synchronized,
             spaces: 0,
         }
+    }
+
+    /// The near and far planes the scene draws with.
+    ///
+    /// The depth buffer this compositor hands over is only useful to it if it knows what the values in it mean,
+    /// and it cannot read that off the picture - so the app says, in metres. The compositor uses it to
+    /// reproject the frame: when the prediction was off it moves the pixels to where the head turned out to
+    /// be, and depth is what tells it how far each of them is.
+    pub fn set_depth_range(&mut self, near: f32, far: f32) {
+        self.depth_range = Some((near, far));
     }
 
     /// Whether ARKit gave this session a world to put things in, as opposed to one that follows the wearer.
@@ -208,7 +232,7 @@ impl AppleSession {
 }
 
 impl wxr::Session for AppleSession {
-    type Image = Retained<ProtocolObject<dyn MTLTexture>>;
+    type Image = FrameImage;
 
     fn presentation(&self) -> wxr::Presentation {
         wxr::Presentation::Composited
@@ -235,12 +259,13 @@ impl wxr::Session for AppleSession {
         // Before a frame there is only the configuration, and answering with its format rather than with
         // `Unknown` is what lets a caller build its renderer up front. The extent is a frame's to know and is
         // left at zero until then; nothing draws into it before a drawable says how big it is.
-        let Some(texture) = self.textures.first() else {
+        let Some(image) = self.textures.first() else {
             return wxr::ImageMeta {
                 format: self.configured,
                 ..Default::default()
             };
         };
+        let texture = &image.color;
         let (format, width, height, layers) = (
             texture.pixelFormat(),
             texture.width() as u32,
@@ -333,9 +358,16 @@ impl wxr::Session for AppleSession {
                 sys::cp_drawable_set_device_anchor(self.drawable, arkit.anchor());
             }
 
+            // Far first: a `CompositorServices` drawable wants reverse-Z, and its pair is read that way round
+            // - see `sys::cp_drawable_set_depth_range`.
+            if let Some((near, far)) = self.depth_range {
+                sys::cp_drawable_set_depth_range(self.drawable, sys::Float2([far, near]));
+            }
             for index in 0..cp_drawable::texture_count(self.drawable) {
-                self.textures
-                    .push(cp_drawable::color_texture(self.drawable, index));
+                self.textures.push(FrameImage {
+                    color: cp_drawable::color_texture(self.drawable, index),
+                    depth: cp_drawable::depth_texture(self.drawable, index),
+                });
             }
         }
 

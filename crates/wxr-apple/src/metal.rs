@@ -24,16 +24,17 @@ use objc2_metal::{MTLTexture, MTLTextureType};
 /// this workspace has.
 pub unsafe fn texture(
     device: &wgpu::Device,
-    meta: wxr::ImageMeta,
+    format: wgpu::TextureFormat,
+    extent: wxr::Extent2d,
+    layers: u32,
     raw: Retained<ProtocolObject<dyn MTLTexture>>,
 ) -> Option<wgpu::Texture> {
     // Checked, not used: a device that is not Metal is a device this cannot wrap for.
     unsafe { device.as_hal::<wgpu::hal::api::Metal>() }?;
-    let format = wxr_render::texture_format(meta.format)?;
     let size = wgpu::Extent3d {
-        width: meta.extent.width,
-        height: meta.extent.height,
-        depth_or_array_layers: meta.layers,
+        width: extent.width,
+        height: extent.height,
+        depth_or_array_layers: layers,
     };
 
     // SAFETY: the texture is the compositor's and stays valid while the layer does. The retain is this
@@ -45,16 +46,16 @@ pub unsafe fn texture(
             raw,
             format,
             // Two eyes are the two array layers of one texture, which is what a compositor hands over.
-            if meta.layers > 1 {
+            if layers > 1 {
                 MTLTextureType::Type2DArray
             } else {
                 MTLTextureType::Type2D
             },
-            meta.layers,
+            layers,
             1,
             wgpu::hal::CopyExtent {
-                width: meta.extent.width,
-                height: meta.extent.height,
+                width: extent.width,
+                height: extent.height,
                 depth: 1,
             },
             None,

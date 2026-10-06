@@ -70,6 +70,12 @@ extern "C" {
     #[wasm_bindgen(method, getter)]
     pub fn viewport(this: &XrGpuSubImage) -> XrViewport;
 
+    /// The depth buffer for this view, if the layer was made with a depth format - which this session's is.
+    /// It is nullable in the specification, so it is read as a value that may be null rather than as one that
+    /// is there.
+    #[wasm_bindgen(method, getter)]
+    pub fn depth_stencil_texture(this: &XrGpuSubImage) -> JsValue;
+
     /// The descriptor a texture view has to be made with to draw into this view's part of the texture.
     #[wasm_bindgen(method)]
     pub fn get_view_descriptor(this: &XrGpuSubImage) -> JsValue;
@@ -85,14 +91,27 @@ extern "C" {
     fn update_render_state(this: &SessionLayers, state: &JsValue);
 }
 
-/// What `createProjectionLayer` takes: a colour format, which is required, and nothing that is this renderer's
-/// business to choose. The preferred one comes from the binding, and is what the texture will be.
-pub fn projection_layer_init(color_format: &str) -> JsValue {
+/// The WebGPU name of the depth format this workspace draws with.
+///
+/// It is named here because this is where it can be asked for: a projection layer made without a depth format
+/// has no depth texture at all, and one made with another format would hand over depth the renderer's pipeline
+/// cannot be attached to. Asking for this one is what makes the compositor's depth usable instead of a
+/// fallback.
+pub const DEPTH_FORMAT_NAME: &str = "depth32float";
+
+/// What `createProjectionLayer` takes: a colour format, which is required, and a depth format, which is how a
+/// session ends up with depth to submit.
+pub fn projection_layer_init(color_format: &str, depth_format: &str) -> JsValue {
     let init = js_sys::Object::new();
     let _ = js_sys::Reflect::set(
         &init,
         &JsValue::from_str("colorFormat"),
         &JsValue::from_str(color_format),
+    );
+    let _ = js_sys::Reflect::set(
+        &init,
+        &JsValue::from_str("depthStencilFormat"),
+        &JsValue::from_str(depth_format),
     );
     init.into()
 }

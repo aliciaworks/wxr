@@ -13,6 +13,14 @@
 //! The frames are the other half, and they are where the core's [`wxr::Session::Image`] pulls its weight: a
 //! session hands out images the compositor will present and nothing else. The renderer wraps them as `wgpu`
 //! textures; the core carries them and never looks inside.
+//!
+//! **Depth is not submitted, and cannot be through this crate.** A runtime takes an app's depth through
+//! `XR_KHR_composition_layer_depth`, whose `CompositionLayerDepthInfoKHR` is chained onto each projection view -
+//! and `openxr` 0.22 binds neither that structure nor any way to chain one onto a layer: `openxr-sys` has the
+//! raw struct, and the crate's builders do not reach it. Doing it means building the layer through the `sys`
+//! layer and ending the frame through it, which is a piece of work of its own rather than a line here. What it
+//! would buy is what it buys on the other two backends: a compositor that reprojects with depth instead of
+//! guessing.
 
 #![cfg(not(target_family = "wasm"))]
 
