@@ -14,6 +14,11 @@ wgpu = { workspace = true, features = ["vulkan"] }
 # `loaded` (the default) loads the runtime at run time rather than linking it, so this builds on a machine
 # with no XR runtime and says so when it connects.
 openxr = { version = "0.22", default-features = false, features = ["loaded"] }
+# The one raw structure the typed crate keeps to itself: a foveation profile is put on a swapchain with
+# `XR_FB_swapchain_update_state`, whose state struct is crate-private there. Same version as `openxr` depends
+# on, so the handles are the same types - and a bump that broke that would be a compile error, not a subtle
+# one.
+openxr-sys = "0.14"
 thiserror = { workspace = true }
 log = { workspace = true }
 

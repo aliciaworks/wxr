@@ -96,6 +96,10 @@ impl OpenXr {
         // Hand tracking is asked for the same way: a session with no skeleton is a session, and an instance the
         // runtime refuses is not.
         extensions.ext_hand_tracking = supported.ext_hand_tracking;
+        // Foveation is two extensions that go together: one makes a profile, the other puts it on the swapchain
+        // the compositor samples. Both only from a runtime that lists them, like the two above.
+        extensions.fb_foveation = supported.fb_foveation;
+        extensions.fb_swapchain_update_state = supported.fb_swapchain_update_state;
 
         // The loader validates this: an application with no name is not an application it will make an
         // instance for, and that is a real check rather than a formality - a runtime's logs are read by

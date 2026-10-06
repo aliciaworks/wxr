@@ -26,6 +26,15 @@
 //! provider this crate uses *queries* a device anchor, and whether the C surface can *add* one has not been
 //! shown either.
 //!
+//! **Foveation is the one thing this platform has that the core cannot reach, and the reason is `wgpu`.** The
+//! compositor does foveation -
+//! `cp_layer_renderer_capabilities_supports_foveation` says whether, `cp_layer_renderer_configuration_set_foveation_enabled`
+//! turns it on - but it is a *boolean chosen when the layer is configured*, and the drawing it saves comes from
+//! the `MTLRasterizationRateMap` a drawable hands over (`cp_drawable_get_rasterization_rate_map`), which the
+//! app has to attach to the render passes it draws into. `wgpu` has no way to attach one, so a pass drawn by
+//! this workspace's renderer cannot be foveated however the layer is configured - and [`wxr::Session::set_foveation`]
+//! is the core's default here: the choice is the app's and the drawing is the renderer's, not this backend's.
+//!
 //! Tracking is allowed to fail. A refused provider - usually a missing `NSWorldSensingUsageDescription` -
 //! leaves the scene head-locked and the hands absent, both of which still draw, so everything here comes
 //! back as an `Option` rather than as an error to stop a frame over.

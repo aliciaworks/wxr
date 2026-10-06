@@ -53,6 +53,9 @@ pub struct OpenXrSession {
     begun: bool,
     /// Whether `Lost` has been said, so the end of a session is news once.
     lost: bool,
+    /// The foveation profile the app last asked for, kept because the swapchain points at it - dropping it
+    /// would leave the swapchain with a dangling one.
+    foveation: Option<xr::FoveationProfileFB>,
 }
 
 impl OpenXrSession {
@@ -195,6 +198,7 @@ impl OpenXrSession {
             held: None,
             begun: false,
             lost: false,
+            foveation: None,
         })
     }
 }
@@ -223,6 +227,53 @@ impl wxr::Session for OpenXrSession {
             Some(hands) if hands.has_tracking() => wxr::Features::HAND_TRACKING,
             _ => wxr::Features::NONE,
         }
+    }
+
+    fn set_foveation(&mut self, amount: f32) {
+        // `XR_FB_foveation` has four levels rather than a fraction, so an amount becomes the nearest of them.
+        // A runtime that does not list the extension is a runtime that does not foveate, and a profile is
+        // where that is found out - which is a knob left alone rather than a frame to fail.
+        let level = match amount.clamp(0.0, 1.0) {
+            a if a <= 0.0 => xr::FoveationLevelFB::NONE,
+            a if a < 0.34 => xr::FoveationLevelFB::LOW,
+            a if a < 0.67 => xr::FoveationLevelFB::MEDIUM,
+            _ => xr::FoveationLevelFB::HIGH,
+        };
+        let profile = match self
+            .session
+            .create_foveation_profile(Some(xr::FoveationLevelProfile {
+                level,
+                vertical_offset: 0.0,
+                dynamic: xr::FoveationDynamicFB::DISABLED,
+            })) {
+            Ok(profile) => profile,
+            Err(error) => {
+                log::debug!("wxr-openxr: no foveation for {amount}: {error:?}");
+                return;
+            }
+        };
+
+        // The typed crate makes a profile and has no way to put one on a swapchain, so this is the one raw call
+        // in this backend: `xrUpdateSwapchainFB` from `XR_FB_swapchain_update_state`, which is what a profile is
+        // for.
+        let Some(update) = self.instance.exts().fb_swapchain_update_state.as_ref() else {
+            return;
+        };
+        // The typed crate makes a profile and keeps the swapchain state that carries it private, so this is the
+        // one raw structure in this backend. Zeroed is the whole of what it starts as: empty flags, no chain.
+        let mut state: openxr_sys::SwapchainStateFoveationFB = unsafe { std::mem::zeroed() };
+        state.ty = openxr_sys::StructureType::SWAPCHAIN_STATE_FOVEATION_FB;
+        state.profile = profile.as_raw();
+        // SAFETY: the swapchain is live for as long as this session is, and `state` and `profile` outlive the
+        // call - the profile by being kept below, which is what `foveation` is for.
+        let result = unsafe {
+            (update.update_swapchain)(self.swapchain.as_raw(), &state as *const _ as *const _)
+        };
+        if result != openxr_sys::Result::SUCCESS {
+            log::debug!("wxr-openxr: the swapchain would not take foveation {amount}: {result:?}");
+            return;
+        }
+        self.foveation = Some(profile);
     }
 
     fn poll(&mut self) -> Option<wxr::Event> {
