@@ -59,6 +59,7 @@ impl Backend for MockBackend {
             stereo: self.stereo,
             spaces: 0,
             frames: 0,
+            image: 0,
         })
     }
 }
@@ -74,6 +75,10 @@ pub struct MockSession {
     stereo: bool,
     spaces: u32,
     frames: u64,
+    /// The image this frame hands out. It changes every frame because a compositor's handles do - a drawable's
+    /// textures, a swapchain's acquired image - and a mock that handed out one handle forever would let a
+    /// renderer cache it and still look right.
+    image: u32,
 }
 
 impl Session for MockSession {
@@ -110,8 +115,7 @@ impl Session for MockSession {
     }
 
     fn image(&self, index: usize) -> Option<&Self::Image> {
-        const ONLY: u32 = 0;
-        (index == 0).then_some(&ONLY)
+        (index == 0).then_some(&self.image)
     }
 
     fn space(&mut self, kind: SpaceKind) -> Result<ReferenceSpace, Error> {
@@ -126,6 +130,9 @@ impl Session for MockSession {
 
     fn begin(&mut self, now: Duration, out: &mut Frame) -> Result<(), Error> {
         self.frames += 1;
+        // Three, like a swapchain, so that an image is reused before long and a cached one would be visibly
+        // the wrong one.
+        self.image = (self.frames % 3) as u32;
         out.predicted_display_time = now + PREDICTION;
         out.state = match self.state {
             State::Visible | State::Focused => FrameState::Render,

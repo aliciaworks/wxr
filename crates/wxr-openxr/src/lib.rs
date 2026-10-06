@@ -394,7 +394,11 @@ impl wxr::Session for OpenXrSession {
     }
 
     fn image(&self, index: usize) -> Option<&Self::Image> {
-        self.images.get(index)
+        // The image this frame acquired, which is the one the compositor will present - not the first of the
+        // swapchain's, which is a different image on most frames and is not this frame's at all.
+        (index == 0)
+            .then(|| self.images.get(self.held? as usize))
+            .flatten()
     }
 
     fn space(&mut self, kind: wxr::SpaceKind) -> Result<wxr::ReferenceSpace, wxr::Error> {

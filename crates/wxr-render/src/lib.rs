@@ -70,8 +70,10 @@ pub fn depth_state(depth: Depth) -> DepthState {
 
 /// How a backend's images become wgpu textures.
 ///
-/// One call per image per session rather than per frame: a compositor's images are made once and presented
-/// many times, and a renderer that made a texture a frame would be making the same object again and again.
+/// One call per image per *frame*, because a compositor's handle may be: a `CompositorServices` drawable's
+/// textures and a WebXR sub-image's belong to the frame they came with, and OpenXR's is whichever image the
+/// frame acquired. A renderer that kept the first one would draw into a picture the compositor has already
+/// shown, so there is no cache and no assumption - what the session hands over now is what is wrapped now.
 ///
 /// An importer is a **value of its own** rather than the session it belongs to, and that is a constraint
 /// [`Renderer::draw`] puts on it rather than a style: `draw` needs the session mutably - drawing is
@@ -100,8 +102,6 @@ pub trait Import {
 pub struct Renderer {
     /// The colour every eye starts as. A scene draws on top of it.
     clear: wgpu::Color,
-    /// One texture per image the session handed out, made on first use.
-    cache: Vec<Option<wgpu::Texture>>,
     /// What to draw, if anything. A renderer with no scene clears, which is what a frame loop wants to be
     /// able to do while the thing being drawn is still being written.
     scene: Option<scene::Scene>,
@@ -121,7 +121,6 @@ impl Renderer {
                 b: clear[2],
                 a: clear[3],
             },
-            cache: Vec::new(),
             scene: None,
             depth_textures: Vec::new(),
             depth: Depth::default(),
@@ -167,7 +166,6 @@ impl Renderer {
             return Ok(0);
         }
         let meta = session.images();
-        self.cache.resize(session.image_count(), None);
         self.depth_textures.resize(session.image_count(), None);
         let clear_depth = depth_state(self.depth).clear;
 
@@ -176,7 +174,9 @@ impl Renderer {
             let Some(image) = session.image(view.image) else {
                 continue;
             };
-            let Some(texture) = self.cached(device, importer, meta, view.image, image) else {
+            // Wrapped here, per view, per frame: the session's handle for *this* frame is the only one that
+            // can be drawn into, and a cache would make the first frame's textures outlive their frame.
+            let Some(texture) = importer.texture(device, meta, image) else {
                 continue;
             };
             // One layer per eye, which is what the viewport is expressed in.
@@ -263,22 +263,6 @@ impl Renderer {
             *self.depth_textures.get_mut(index)? = Some(texture);
         }
         self.depth_textures[index].as_ref()
-    }
-
-    /// The texture for an image, made once.
-    fn cached<I: Import>(
-        &mut self,
-        device: &wgpu::Device,
-        importer: &I,
-        meta: ImageMeta,
-        index: usize,
-        image: &I::Image,
-    ) -> Option<&wgpu::Texture> {
-        if self.cache.get(index).is_none_or(Option::is_none) {
-            let texture = importer.texture(device, meta, image)?;
-            *self.cache.get_mut(index)? = Some(texture);
-        }
-        self.cache[index].as_ref()
     }
 }
 
@@ -406,6 +390,73 @@ mod tests {
         drop(data);
         readback.unmap();
         pixel
+    }
+
+    /// An importer that remembers the images it was asked to wrap.
+    ///
+    /// Which is how a test can tell a renderer that wraps *this* frame's texture from one that kept the first
+    /// frame's - and the difference is not academic: a compositor recycles its handles, so the first frame's
+    /// texture is, by the third frame, a picture that has already been shown.
+    #[derive(Default)]
+    struct Recording {
+        seen: std::cell::RefCell<Vec<u32>>,
+    }
+
+    impl Import for Recording {
+        type Image = u32;
+
+        fn texture(
+            &self,
+            device: &wgpu::Device,
+            meta: ImageMeta,
+            image: &Self::Image,
+        ) -> Option<wgpu::Texture> {
+            self.seen.borrow_mut().push(*image);
+            Plain.texture(device, meta, image)
+        }
+    }
+
+    #[test]
+    fn every_frame_is_wrapped_from_its_own_image() {
+        let Some((device, queue)) = device() else {
+            return;
+        };
+        let mut session = wxr::mock::MockBackend::default()
+            .connect(())
+            .expect("the mock connects");
+        while let Some(event) = session.poll() {
+            if matches!(event, wxr::Event::StateChanged(wxr::State::Focused)) {
+                break;
+            }
+        }
+        let space = session.space(wxr::SpaceKind::LocalFloor).expect("a floor");
+
+        let recording = Recording::default();
+        let mut renderer = Renderer::new([0.0, 0.0, 0.0, 1.0]);
+        let mut frame = wxr::Frame::default();
+
+        let mut expected = Vec::new();
+        for _ in 0..3 {
+            session.begin(Duration::ZERO, &mut frame).unwrap();
+            session.views(space, &mut frame).unwrap();
+            // What this frame handed over, which is what the renderer has to wrap.
+            for view in frame.views() {
+                expected.push(*session.image(view.image).expect("this frame's image"));
+            }
+            renderer
+                .draw(&device, &queue, &mut session, &recording, &mut frame)
+                .expect("the frame draws");
+        }
+
+        let seen = recording.seen.borrow();
+        assert_eq!(
+            *seen, expected,
+            "every frame's own image rather than the first frame's"
+        );
+        assert!(
+            seen.windows(2).any(|pair| pair[0] != pair[1]),
+            "and the mock hands out a different image each frame, or this would say nothing: {seen:?}"
+        );
     }
 
     #[test]
