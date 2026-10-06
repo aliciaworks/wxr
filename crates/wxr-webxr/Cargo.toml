@@ -1,0 +1,37 @@
+[package]
+name = "wxr-webxr"
+description = "A WebXR backend for wxr, for the browser."
+version.workspace = true
+edition.workspace = true
+
+# Everything is under the target, because on anything but wasm this crate is empty: there is no WebXR
+# outside a browser, and a desktop build should not have to build a browser to know that.
+[target.'cfg(target_family = "wasm")'.dependencies]
+wxr = { path = "../wxr" }
+thiserror = { workspace = true }
+log = { workspace = true }
+wgpu = { workspace = true }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Navigator",
+    "XrSystem",
+    "XrSession",
+    "XrSessionInit",
+    "XrSessionMode",
+    "XrFrame",
+    "XrViewerPose",
+    "XrView",
+    "XrEye",
+    "XrViewport",
+    "XrReferenceSpace",
+    "XrReferenceSpaceType",
+    "XrRigidTransform",
+    "XrPose",
+    # `XrRigidTransform` reports its position and orientation as DOM points.
+    "DomPoint",
+    "DomPointReadOnly",
+    "Event",
+] }

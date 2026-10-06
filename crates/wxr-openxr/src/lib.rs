@@ -14,6 +14,8 @@
 //! session hands out images the compositor will present and nothing else. The renderer wraps them as `wgpu`
 //! textures; the core carries them and never looks inside.
 
+#![cfg(not(target_family = "wasm"))]
+
 mod hal;
 
 use std::time::Duration;

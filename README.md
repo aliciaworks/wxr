@@ -62,6 +62,11 @@ crates/wxr-render/     the renderer: takes a frame and a device, draws into the 
 apple/                 the Swift half of the Apple backend, which is where RealityKit has to live.
 ```
 
+`wxr-webxr` is the other backend, and it is the one that did not fit: WebXR's session, its reference spaces
+and its frames all arrive asynchronously, which is why the core has `State::Connecting` and why a space is
+asked for before it exists. It also cannot give a renderer any images yet - WebXR's WebGPU binding is not in
+`web-sys` and not in browsers - so it hands over the head, the eyes and the timing and says so plainly.
+
 `wxr-openxr` is the first backend, and it is where the core's one architectural decision is cashed in: the
 renderer makes the device and the session is told about it, through `XR_KHR_vulkan_enable`. It compiles and
 reaches a real runtime; `examples/headless.rs` is the proof, and it needs a machine whose runtime is

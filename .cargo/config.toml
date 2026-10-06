@@ -1,0 +1,7 @@
+# Build flags for the browser.
+#
+# `web_sys_unstable_apis` is what `web-sys` puts WebXR behind: the specification is still moving, so its
+# bindings are generated only when this cfg is set. A backend for it cannot be built without saying so
+# here, and it is per-target because nothing else in the workspace wants a browser's unstable surface.
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg", "web_sys_unstable_apis"]

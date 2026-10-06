@@ -16,6 +16,12 @@ pub enum State {
     /// Connected, with no session yet.
     #[default]
     Idle,
+    /// A session has been asked for and is not ready yet.
+    ///
+    /// WebXR is why this exists: its `requestSession` is a promise, and a runtime whose session arrives
+    /// asynchronously cannot be connected to in one call. A backend that has to wait says so and is polled,
+    /// which is the same ladder a session is already climbed by rather than a second mechanism.
+    Connecting,
     /// A session exists and has not been asked to run.
     Ready,
     /// Running, and not yet showing anything.
@@ -39,6 +45,11 @@ impl State {
     /// Whether the session is still worth polling.
     pub fn is_alive(self) -> bool {
         !matches!(self, Self::Ended)
+    }
+
+    /// Whether connecting has finished, one way or the other.
+    pub fn is_connecting(self) -> bool {
+        matches!(self, Self::Connecting)
     }
 }
 
