@@ -609,7 +609,11 @@ impl wxr::Session for OpenXrSession {
 }
 
 impl OpenXrSession {
-    /// OpenXR's own session state, which says more than the core's two axes and is this platform's.
+    /// OpenXR's own session state, which says more than the core's two axes do.
+    ///
+    /// It is the same thing [`wxr::Session::as_backend`] reaches, kept as a method because reaching it is
+    /// common enough here to be worth not spelling out: a program that already has an `OpenXrSession` should
+    /// not have to go through `Any` to ask it what OpenXR says.
     pub fn openxr_state(&self) -> xr::SessionState {
         self.openxr_state
     }

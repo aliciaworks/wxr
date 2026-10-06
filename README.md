@@ -58,6 +58,13 @@ scene the app describes and there is no image to draw into. That is RealityKit, 
 it is a whole platform. A core that assumed the first could only express two thirds of its own diagram. No
 backend here takes the `Scene` arm: RealityKit would mean the platform draws and *our* renderer does not.
 
+Those omissions need a way back, or they are walls rather than seams. `Session::as_backend` is it - the core's
+`as_hal`, for the reason wgpu has one: a program that needs OpenXR's own eight session states, or WebXR's
+`XRGPUBinding`, or a `cp_drawable`, asks for the backend's own type and gets it, and gets `None` on a
+different backend. What it reaches is *not* this API and is free to change between releases; the core's
+vocabulary is what is stable. It is also what lets OpenXR be the backend the native work is really done on
+without letting it become the vocabulary - which stays WebXR's, the smallest of the three.
+
 ## Layout
 
 ```

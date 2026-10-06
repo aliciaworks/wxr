@@ -283,6 +283,30 @@ mod tests {
     }
 
     #[test]
+    fn the_escape_hatch_hands_back_the_backends_own_type() {
+        let mut session = MockBackend::default().connect(()).unwrap();
+
+        // The core's type says one thing...
+        assert_eq!(session.state(), State::Connecting);
+        // ...and the backend's own type is reachable through the seam, which is what a program needs when
+        // the platform has something the core has decided not to say.
+        let same: &MockSession = session
+            .as_backend::<MockSession>()
+            .expect("the mock is this backend");
+        assert_eq!(same.state(), State::Connecting);
+
+        // A different backend's type is `None` - not a panic, and not a lie.
+        assert!(session.as_backend::<MockBackend>().is_none());
+
+        // And the mutable half, which is how an app sets the platform's own knobs.
+        let mutable: &mut MockSession = session
+            .as_backend_mut::<MockSession>()
+            .expect("the mock is this backend");
+        mutable.poll();
+        assert_eq!(session.state(), State::Ready);
+    }
+
+    #[test]
     fn a_frame_has_an_eye_a_side_an_interpupillary_distance_apart() {
         let mut session = running();
         let space = session.space(SpaceKind::LocalFloor).expect("a floor");

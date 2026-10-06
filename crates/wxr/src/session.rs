@@ -1,5 +1,6 @@
 //! A runtime, connected and then running.
 
+use std::any::Any;
 use std::time::Duration;
 
 use crate::frame::Frame;
@@ -158,9 +159,49 @@ pub trait Backend {
 /// one is: a `VkImage` on one, an object that only exists once it is bound to a device on another, and
 /// nothing at all on the third. The renderer's importer is the code that knows which, and it is written per
 /// backend - which is what keeps this trait free of any graphics API's name.
-pub trait Session {
+///
+/// It is [`Any`] for one reason, and it is the same reason [`Session::Image`] is an associated type: the core
+/// is a subset, and a subset has to be able to hand back what it left out. [`Session::as_backend`] is that
+/// seam.
+pub trait Session: Any {
     /// The compositor's own name for an image. Opaque here, on purpose.
     type Image;
+
+    /// The backend's own session, when a program needs the platform the core deliberately does not speak.
+    ///
+    /// This is the core's answer to `wgpu`'s `as_hal` - the same escape hatch, for the same reason. The core
+    /// says exactly what WebXR says and nothing else, which is what lets three unrelated platforms share it;
+    /// the price is that anything only one of them has is not here, so a program that needs OpenXR's own eight
+    /// session states, or WebXR's `XRGPUBinding`, or a `cp_drawable`, needs a way back to the type that does.
+    ///
+    /// What comes back is *not* this API. `None` means "a different backend", and a backend's own types are
+    /// free to change in a way the core's vocabulary is not. Reach for [`Session::visibility`] first, and
+    /// through here only for what the core has decided it will not say.
+    ///
+    /// ```
+    /// use wxr::{Backend as _, Session as _};
+    ///
+    /// let session = wxr::mock::MockBackend::default().connect(()).unwrap();
+    /// // The core's vocabulary...
+    /// assert_eq!(session.state(), wxr::State::Connecting);
+    /// // ...and the backend's own type, when the platform is what matters.
+    /// let mock = session.as_backend::<wxr::mock::MockSession>().unwrap();
+    /// assert_eq!(mock.state(), wxr::State::Connecting);
+    /// ```
+    fn as_backend<T: 'static>(&self) -> Option<&T>
+    where
+        Self: Sized,
+    {
+        (self as &dyn Any).downcast_ref()
+    }
+
+    /// The same, mutably, for the part of a platform a program sets rather than reads.
+    fn as_backend_mut<T: 'static>(&mut self) -> Option<&mut T>
+    where
+        Self: Sized,
+    {
+        (self as &mut dyn Any).downcast_mut()
+    }
 
     fn presentation(&self) -> Presentation;
 
