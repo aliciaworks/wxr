@@ -231,6 +231,8 @@ pub struct OpenXrSession {
     held: Option<u32>,
     /// Whether this session has been begun, which is a thing OpenXR makes the app do once.
     begun: bool,
+    /// Whether `Lost` has been said, so the end of a session is news once.
+    lost: bool,
 }
 
 impl OpenXrSession {
@@ -347,6 +349,7 @@ impl OpenXrSession {
             predicted: xr::Time::from_nanos(0),
             held: None,
             begun: false,
+            lost: false,
         })
     }
 }
@@ -375,17 +378,31 @@ impl wxr::Session for OpenXrSession {
             return Some(event);
         }
 
-        // Events come off the instance, one at a time, and a state change is the one a frame loop acts on.
-        // The rest - an interaction profile changing, an event lost - are the runtime's business for now,
-        // and skipping them is better than inventing a mapping for them.
+        // Events come off the instance, one at a time. A state change is the one a frame loop acts on and a
+        // profile change is the set of inputs changing under it; the rest are the runtime's business, and
+        // skipping them is better than inventing a mapping for them.
         loop {
             match self.instance.poll_event(&mut self.events) {
+                // Which controllers the runtime has bound, which is the set of inputs changing: what they then
+                // *are* is the next frame's answer, from `inputs`.
+                Ok(Some(xr::Event::InteractionProfileChanged(_))) => {
+                    return Some(wxr::Event::InputsChanged);
+                }
                 Ok(Some(xr::Event::SessionStateChanged(event))) => {
                     let openxr = event.state();
                     self.openxr_state = openxr;
                     // OpenXR's ladder is where both of the core's axes are read from, and the interesting
                     // rung is `VISIBLE` without `FOCUSED`: a session on a display that nobody is attending
                     // to, which is exactly WebXR's `visible-blurred`.
+                    // `STOPPING` is the runtime asking the app to end the session rather than the session
+                    // already being over: the one thing `ExitRequested` is for, and the app is expected to
+                    // shut down cleanly rather than have it done for it. The session is still here, so it is
+                    // still `Ready` - just not on a display any more.
+                    if openxr == xr::SessionState::STOPPING {
+                        self.state = wxr::State::Ready;
+                        self.visibility = wxr::Visibility::Hidden;
+                        return Some(wxr::Event::ExitRequested);
+                    }
                     let (state, visibility) = match openxr {
                         xr::SessionState::READY => {
                             // A session runs only after the app has begun it, and only once it is ready -
@@ -409,9 +426,9 @@ impl wxr::Session for OpenXrSession {
                             (wxr::State::Ready, wxr::Visibility::VisibleBlurred)
                         }
                         xr::SessionState::FOCUSED => (wxr::State::Ready, wxr::Visibility::Visible),
-                        xr::SessionState::STOPPING
-                        | xr::SessionState::LOSS_PENDING
-                        | xr::SessionState::EXITING => (wxr::State::Ended, wxr::Visibility::Hidden),
+                        xr::SessionState::LOSS_PENDING | xr::SessionState::EXITING => {
+                            (wxr::State::Ended, wxr::Visibility::Hidden)
+                        }
                         // A state this crate has not learned is not a state to guess at: the session is
                         // still whatever it was, and the next event will say what happened.
                         _ => continue,
@@ -427,10 +444,19 @@ impl wxr::Session for OpenXrSession {
                     continue;
                 }
                 Ok(Some(_)) => continue,
-                Ok(None) => return None,
+                Ok(None) => {
+                    // A session the runtime has taken away is `Lost` once, after the state that said so: a frame
+                    // loop that keeps polling is told the difference between over and gone.
+                    if self.state == wxr::State::Ended && !self.lost {
+                        self.lost = true;
+                        return Some(wxr::Event::Lost);
+                    }
+                    return None;
+                }
                 Err(error) => {
                     log::error!("wxr-openxr: polling events: {error:?}");
                     self.state = wxr::State::Ended;
+                    self.lost = true;
                     return Some(wxr::Event::Lost);
                 }
             }

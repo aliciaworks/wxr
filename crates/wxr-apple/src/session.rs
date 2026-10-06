@@ -132,6 +132,10 @@ pub struct AppleSession {
     /// Where each space sits inside the one it was made from, oldest first: a space at a place in the room is
     /// this much transform, and an offset of an offset has to add up.
     spaces: Vec<wxr::Pose>,
+    /// How many hands were there the last frame, so that the set of inputs changing is news once.
+    hands_seen: usize,
+    /// Whether the set of inputs changed since the last poll, waiting to be said.
+    inputs_changed: bool,
 }
 
 impl AppleSession {
@@ -158,6 +162,8 @@ impl AppleSession {
             predicted: Duration::ZERO,
             reported: (wxr::State::Ready, wxr::Visibility::Hidden),
             spaces: Vec::new(),
+            hands_seen: 0,
+            inputs_changed: false,
         }
     }
 
@@ -278,6 +284,10 @@ impl wxr::Session for AppleSession {
         if visibility != self.reported.1 {
             self.reported.1 = visibility;
             return Some(wxr::Event::VisibilityChanged(visibility));
+        }
+        if self.inputs_changed {
+            self.inputs_changed = false;
+            return Some(wxr::Event::InputsChanged);
         }
         None
     }
@@ -516,7 +526,15 @@ impl wxr::Session for AppleSession {
         // The same space the views are expressed in, for the same reason.
         let origin = self.space_origin(space);
 
-        for (index, (handedness, transform, tracked)) in arkit.hands().into_iter().enumerate() {
+        // Hands are picked up and put down, and that is the set of inputs changing - one event however many
+        // hands it is about, which is the shape WebXR gives `inputsourceschange` too.
+        let hands = arkit.hands();
+        if hands.len() != self.hands_seen {
+            self.hands_seen = hands.len();
+            self.inputs_changed = true;
+        }
+
+        for (index, (handedness, transform, tracked)) in hands.into_iter().enumerate() {
             let pose = wxr_render::pose_from_transform(origin * transform);
             out.push(wxr::InputSource {
                 id: wxr::InputId::new(index as u32),

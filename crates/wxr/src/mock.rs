@@ -288,6 +288,11 @@ impl MockSession {
         self.pending.push_back(Event::SelectEnd(id));
         self.pending.push_back(Event::Select(id));
     }
+
+    /// Pretend something was picked up or put down, which is the set of inputs changing.
+    pub fn inputs_changed(&mut self) {
+        self.pending.push_back(Event::InputsChanged);
+    }
 }
 
 #[cfg(test)]
@@ -377,6 +382,15 @@ mod tests {
         assert_eq!(session.poll(), Some(Event::SelectStart(id)));
         assert_eq!(session.poll(), Some(Event::SelectEnd(id)));
         assert_eq!(session.poll(), Some(Event::Select(id)));
+        assert_eq!(session.poll(), None);
+    }
+
+    #[test]
+    fn the_set_of_inputs_changing_is_an_event_of_its_own() {
+        let mut session = running();
+        while session.poll().is_some() {}
+        session.inputs_changed();
+        assert_eq!(session.poll(), Some(Event::InputsChanged));
         assert_eq!(session.poll(), None);
     }
 

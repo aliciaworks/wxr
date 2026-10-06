@@ -59,6 +59,10 @@ pub struct Events {
     /// allow says.
     #[allow(dead_code)]
     handlers: Vec<Closure<dyn FnMut(XrInputSourceEvent)>>,
+    /// The handler for the set of inputs changing. It carries no source and so is a different type from the six
+    /// above, and it is kept for the same reason.
+    #[allow(dead_code)]
+    changed: Option<Closure<dyn FnMut(web_sys::Event)>>,
 }
 
 impl Events {
@@ -105,7 +109,21 @@ impl Events {
         session.set_onsqueeze(Some(squeeze.as_ref().unchecked_ref()));
         handlers.push(squeeze);
 
-        Self { queue, handlers }
+        // The set of inputs changing carries no source: what changed is asked of the frames that follow, which
+        // is where the sources are - so this one says only that there is news.
+        let changed = {
+            let queue = queue.clone();
+            Closure::wrap(Box::new(move |_: web_sys::Event| {
+                queue.borrow_mut().push_back(wxr::Event::InputsChanged);
+            }) as Box<dyn FnMut(web_sys::Event)>)
+        };
+        session.set_oninputsourceschange(Some(changed.as_ref().unchecked_ref()));
+
+        Self {
+            queue,
+            handlers,
+            changed: Some(changed),
+        }
     }
 
     /// The next event the browser delivered, oldest first.
