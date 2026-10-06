@@ -20,6 +20,8 @@ mod hal;
 mod import;
 mod input;
 
+pub use import::Images;
+
 use std::time::Duration;
 
 use wxr::glam::{Quat, Vec3};

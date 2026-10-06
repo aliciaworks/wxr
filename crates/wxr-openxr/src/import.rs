@@ -10,12 +10,17 @@
 //! image already exists, do not destroy it"; `create_texture_from_hal` is wgpu being told the same thing in
 //! its own terms. Neither makes an image, neither frees one, and the session has to outlive both - which is
 //! the caller's contract, and the reason an OpenXR session is not something a renderer can outlive.
+//!
+//! [`Images`] carries nothing, and that is what the renderer's signature leaves room for: see
+//! [`wxr_render::Import`].
 
 use ash::vk::Handle as _;
 
-use super::OpenXrSession;
+/// The compositor's images, as the renderer's importer.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Images;
 
-impl wxr_render::Import for OpenXrSession {
+impl wxr_render::Import for Images {
     type Image = u64;
 
     fn texture(

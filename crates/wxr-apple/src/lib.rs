@@ -53,4 +53,5 @@ pub mod session;
 pub mod sys;
 
 pub use arkit::ArKit;
+pub use import::Images;
 pub use session::{AppleBackend, AppleSession};

@@ -3,74 +3,100 @@
 An XR core. One vocabulary for a session, and a backend per platform that fills it in:
 
 ```
-                    wxr                     the session, the views, the poses, the images
-                     │
-        ┌────────────┼────────────┐
-        │            │            │
-     OpenXR        WebXR         ARKit            who actually knows where the head is
-        │            │            │
-        └────────────┼────────────┘
-                     │
-                   wxr-render                  the picture, drawn once
-                     │
-                   wgpu
+                     wxr                    the session, the views, the poses, the images
+                      │
+         ┌────────────┼────────────┐
+         │            │            │
+      OpenXR        WebXR      CompositorServices       who knows where the head is
+         │            │        + ARKit (both are C)
+         └────────────┼────────────┘
+                      │
+                   wxr-render               the picture, drawn once
+                      │
+                     wgpu
 ```
 
-Nothing above the renderer names a graphics API, and nothing above `wgpu` creates a device.
+Nothing above the renderer names a graphics API, and the XR layer never makes a device: where the platform
+owns one, wgpu is made to adopt it.
 
 ## The core is small on purpose
 
 A session has a head pose, two eyes with a field of view each, an origin to measure them from, and an image
 at the end that somebody presents. That is the whole of it, and it is **WebXR's** vocabulary, because WebXR
-is the only one of the three that is a specification rather than a vendor's API - OpenXR and RealityKit each
-describe a superset in their own terms, so the smallest of the three is the one that the other two reduce to.
+is the only one of the three that is a specification rather than a vendor's API - OpenXR and the Apple APIs
+each describe a superset in their own terms, so the smallest of the three is the one the other two reduce to.
 
 Three things the core deliberately does not know:
 
 **What a graphics API is.** `Session::Image` is an associated type. OpenXR's images are Vulkan or D3D12
-handles, WebXR's only exist once they are bound to a device, and RealityKit has none at all. A core that
-named one of them would make the other two second-class citizens, so the core carries images and never looks
-inside one. The code that knows how to wrap one is written per backend, next to the backend.
+handles, WebXR's only exist once they are bound to a device, and a compositor's are `MTLTexture`s. A core
+that named one of them would make the other two second-class citizens, so the core carries images and never
+looks inside one. The code that knows how to wrap one is written per backend, next to the backend.
 
-**Who creates the device.** The renderer does, and the backend is told afterwards. This is the inversion
-that the whole design turns on, and it is worth being explicit about why, because the natural order - the
-runtime hands out a device and the renderer adopts it - is how an XR layer ends up dictating the graphics
-API to everything above it.
+**Who creates the device.** The renderer does, and the backend is told afterwards. This is the inversion the
+whole design turns on, and it is worth being explicit about why, because the natural order - the runtime
+hands out a device and the renderer adopts it - is how an XR layer ends up dictating the graphics API to
+everything above it.
 
 - **OpenXR** has two ways to do this. `XR_KHR_vulkan_enable2` has the runtime create `VkInstance` and
-  `VkDevice` for you; `XR_KHR_vulkan_enable` takes an instance and a device that already exist and only
-  needs to be told which physical device and queue you made. The first is the trap: it looks like the polite
-  option, and it makes the XR layer the owner of the device - which means every other graphics decision has
-  to be made through it afterwards. This core is built for the second.
+  `VkDevice` for you; `XR_KHR_vulkan_enable` takes an instance and a device that already exist and only needs
+  to be told which physical device and queue you made. The first is the trap: it looks like the polite
+  option, and it makes the XR layer the owner of the device, which means every other graphics decision has to
+  be made through it afterwards. This core is built for the second.
 - **WebXR** is already the second: the page creates the `GPUDevice`, and the session hands back sub-images
   bound to it.
-- **RealityKit** has no device to offer, which is the next point.
+- **CompositorServices** is the one platform that contradicts it, and honestly: the compositor owns the
+  `MTLDevice`, because the textures it hands out belong to one. So the app makes wgpu adopt that device and
+  hands the session the queue it draws on - which is what `Backend::Device` is for, and why it is an
+  associated type rather than a wgpu device by name.
 
 **That the app renders at all.** `Presentation` is either `Composited` - the app draws into images the
-compositor owns, which is OpenXR and WebXR - or `Scene`, where the platform draws the scene the app
-describes and there is no image to draw into. That is RealityKit, and it is not an edge case; it is a whole
-platform. A core that assumed the first could only express two thirds of its own diagram.
+compositor owns, which is OpenXR, WebXR and CompositorServices - or `Scene`, where the platform draws the
+scene the app describes and there is no image to draw into. That is RealityKit, and it is not an edge case;
+it is a whole platform. A core that assumed the first could only express two thirds of its own diagram. No
+backend here takes the `Scene` arm: RealityKit would mean the platform draws and *our* renderer does not.
 
 ## Layout
 
 ```
-crates/wxr/            the core: session, space, frame, target. No platform code, no graphics API.
-crates/wxr-openxr/     the OpenXR backend. Vulkan first, D3D12 after.
+crates/wxr/            the core: session, space, frame, target, input. No platform code, no graphics API.
+crates/wxr-openxr/     the OpenXR backend, on Vulkan handles that already exist.
 crates/wxr-webxr/      the WebXR backend, for wasm.
-crates/wxr-arkit/      the Apple backend. RealityKit, so `Presentation::Scene`.
+crates/wxr-apple/      the Apple backend: CompositorServices to present, ARKit to track. All of it is C.
 crates/wxr-render/     the renderer: takes a frame and a device, draws into the images.
-apple/                 the Swift half of the Apple backend, which is where RealityKit has to live.
 ```
 
-`wxr-webxr` is the other backend, and it is the one that did not fit: WebXR's session, its reference spaces
-and its frames all arrive asynchronously, which is why the core has `State::Connecting` and why a space is
-asked for before it exists. It also cannot give a renderer any images yet - WebXR's WebGPU binding is not in
-`web-sys` and not in browsers - so it hands over the head, the eyes and the timing and says so plainly.
+There is no `apple/` directory of Swift, and that is a finding rather than an omission - see below.
 
-`wxr-openxr` is the first backend, and it is where the core's one architectural decision is cashed in: the
-renderer makes the device and the session is told about it, through `XR_KHR_vulkan_enable`. It compiles and
-reaches a real runtime; `examples/headless.rs` is the proof, and it needs a machine whose runtime is
-running.
+## The three backends
+
+**`wxr-openxr`** is where the core's one architectural decision is cashed in: the renderer makes the device
+and the session is told about it, through `XR_KHR_vulkan_enable`. Its `Import` is where a `VkImage` meets a
+`wgpu::Texture` (`wgpu-hal`'s `Device::texture_from_raw`, which is why this workspace is on wgpu 30 and not on
+bevy's), its `input` is OpenXR's action sets, and `examples/headless.rs` is the proof that it reaches a real
+runtime - which needs a machine whose runtime is running.
+
+**`wxr-webxr`** is the one that did not fit: WebXR's session, its reference spaces and its frames all arrive
+asynchronously, which is why the core has `State::Connecting` and why a space is asked for before it exists.
+It also cannot give a renderer any images yet - WebXR's WebGPU binding (`XRGPUBinding`) is not in `web-sys`
+and not in browsers - so it hands over the head, the eyes and the timing and says so plainly.
+
+**`wxr-apple`** was going to need a Swift shim, and does not. Two things were learned from Apple's own
+documentation rather than assumed:
+
+- `cp_view_get_transform` and `cp_view_get_tangents` are C functions that `objc2-compositor-services` does
+  not bind, so `sys` declares them from Apple's C guide - which calls both. The eyes do not need Swift.
+- ARKit's visionOS *Swift* API has no Objective-C presence, which is true, and does not mean ARKit is
+  unreachable: "ARKit in visionOS C API" is a complete second surface for C and C++ engines. `arkit` is that
+  session, its world tracking and its hand tracking.
+
+What is left for Swift is the app's own entry - an `ImmersiveSpace` whose `CompositorLayer` closure hands the
+layer renderer over - which is three lines, belongs to the app, and translates nothing. The rest is C: the
+frame loop, the drawable's textures, each view's texture map, and a present encoded into a command buffer of
+its own on wgpu's queue.
+
+One platform fact comes with it: a visionOS drawable's depth is **reverse-Z**, so `Depth::Reverse` is what a
+pass drawn into one uses, and the session says so.
 
 ## What `wxr` is now
 
@@ -82,23 +108,38 @@ The model, the seam, and a mock:
   headset lens is not centred on its panel.
 - `target` - `ImageMeta`, `ColorFormat`, `Extent2d`. The *shape* of the images, not the images.
 - `session` - the `Session` and `Backend` traits, `State`, `Event`, `Presentation`, `Error`.
+- `input` - `InputSource`, `Buttons`, `Axes`. One entry per hand, with a grip pose and an aim pose, because a
+  controller is one thing with two places on it. The buttons are only what all three platforms have, and on a
+  platform with none of them - a hand - they are empty.
 - `mock` - a backend with no runtime behind it, so a renderer can be written against a session before any
   backend exists, and the core can be tested without a headset.
 
+## Verifying it
+
+There is no headset here, so verification is what compiles and what is tested:
+
 ```sh
-cargo test -p wxr
+cargo test                                                  # 27, on the host
+cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --all-targets --target wasm32-unknown-unknown -- -D warnings
+cargo clippy -p wxr-apple --target aarch64-apple-visionos --all-targets -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
+
+Each backend crate is empty outside its own target family - `wxr-openxr` off wasm, `wxr-webxr` off wasm the
+other way, `wxr-apple` off Apple - so a host build tests the core and the renderer and leaves the platforms
+to a cross-compiler. What that does not prove is that any of the three has drawn a frame on real hardware,
+because none of them has.
 
 ## What is not decided yet
 
-- **The image seam.** `Session::Image` is an associated type, which keeps the core honest, but the exact
-  shape of "here is the image, wrap it" is not settled until the first real backend is written against it.
-  A `VkImage` and its memory, an acquired `XRGPUSubImage` and the device it is bound to, and a
-  `CAMetalLayer`'s texture are three different things, and the trait should be whatever all three can be
-  without a cast.
-- **Input.** Sessions have inputs - poses, buttons, hands - and none of it is here yet. It belongs in the
-  core, but its shape should follow whatever OpenXR and WebXR actually agree about rather than being guessed
-  at now.
-- **Where the renderer's device meets OpenXR.** The renderer creates the device and the OpenXR session is
-  told about it, which means the backend needs a step that takes the handles. That step is a trait, and
-  which side it is declared on is the next decision.
+- **WebXR's images.** The binding is not shipped; when it is, `wxr-webxr`'s `Image` becomes a sub-image and
+  the `Import` that wraps it is written beside it, which is the same shape the other two already have.
+- **The Apple app.** The SwiftUI entry and its `Info.plist` are the app's, not the backend's, and until they
+  exist the Apple leg ends at `AppleBackend::new`.
+- **A real scene.** `wxr-render` draws one triangle with no depth buffer and a fixed near and far. A scene
+  with depth is where `Depth` stops being an argument nobody passes, and where the reverse-Z requirement
+  stops being a comment.
+- **Input beyond the intersection.** Gestures, the hand skeleton, foveation and haptics are all real platform
+  features that this core says nothing about on purpose. The day one of them is needed, it is one `cfg` away
+  - and the seam it should come through is worth choosing then rather than now.

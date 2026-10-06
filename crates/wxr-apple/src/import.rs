@@ -5,14 +5,19 @@
 //! the renderer for the reason the renderer is generic over [`wxr::Session::Image`] at all - the renderer
 //! cannot name either platform's image and the core does not know what a graphics API is, so the only place
 //! that can name both ends is the crate that owns one of them.
+//!
+//! [`Images`] is a type with no fields on purpose: see [`wxr_render::Import`] for why an importer is a value
+//! of its own rather than the session, which is a constraint the renderer's signature puts on it.
 
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::MTLTexture;
 
-use super::session::AppleSession;
+/// The compositor's images, as the renderer's importer.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Images;
 
-impl wxr_render::Import for AppleSession {
+impl wxr_render::Import for Images {
     type Image = Retained<ProtocolObject<dyn MTLTexture>>;
 
     fn texture(

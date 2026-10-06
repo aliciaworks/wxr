@@ -40,6 +40,12 @@ pub fn texture_format(format: wxr::ColorFormat) -> Option<wgpu::TextureFormat> {
 ///
 /// One call per image per session rather than per frame: a compositor's images are made once and presented
 /// many times, and a renderer that made a texture a frame would be making the same object again and again.
+///
+/// An importer is a **value of its own** rather than the session it belongs to, and that is a constraint
+/// [`Renderer::draw`] puts on it rather than a style: `draw` needs the session mutably - drawing is
+/// presenting - and the importer at the same time, so a backend that implemented this on its session would
+/// have an importer it could never pass. A backend writes it on a marker type, which is also what makes it
+/// obvious that there is nothing in it: wrapping an image is a function of the image and the device.
 pub trait Import {
     /// The session's own name for an image, which is [`wxr::Session::Image`] on the session this is written
     /// for.
@@ -84,9 +90,18 @@ impl Renderer {
     }
 
     /// A renderer that draws something: a triangle, with each eye's own projection and place.
-    pub fn with_scene(device: &wgpu::Device, format: wgpu::TextureFormat, clear: [f64; 4]) -> Self {
+    ///
+    /// `depth` is the convention the target insists on - [`Depth::ZeroToOne`] everywhere but visionOS, whose
+    /// compositor drawables are reverse-Z. It is an argument rather than a default because drawing into one
+    /// with the wrong convention is a wrong picture rather than a compilation error.
+    pub fn with_scene(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        clear: [f64; 4],
+        depth: Depth,
+    ) -> Self {
         Self {
-            scene: Some(scene::Scene::new(device, format)),
+            scene: Some(scene::Scene::new(device, format, depth)),
             ..Self::new(clear)
         }
     }
@@ -284,6 +299,7 @@ mod tests {
             &device,
             wgpu::TextureFormat::Rgba8UnormSrgb,
             [0.0, 0.0, 0.0, 1.0],
+            Depth::ZeroToOne,
         );
         let drawn = renderer
             .draw(&device, &queue, &mut session, &Plain, &mut frame)

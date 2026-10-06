@@ -56,6 +56,16 @@ impl AppleBackend {
     /// textures it hands out belong to one. So the app takes this and makes wgpu adopt it, and what the
     /// renderer hands to [`connect`](wxr::Backend::connect) is the queue it draws on - which the session
     /// needs, because presenting is committing a command buffer on that same queue.
+    ///
+    /// Handing it to wgpu is a step this crate cannot take for the app, and what is known about it is worth
+    /// writing down rather than leaving to be rediscovered. wgpu's Metal backend enumerates devices with
+    /// `MTLCopyAllDevices`, so on a device with one - which visionOS is - an ordinary `request_adapter` lands
+    /// on this same device and nothing needs adopting. A caller that wants to be certain has
+    /// `wgpu-hal`'s `metal::Adapter::new(&device)`, which is public, and then
+    /// `Instance::create_adapter_from_hal` - which needs a whole `ExposedAdapter`, and the function that
+    /// builds one properly (`AdapterShared::expose`) is private, so its `AdapterInfo` has to be assembled by
+    /// hand. That field is for reporting; the device is the part that matters, and it is the one being handed
+    /// over here.
     pub fn device(&self) -> Retained<ProtocolObject<dyn MTLDevice>> {
         // SAFETY: the layer renderer is live and this crate holds a reference to it.
         unsafe { objc2_compositor_services::cp_layer_renderer_get_device(&self.renderer) }
@@ -117,6 +127,16 @@ impl AppleSession {
     /// Whether ARKit gave this session a world to put things in, as opposed to one that follows the wearer.
     pub fn is_world_tracked(&self) -> bool {
         self.arkit.as_ref().is_some_and(ArKit::is_world_tracked)
+    }
+
+    /// The depth convention a pass drawn into this session's images has to use.
+    ///
+    /// Reverse-Z, because that is the only depth a `CompositorServices` drawable accepts - it is what the
+    /// compositor reprojects against and what its own `cp_drawable_compute_projection` produces. It is asked
+    /// of the session rather than written into the app because the platform is what knows it, which is the
+    /// same reason everything else here is a backend.
+    pub fn depth(&self) -> wxr_render::Depth {
+        wxr_render::Depth::Reverse
     }
 
     /// What the layer is doing, which is the one thing it reports.

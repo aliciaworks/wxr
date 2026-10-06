@@ -45,10 +45,14 @@ pub struct Scene {
     /// runtime reports neither.
     near: f32,
     far: f32,
+    /// Where a projection puts its depth range, which is the target's to insist on rather than the scene's.
+    /// visionOS is why this is here: a pass drawn into a `CompositorServices` drawable has to be reverse-Z,
+    /// and a renderer that had decided otherwise for every platform could not draw on one.
+    depth: Depth,
 }
 
 impl Scene {
-    pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+    pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat, depth: Depth) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("wxr triangle"),
             source: wgpu::ShaderSource::Wgsl(SHADER.into()),
@@ -137,12 +141,13 @@ impl Scene {
             // about the lens. This is the renderer's guess and the day a scene has a floor, it is the scene's.
             near: planes().0,
             far: planes().1,
+            depth,
         }
     }
 
     /// Draw the scene for one eye: its own field of view, its own place, the same triangle.
     pub fn draw(&self, queue: &wgpu::Queue, view: &wxr::View, pass: &mut wgpu::RenderPass<'_>) {
-        let camera = perspective(view.fov, self.near, self.far, Depth::ZeroToOne)
+        let camera = perspective(view.fov, self.near, self.far, self.depth)
             * crate::projection::view(view.pose);
         queue.write_buffer(&self.camera, 0, bytemuck_cast(&camera));
         pass.set_pipeline(&self.pipeline);
