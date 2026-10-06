@@ -47,6 +47,11 @@
 
 #![cfg(target_family = "wasm")]
 
+mod gpu;
+mod import;
+
+pub use import::Images;
+
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -109,7 +114,7 @@ impl wxr::Backend for WebXr {
     type Device = Device;
     type Session = WebXrSession;
 
-    fn connect(&self, _device: Device) -> Result<WebXrSession, wxr::Error> {
+    fn connect(&self, device: Device) -> Result<WebXrSession, wxr::Error> {
         // The session is asked for and *not* waited for: blocking on a promise in a browser is not a thing
         // that can be done, and a `Connecting` session that is polled is the same ladder a session is
         // climbed by anyway.
@@ -119,6 +124,10 @@ impl wxr::Backend for WebXr {
         // asking is a session that was never going to be usable.
         let init = web_sys::XrSessionInit::new();
         init.set_required_features(&[JsValue::from_str("local-floor")]);
+        // `webgpu` is asked for as an *optional* feature: a browser that will not grant it is a browser that
+        // renders WebGL, and a required feature that is not there is a session that does not exist at all. What
+        // came back is what `gpu::has_feature` asks about before any of the binding is attempted.
+        init.set_optional_features(&[JsValue::from_str("webgpu")]);
         let requested = self
             .system
             .request_session_with_options(XrSessionMode::ImmersiveVr, &init);
@@ -135,7 +144,7 @@ impl wxr::Backend for WebXr {
             };
         });
 
-        Ok(WebXrSession::new(result))
+        Ok(WebXrSession::new(result, device.device))
     }
 }
 
@@ -185,6 +194,12 @@ struct Inner {
     frame: Option<(XrFrame, Duration)>,
 }
 
+/// The binding and the layer, which only exist together: a binding with no layer presents nothing.
+struct Gpu {
+    binding: gpu::XrGpuBinding,
+    layer: gpu::XrProjectionLayer,
+}
+
 /// A live WebXR session.
 pub struct WebXrSession {
     inner: Rc<RefCell<Inner>>,
@@ -197,10 +212,20 @@ pub struct WebXrSession {
     state: wxr::State,
     /// The views the frame located, for the layer the compositor would be given.
     located: usize,
+    /// The device the app made, kept because a WebXR/WebGPU session needs it: the binding that hands out the
+    /// textures is built from it, once, when the session arrives.
+    device: Option<wgpu::Device>,
+    /// The binding and the layer, when the browser gave both. `None` is a session with a head, two eyes and a
+    /// clock and no picture - which is what this backend has always been able to be, and says so.
+    gpu: Option<Gpu>,
+    /// This frame's colour texture, which both eyes share.
+    texture: Option<JsValue>,
+    /// What that texture said about itself, so `images` does not have to ask it twice.
+    meta: wxr::ImageMeta,
 }
 
 impl WebXrSession {
-    fn new(connect: Rc<RefCell<Connect>>) -> Self {
+    fn new(connect: Rc<RefCell<Connect>>, device: wgpu::Device) -> Self {
         Self {
             inner: Rc::new(RefCell::new(Inner::default())),
             connect,
@@ -208,7 +233,57 @@ impl WebXrSession {
             spaces: Vec::new(),
             state: wxr::State::Connecting,
             located: 0,
+            device: Some(device),
+            gpu: None,
+            texture: None,
+            // `Unknown` rather than the default, because a session with no binding has no format and saying
+            // `Rgba8Srgb` would be a plausible size dressed up as a fact - which is the one thing this
+            // backend's `images` has always refused to do.
+            meta: wxr::ImageMeta {
+                format: wxr::ColorFormat::Unknown,
+                ..Default::default()
+            },
         }
+    }
+
+    /// Ask for the binding and the layer, and keep them if the browser gives them.
+    ///
+    /// Three things have to be true and only one of them is this crate's to arrange: the session has to have
+    /// come back with the `webgpu` feature, the device has to have been made from an XR-compatible adapter,
+    /// and the browser has to have the binding at all. Any of them missing leaves a session with a head, two
+    /// eyes and a clock and no picture - which is what this backend could already say for itself, so it is a
+    /// warning rather than a failure.
+    fn start_gpu(&mut self, session: &XrSession) {
+        if self.gpu.is_some() || !gpu::has_feature(session, "webgpu") {
+            return;
+        }
+        let Some(device) = &self.device else {
+            return;
+        };
+        let Some(js_device) = device.as_webgpu() else {
+            log::warn!(
+                "wxr-webxr: the device is not a browser WebGPU one, so there are no images to give it"
+            );
+            return;
+        };
+        let binding = match gpu::XrGpuBinding::new(session, js_device.as_ref()) {
+            Ok(binding) => binding,
+            Err(error) => {
+                log::warn!("wxr-webxr: no images: {error:?}");
+                return;
+            }
+        };
+        let init = gpu::projection_layer_init(&binding.get_preferred_color_format());
+        let layer = match binding.create_projection_layer(&init) {
+            Ok(layer) => layer,
+            Err(error) => {
+                log::warn!("wxr-webxr: the browser would not make a projection layer: {error:?}");
+                return;
+            }
+        };
+        gpu::set_layers(session, &layer);
+        log::info!("wxr-webxr: a projection layer, and with it the frames");
+        self.gpu = Some(Gpu { binding, layer });
     }
 
     /// Ask for the next frame, once there is a session to ask.
@@ -229,9 +304,10 @@ impl WebXrSession {
 }
 
 impl wxr::Session for WebXrSession {
-    /// A number the browser's sub-image would have. There is no image yet - see the module docs - and this
-    /// is what a renderer would wrap when there is.
-    type Image = u32;
+    /// The browser's `GPUTexture`, which is one texture for both eyes: a WebXR/WebGPU projection layer gives
+    /// a sub-image per view that shares the texture and differs in which part of it the view draws into - so a
+    /// frame here is one image, two viewports, and two array layers when the layer is laid out stereo.
+    type Image = JsValue;
 
     fn presentation(&self) -> wxr::Presentation {
         wxr::Presentation::Composited
@@ -255,6 +331,9 @@ impl wxr::Session for WebXrSession {
             Connect::Pending => None,
         };
         if let Some(session) = arrived {
+            // Before the frame loop starts, because a WebGPU-compatible session with no layer set is a session
+            // whose animation frames never arrive at all.
+            self.start_gpu(&session);
             self.inner.borrow_mut().session = Some(session);
             self.request_frame();
         }
@@ -273,17 +352,20 @@ impl wxr::Session for WebXrSession {
     }
 
     fn images(&self) -> wxr::ImageMeta {
-        // No image, and saying so with an empty extent rather than a plausible size: a renderer that reads
-        // this and draws anyway has been told the truth.
-        wxr::ImageMeta::default()
+        // Read off the texture the browser handed over, so a session with no binding reports an unknown format
+        // and a zero extent rather than a plausible size: a renderer that reads this and draws anyway has been
+        // told the truth.
+        self.meta
     }
 
     fn image_count(&self) -> usize {
-        0
+        // One: both eyes draw into the same texture. Which part of it is a view's business, and a view says so
+        // with its viewport and its layer.
+        usize::from(self.texture.is_some())
     }
 
-    fn image(&self, _index: usize) -> Option<&Self::Image> {
-        None
+    fn image(&self, index: usize) -> Option<&Self::Image> {
+        (index == 0).then_some(self.texture.as_ref()).flatten()
     }
 
     fn space(&mut self, kind: wxr::SpaceKind) -> Result<wxr::ReferenceSpace, wxr::Error> {
@@ -359,6 +441,28 @@ impl wxr::Session for WebXrSession {
             let Ok(view) = views.get(index).dyn_into::<web_sys::XrView>() else {
                 continue;
             };
+            // What this view draws into. With a layer, a sub-image per view says which part of the one
+            // texture and which array layer - and the texture itself is taken here too, so that `images` has
+            // it by the time the renderer asks.
+            let (viewport, layer) = match &self.gpu {
+                Some(gpu) => {
+                    let sub = gpu.binding.get_view_sub_image(&gpu.layer, &view);
+                    let texture = sub.color_texture();
+                    let viewport = sub.viewport();
+                    self.meta = gpu::image_meta(&texture);
+                    self.texture = Some(texture);
+                    (
+                        wxr::Viewport {
+                            x: viewport.x().max(0) as u32,
+                            y: viewport.y().max(0) as u32,
+                            width: viewport.width().max(0) as u32,
+                            height: viewport.height().max(0) as u32,
+                        },
+                        gpu::base_array_layer(&sub.get_view_descriptor()),
+                    )
+                }
+                None => (wxr::Viewport::default(), 0),
+            };
             out_views.push(wxr::View {
                 eye: match view.eye() {
                     web_sys::XrEye::Left => wxr::Eye::Left,
@@ -367,9 +471,9 @@ impl wxr::Session for WebXrSession {
                 },
                 pose: transform(view.transform()),
                 fov: field_of_view(&view.projection_matrix()),
-                viewport: wxr::Viewport::default(),
+                viewport,
                 image: 0,
-                layer: index,
+                layer,
             });
         }
         self.located = out_views.len();

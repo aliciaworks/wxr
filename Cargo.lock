@@ -1346,6 +1346,7 @@ dependencies = [
  "web-sys",
  "wgpu",
  "wxr",
+ "wxr-render",
 ]
 
 [[package]]

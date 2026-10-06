@@ -8,6 +8,9 @@ edition.workspace = true
 # outside a browser, and a desktop build should not have to build a browser to know that.
 [target.'cfg(target_family = "wasm")'.dependencies]
 wxr = { path = "../wxr" }
+# The importer's trait and the one colour-format mapping, so that this backend cannot disagree with the
+# other two about what a texture is.
+wxr-render = { path = "../wxr-render" }
 thiserror = { workspace = true }
 log = { workspace = true }
 wgpu = { workspace = true }

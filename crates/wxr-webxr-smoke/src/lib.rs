@@ -53,6 +53,8 @@ struct Board {
     space: Option<wxr::ReferenceSpace>,
     drawn: u32,
     ticks: u32,
+    /// The last state reported, so a rung of the ladder is news once.
+    state: wxr::State,
 }
 
 #[wasm_bindgen(start)]
@@ -115,6 +117,7 @@ async fn setup() {
         space: None,
         drawn: 0,
         ticks: 0,
+        state: wxr::State::default(),
     }));
     let ticking = board.clone();
     let interval: Rc<RefCell<Option<i32>>> = Rc::new(RefCell::new(None));
@@ -149,6 +152,19 @@ fn tick(board: &mut Board) {
     board.ticks += 1;
     while let Some(event) = board.session.poll() {
         say(&format!("event: {event:?}"));
+    }
+    // Reported on every rung of the ladder rather than per frame: a session that never reaches `Visible` is
+    // exactly the case this backend has to be honest about, and frames never arrive to say it in.
+    if board.session.state() != board.state {
+        board.state = board.session.state();
+        let meta = board.session.images();
+        say(&format!(
+            "state {:?}: {} image(s), {:?} at {:?}",
+            board.state,
+            board.session.image_count(),
+            meta.format,
+            meta.extent
+        ));
     }
 
     if board.space.is_none() && board.session.state().can_render() {
@@ -196,7 +212,11 @@ fn tick(board: &mut Board) {
         say(&format!("end failed: {error}"));
     }
     board.drawn += 1;
-    say(&format!("frame {} drawn", board.drawn));
+    say(&format!(
+        "frame {} drawn ({} image(s) this session hands over)",
+        board.drawn,
+        board.session.image_count()
+    ));
 }
 
 #[cfg(not(target_family = "wasm"))]
