@@ -17,6 +17,13 @@
 //! place and an orientation, and its `aim` is its `grip` - see `session`'s `inputs`. A game that needs a
 //! pinch wants the Swift `HandAnchor.Skeleton`, which means the app, which is where gestures belong anyway.
 //!
+//! **Surfaces are not reported, and the reason is the header rather than a choice.** ARKit has a plane
+//! provider; whether it is on the C surface this crate uses cannot be settled from here, because every
+//! declaration in [`crate::sys`] is transcribed from Apple's C header or Apple's own C guide and neither is in
+//! hand. A guessed signature is a wrong ABI at run time rather than a compile error, which is the one kind of
+//! mistake this file cannot afford - so [`wxr::Session::planes`] is the core's default here, a session with no
+//! surfaces, until the header says otherwise.
+//!
 //! Tracking is allowed to fail. A refused provider - usually a missing `NSWorldSensingUsageDescription` -
 //! leaves the scene head-locked and the hands absent, both of which still draw, so everything here comes
 //! back as an `Option` rather than as an error to stop a frame over.

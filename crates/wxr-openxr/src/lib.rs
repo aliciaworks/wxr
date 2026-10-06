@@ -22,6 +22,14 @@
 //! would buy is what it buys on the other two backends: a compositor that reprojects with depth instead of
 //! guessing. It is also why `set_depth_range` is the core's default no-op here rather than an override that
 //! stores the planes: there is nothing to submit them with, and a field nothing reads is a field that lies.
+//!
+//! **Surfaces are not detected either, and here it is a raw API rather than a missing one.**
+//! `XR_EXT_plane_detection` is the extension that would do it, and the crate does load its function pointers -
+//! `raw::PlaneDetectionEXT`, reachable through `instance.exts()` - but there is no typed wrapper around them:
+//! the app drives the state machine itself (begin, poll until `DONE`, read into a buffer it owns, begin again)
+//! over `openxr-sys` structs and raw pointers. That is a piece of work of its own, and an untested one, because
+//! Monado has no plane detection to test it against - so `planes` is the core's default, a session with no
+//! surfaces, until it is done.
 
 #![cfg(not(target_family = "wasm"))]
 
