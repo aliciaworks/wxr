@@ -10,6 +10,7 @@
 //! place that can name both a `VkImage` and a `wgpu::Texture` without either crate depending on the other.
 
 pub mod projection;
+pub mod scene;
 
 pub use projection::{Depth, angles, forward, from_gl, perspective, view};
 
@@ -39,10 +40,13 @@ pub trait Import {
 
 /// Draws a frame into whatever the session says the picture goes into.
 pub struct Renderer {
-    /// The colour to clear every eye to, which is all a first renderer draws. A scene goes here.
+    /// The colour every eye starts as. A scene draws on top of it.
     clear: wgpu::Color,
     /// One texture per image the session handed out, made on first use.
     cache: Vec<Option<wgpu::Texture>>,
+    /// What to draw, if anything. A renderer with no scene clears, which is what a frame loop wants to be
+    /// able to do while the thing being drawn is still being written.
+    scene: Option<scene::Scene>,
 }
 
 impl Renderer {
@@ -55,6 +59,15 @@ impl Renderer {
                 a: clear[3],
             },
             cache: Vec::new(),
+            scene: None,
+        }
+    }
+
+    /// A renderer that draws something: a triangle, with each eye's own projection and place.
+    pub fn with_scene(device: &wgpu::Device, format: wgpu::TextureFormat, clear: [f64; 4]) -> Self {
+        Self {
+            scene: Some(scene::Scene::new(device, format)),
+            ..Self::new(clear)
         }
     }
 
@@ -102,7 +115,7 @@ impl Renderer {
             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("wxr frame"),
             });
-            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("wxr eye"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &layer,
@@ -120,6 +133,10 @@ impl Renderer {
                 // renderer that does can say so.
                 ..Default::default()
             });
+            if let Some(scene) = &self.scene {
+                scene.draw(queue, view, &mut pass);
+            }
+            drop(pass);
             queue.submit(Some(encoder.finish()));
             drawn += 1;
         }
@@ -142,5 +159,115 @@ impl Renderer {
             *self.cache.get_mut(index)? = Some(texture);
         }
         self.cache[index].as_ref()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+    use wxr::{Backend as _, Session as _};
+
+    /// An importer for the mock, whose images are numbers: this makes a plain texture in their place, so the
+    /// test is about the renderer's loop and not about anyone's compositor.
+    struct Plain;
+
+    impl Import for Plain {
+        type Image = u32;
+
+        fn texture(
+            &self,
+            device: &wgpu::Device,
+            meta: ImageMeta,
+            _image: &Self::Image,
+        ) -> Option<wgpu::Texture> {
+            Some(device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("test eye"),
+                size: wgpu::Extent3d {
+                    width: meta.extent.width,
+                    height: meta.extent.height,
+                    depth_or_array_layers: meta.layers,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            }))
+        }
+    }
+
+    /// A headless device, or `None` on a machine that has no GPU at all - a test is not the place to fail
+    /// over that, and the renderer is not what would be wrong.
+    fn device() -> Option<(wgpu::Device, wgpu::Queue)> {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .ok()?;
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("wxr-render test"),
+            ..Default::default()
+        }))
+        .ok()
+    }
+
+    #[test]
+    fn a_frame_with_two_eyes_draws_twice_and_presents() {
+        let Some((device, queue)) = device() else {
+            return;
+        };
+
+        // The mock is what makes this a test of the renderer rather than of a headset: it is a session with
+        // two eyes and an image, and the renderer cannot tell it from any other.
+        let mut session = wxr::mock::MockBackend::default()
+            .connect(())
+            .expect("the mock connects");
+        while let Some(event) = session.poll() {
+            if matches!(event, wxr::Event::StateChanged(wxr::State::Focused)) {
+                break;
+            }
+        }
+        let space = session.space(wxr::SpaceKind::LocalFloor).expect("a floor");
+
+        let mut frame = wxr::Frame::default();
+        session.begin(Duration::ZERO, &mut frame).expect("a frame");
+        session.views(space, &mut frame).expect("views");
+        assert_eq!(frame.views().len(), 2, "the mock presents two eyes");
+
+        let mut renderer = Renderer::new([0.1, 0.1, 0.1, 1.0]);
+        let drawn = renderer
+            .draw(&device, &queue, &mut session, &Plain, &mut frame)
+            .expect("the frame draws");
+        assert_eq!(drawn, 2, "one pass per eye");
+    }
+
+    #[test]
+    fn a_triangle_is_drawn_with_each_eye_own_projection() {
+        let Some((device, queue)) = device() else {
+            return;
+        };
+        let mut session = wxr::mock::MockBackend::default().connect(()).unwrap();
+        while let Some(event) = session.poll() {
+            if matches!(event, wxr::Event::StateChanged(wxr::State::Focused)) {
+                break;
+            }
+        }
+        let space = session.space(wxr::SpaceKind::LocalFloor).unwrap();
+        let mut frame = wxr::Frame::default();
+        session.begin(Duration::ZERO, &mut frame).unwrap();
+        session.views(space, &mut frame).unwrap();
+
+        // The scene is what makes the projection arithmetic load-bearing: without it the frame would be a
+        // clear, and a clear passes whatever matrix it is given.
+        let mut renderer = Renderer::with_scene(
+            &device,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            [0.0, 0.0, 0.0, 1.0],
+        );
+        let drawn = renderer
+            .draw(&device, &queue, &mut session, &Plain, &mut frame)
+            .expect("the frame draws");
+        assert_eq!(drawn, 2);
     }
 }

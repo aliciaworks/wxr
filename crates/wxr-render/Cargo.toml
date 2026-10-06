@@ -9,3 +9,8 @@ wxr = { path = "../wxr" }
 # On both families: the arithmetic is the same everywhere, and a browser draws with the same wgpu.
 wgpu = { workspace = true }
 log = { workspace = true }
+
+# The test makes a real device to draw into, and the test is a test because the renderer's whole job is
+# "does a frame reach an image" - which is not a thing to assert about a type.
+[dev-dependencies]
+pollster = "1"

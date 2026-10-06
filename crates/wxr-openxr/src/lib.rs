@@ -468,7 +468,7 @@ impl wxr::Session for OpenXrSession {
         let Some(reference) = self.spaces.get(space.id() as usize) else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
-        hands.read(reference, self.predicted, out);
+        hands.read(&self.session, reference, self.predicted, out);
         Ok(())
     }
 

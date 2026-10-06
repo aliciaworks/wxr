@@ -4,9 +4,11 @@
 //! common - and what a core can say without knowing which it is - is *where it is* and *what it is pointed
 //! at*, which is why a source is a pair of poses rather than a device.
 //!
-//! Buttons are not here yet. They are the half that differs most between the three platforms - OpenXR has
-//! action sets and bindings, WebXR has gamepads and profiles, RealityKit has gestures - and a shape guessed
-//! now would be a shape to break later. Poses do not differ, so they are the half that is.
+//! Buttons are the other half, and they *do* differ: OpenXR has action sets and bindings, WebXR has a
+//! gamepad with an `xr-standard` button order, RealityKit has gestures. What is left after the naming is
+//! subtracted is small - a main button, a grip, a stick, and how far a trigger is pulled - so that is what
+//! this says, and nothing more. A game that needs the rest needs the platform, and the platform is one
+//! `cfg` away.
 
 use crate::space::Pose;
 
@@ -20,27 +22,42 @@ pub enum Handedness {
     Unknown,
 }
 
-/// Which of a source's two poses is wanted.
-///
-/// They point in different directions on purpose: a grip is where the hand is, and an aim is where the
-/// thing in it is pointed - a sword and a laser pointer are the same grip and different aims.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum Grip {
-    /// Where the user is holding it.
-    #[default]
-    Grip,
-    /// Where it is pointed.
-    Aim,
+/// The buttons every one of the three has, under whatever name.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub struct Buttons {
+    /// The main one: `select` in OpenXR, the trigger of an `xr-standard` gamepad, a tap on a phone.
+    pub select: bool,
+    /// The grip: a squeeze in OpenXR, the second gamepad button, a grip gesture.
+    pub squeeze: bool,
+    /// A menu or system button. Not a game's to bind on every platform - a system button may belong to the
+    /// system - and worth reporting when it exists rather than pretending it does not.
+    pub menu: bool,
+}
+
+/// How far the analogue things are pushed.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub struct Axes {
+    /// How far the trigger is pulled, `0..=1`.
+    pub trigger: f32,
+    /// The thumbstick or touchpad, `-1..=1`, with `y` up.
+    pub thumbstick: glam::Vec2,
 }
 
 /// One thing the user is holding, as far as this frame knows.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct InputSource {
     pub handedness: Handedness,
-    pub grip: Grip,
     /// In whichever reference space the sources were asked for.
-    pub pose: Pose,
+    ///
+    /// Two poses and not one, because a controller is one thing with two places on it: a grip is where it is
+    /// held and an aim is where it points, and they differ on purpose - a sword and a laser pointer are the
+    /// same grip and different aims. WebXR models it the same way, with a grip space and a target ray space,
+    /// which is where this shape comes from.
+    pub grip: Pose,
+    pub aim: Pose,
     /// Whether the runtime is tracking it. An untracked controller is still a controller, and a game that
     /// forgets that teleports the player's hand to the origin.
     pub tracked: bool,
+    pub buttons: Buttons,
+    pub axes: Axes,
 }

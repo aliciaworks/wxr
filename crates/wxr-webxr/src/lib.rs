@@ -336,6 +336,11 @@ impl wxr::Session for WebXrSession {
             return Ok(());
         };
 
+        // A gamepad is the `xr-standard` mapping, which is a specification of its own and is what makes
+        // the button order below mean anything: the trigger first, the squeeze second, the stick's click
+        // fourth, and the stick's two axes after the touchpad's. A profile that does not follow it is a
+        // profile this reads the wrong way - which is a thing the gamepad's own `mapping` says, and a thing
+        // to handle the day one shows up.
         let sources = session.input_sources();
         for index in 0..sources.length() {
             let Some(source) = sources.get(index) else {
@@ -346,23 +351,50 @@ impl wxr::Session for WebXrSession {
                 web_sys::XrHandedness::Right => wxr::Handedness::Right,
                 _ => wxr::Handedness::Unknown,
             };
-            // The grip if the runtime has one - a controller one can be held - and the aim otherwise: a
-            // gaze cursor has a ray and nothing to hold.
-            let (grip, space) = match source.grip_space() {
-                Some(space) => (wxr::Grip::Grip, space),
-                None => (wxr::Grip::Aim, source.target_ray_space()),
+
+            let grip = source
+                .grip_space()
+                .and_then(|space| frame.get_pose(&space, reference.unchecked_ref()));
+            let aim = frame.get_pose(&source.target_ray_space(), reference.unchecked_ref());
+
+            let gamepad = source.gamepad();
+            let button = |index: u32| {
+                gamepad.as_ref().and_then(|gamepad| {
+                    gamepad
+                        .buttons()
+                        .get(index)
+                        .dyn_into::<web_sys::GamepadButton>()
+                        .ok()
+                })
             };
-            // An untracked source is still a source, and reporting it as untracked is the difference between
-            // a hand that is not moving and a hand that is not there.
-            let pose = frame.get_pose(&space, reference.unchecked_ref());
-            let tracked = pose.is_some();
+            let axis = |index: u32| {
+                gamepad
+                    .as_ref()
+                    .and_then(|gamepad| gamepad.axes().get(index).as_f64())
+                    .unwrap_or(0.0) as f32
+            };
+
+            // A source with no grip pose is an aim and nothing to hold - a gaze cursor - and it is not
+            // untracked: it has a direction, and the direction is the whole of it.
+            let tracked = grip.is_some() || aim.is_some();
             out.push(wxr::InputSource {
                 handedness,
-                grip,
-                pose: pose
+                grip: grip
+                    .map(|pose| transform(pose.transform()))
+                    .unwrap_or(wxr::Pose::IDENTITY),
+                aim: aim
                     .map(|pose| transform(pose.transform()))
                     .unwrap_or(wxr::Pose::IDENTITY),
                 tracked,
+                buttons: wxr::Buttons {
+                    select: button(0).is_some_and(|button| button.pressed()),
+                    squeeze: button(1).is_some_and(|button| button.pressed()),
+                    menu: button(3).is_some_and(|button| button.pressed()),
+                },
+                axes: wxr::Axes {
+                    trigger: button(0).map(|button| button.value() as f32).unwrap_or(0.0),
+                    thumbstick: wxr::glam::Vec2::new(axis(2), axis(3)),
+                },
             });
         }
         Ok(())
