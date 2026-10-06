@@ -28,15 +28,22 @@
 //! projection matrices in a `0..w` clip depth range instead of WebGL's `-w..w`, so the conversion a WebGL
 //! session needs is the wrong one for it.
 //!
-//! **The import path for those images exists**, which took checking rather than assuming: wgpu 30 has
-//! `Device::create_texture_from_webgpu_handle`, the WebGPU counterpart of the `texture_from_raw` the other
-//! two backends wrap their compositors' images with, and its contract is the same one - same device, a
-//! descriptor that matches, and the handle kept alive for as long as wgpu may use it. What is missing is one
-//! field: a WebGPU-compatible session requires a device made from an adapter requested with
-//! `xrCompatible: true`, and wgpu's public `RequestAdapterOptions` has no such option - its *generated*
-//! options type does, which is what makes it look like it is there. So a wgpu device cannot be handed to
-//! `XRGPUBinding` today, and the images stay the browser's until wgpu exposes it. [`WebXr::gpu_binding`] is
-//! how an app can at least find out whether the browser on the other side of that has one.
+//! The explainer's three steps, for whoever wires this up, are: `new XRGPUBinding(session, device)`,
+//! `binding.createProjectionLayer({ colorFormat: binding.getPreferredColorFormat() })`, and
+//! `session.updateRenderState({ layers: [layer] })` - after which a frame's `binding.getViewSubImage(layer,
+//! view)` answers with the **same** colour and depth textures for both eyes and a *per-view* texture view
+//! descriptor and viewport. That last part is the same shape the core already carries: `View::viewport` is
+//! exactly what a sub-image reports, and the two eyes are views of one texture rather than two textures.
+//!
+//! **The import path for those images exists, and so does the history of why it does not work yet.** wgpu's
+//! ["Add WebGPU backend interop for WebXR integration"](https://github.com/gfx-rs/wgpu/pull/9350) set out to
+//! add three things and landed two: `Device::as_webgpu` and `Device::create_texture_from_webgpu_handle` - both
+//! in the wgpu this workspace is on - while `RequestAdapterOptions::xr_compatible` was dropped for being a
+//! breaking change to a public struct. Without that field a wgpu device cannot be an XR-compatible one, so it
+//! cannot be given to `XRGPUBinding`, and the images stay the browser's. It is a known and agreed gap rather
+//! than a mystery: wgpu's [issue #8329](https://github.com/gfx-rs/wgpu/issues/8329) is where the shape of the
+//! fix was settled - forward the flag on the web, ignore it on native. [`WebXr::gpu_binding`] is what an app
+//! can ask in the meantime, and the three things a session will need are written down above.
 
 #![cfg(target_family = "wasm")]
 
