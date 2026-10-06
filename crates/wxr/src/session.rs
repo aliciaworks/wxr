@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use glam::Vec2;
 
+use crate::depth::DepthInfo;
 use crate::frame::Frame;
 use crate::hit::{Hit, HitTestSource};
 use crate::input::{Hand, InputId, InputSource};
@@ -408,6 +409,22 @@ pub trait Session: Any {
     fn light(&mut self, _probe: LightProbe, out: &mut LightEstimate) -> Result<(), Error> {
         *out = LightEstimate::default();
         Ok(())
+    }
+
+    /// What the runtime measured of the real world for the view at `index`, which is WebXR's
+    /// `XRFrame.getDepthInformation`.
+    ///
+    /// `None` for a runtime with no depth sensing, for a view it has none for, and for one that has paused it -
+    /// which are the same answer to a caller asking how far away the wall is. Read it in the same frame the
+    /// views were: a depth buffer is about *that* frame's eyes.
+    fn depth(&mut self, _view: usize) -> Result<Option<DepthInfo>, Error> {
+        Ok(None)
+    }
+
+    /// How far away the real world is through the view at `index`, at normalized view coordinates `(x, y)` in
+    /// `0..=1` - the convenience over finding the pixel and scaling it yourself.
+    fn depth_at(&mut self, _view: usize, _x: f32, _y: f32) -> Result<Option<f32>, Error> {
+        Ok(None)
     }
 
     /// Hand the frame back for the compositor to present.

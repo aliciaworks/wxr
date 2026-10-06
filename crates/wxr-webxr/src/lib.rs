@@ -47,6 +47,7 @@
 
 #![cfg(target_family = "wasm")]
 
+mod depth;
 mod gpu;
 mod hit;
 mod import;
@@ -66,7 +67,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
     XrFrame, XrHandJoint, XrReferenceSpace, XrReferenceSpaceType, XrRigidTransform, XrSession,
-    XrSessionMode,
+    XrSessionMode, XrView,
 };
 
 use wxr::glam::{Quat, Vec3};
@@ -148,8 +149,31 @@ impl wxr::Backend for WebXr {
             optional.push(JsValue::from_str("plane-detection"));
             optional.push(JsValue::from_str("hit-test"));
             optional.push(JsValue::from_str("light-estimation"));
+            optional.push(JsValue::from_str("depth-sensing"));
         }
         init.set_optional_features(&optional);
+        // Depth arrives as an `ArrayBuffer` per view under `cpu-optimized`, which is the one a WebGPU session
+        // can read without a renderer to import a texture - so that is what is asked for, in the format that
+        // needs no unpacking. `depth-sensing` as a feature is not enough: the specification wants this key
+        // beside it whenever the feature is granted.
+        if mode == wxr::SessionMode::ImmersiveAr {
+            let sensing = js_sys::Object::new();
+            let _ = js_sys::Reflect::set(
+                &sensing,
+                &JsValue::from_str("usagePreference"),
+                &js_sys::Array::of1(&JsValue::from_str("cpu-optimized")),
+            );
+            let _ = js_sys::Reflect::set(
+                &sensing,
+                &JsValue::from_str("dataFormatPreference"),
+                &js_sys::Array::of1(&JsValue::from_str("float32")),
+            );
+            let _ = js_sys::Reflect::set(
+                init.unchecked_ref::<JsValue>(),
+                &JsValue::from_str("depthSensing"),
+                &sensing,
+            );
+        }
         let requested = self
             .system
             .request_session_with_options(session_mode(mode), &init);
@@ -295,6 +319,8 @@ pub struct WebXrSession {
     hit_sources: Vec<Rc<RefCell<hit::Slot>>>,
     /// The light probes this session has asked for, each empty until the browser answers.
     light_probes: Vec<Rc<RefCell<light::Slot>>>,
+    /// This frame's views, kept because depth is asked for one of them by object and not by index.
+    frame_views: Vec<XrView>,
     /// Reference-space `reset` events, which arrive on a space rather than on the session and are passed on
     /// from here.
     reset: Rc<RefCell<VecDeque<wxr::Event>>>,
@@ -332,6 +358,7 @@ impl WebXrSession {
             planes: planes::Ids::default(),
             hit_sources: Vec::new(),
             light_probes: Vec::new(),
+            frame_views: Vec::new(),
             reset: Rc::new(RefCell::new(VecDeque::new())),
             located: 0,
             device: Some(device),
@@ -653,6 +680,8 @@ impl wxr::Session for WebXrSession {
     fn begin(&mut self, _now: Duration, out: &mut wxr::Frame) -> Result<(), wxr::Error> {
         out.views_mut().clear();
         self.located = 0;
+        // Last frame's views are not this frame's, and a depth buffer is about *that* frame's eyes.
+        self.frame_views.clear();
 
         // The frame is whatever the last callback left behind, and the clock is the callback's own: WebXR
         // has no other.
@@ -697,9 +726,12 @@ impl wxr::Session for WebXrSession {
         let views = pose.views();
         let out_views = out.views_mut();
         for index in 0..views.length() {
-            let Ok(view) = views.get(index).dyn_into::<web_sys::XrView>() else {
+            let Ok(view) = views.get(index).dyn_into::<XrView>() else {
                 continue;
             };
+            // Kept as the browser's own object, because `getDepthInformation` is asked one of these and not an
+            // index into anything this core has.
+            self.frame_views.push(view.clone());
             // What this view draws into. With a layer, a sub-image per view says which part of the one
             // texture and which array layer - and the texture itself is taken here too, so that `images` has
             // it by the time the renderer asks.
@@ -1016,6 +1048,26 @@ impl wxr::Session for WebXrSession {
         };
         light::estimate(&frame, &probe, out);
         Ok(())
+    }
+
+    fn depth(&mut self, view: usize) -> Result<Option<wxr::DepthInfo>, wxr::Error> {
+        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
+            return Ok(None);
+        };
+        let Some(view) = self.frame_views.get(view) else {
+            return Ok(None);
+        };
+        Ok(depth::info(&frame, view))
+    }
+
+    fn depth_at(&mut self, view: usize, x: f32, y: f32) -> Result<Option<f32>, wxr::Error> {
+        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
+            return Ok(None);
+        };
+        let Some(view) = self.frame_views.get(view) else {
+            return Ok(None);
+        };
+        Ok(depth::at(&frame, view, x, y))
     }
 
     fn end(&mut self, _frame: &mut wxr::Frame) -> Result<(), wxr::Error> {

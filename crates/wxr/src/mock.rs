@@ -428,6 +428,13 @@ mod tests {
     }
 
     #[test]
+    fn a_backend_without_depth_sensing_answers_none() {
+        let mut session = running();
+        assert_eq!(session.depth(0).unwrap(), None);
+        assert_eq!(session.depth_at(0, 0.5, 0.5).unwrap(), None);
+    }
+
+    #[test]
     fn a_backend_without_light_estimation_says_so() {
         let mut session = running();
         assert!(matches!(session.light_probe(), Err(Error::Unsupported(_))));
