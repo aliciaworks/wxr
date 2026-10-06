@@ -74,9 +74,17 @@ async fn setup() {
 
     // The device, which the core gives every backend: on this platform it is the page's WebGPU device, and
     // the session is told about it like every other backend's is.
+    //
+    // `xr_compatible` is asked for exactly when the browser has a binding that will demand it, and it has to
+    // be decided here: WebGPU has no `makeXRCompatible`, so an adapter requested without it can never make a
+    // device for `XRGPUBinding`, and asking afterwards does not help.
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let xr_compatible = wxr_webxr::WebXr::gpu_binding();
     let adapter = match instance
-        .request_adapter(&wgpu::RequestAdapterOptions::default())
+        .request_adapter(&wgpu::RequestAdapterOptions {
+            xr_compatible,
+            ..Default::default()
+        })
         .await
     {
         Ok(adapter) => adapter,
@@ -89,7 +97,9 @@ async fn setup() {
         Ok(pair) => pair,
         Err(error) => return say(&format!("no device: {error:?}")),
     };
-    say("a WebGPU device, made by the page");
+    say(&format!(
+        "a WebGPU device, made by the page (asked for an XR-compatible adapter: {xr_compatible})"
+    ));
 
     let session = match backend.connect(wxr_webxr::Device { instance, device }) {
         Ok(session) => session,

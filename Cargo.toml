@@ -27,9 +27,14 @@ glam = "0.30"
 #
 # 30, because `wgpu-hal`'s backends grew `texture_from_raw` in it - Vulkan's `Device::texture_from_raw`, and
 # Metal's - and without it there is no way to wrap a compositor's image as a wgpu texture, which is the whole
-# of what an OpenXR or an Apple backend has to do with one. Not a version this workspace is pinned away from
-# anything on: revp-rust, the game this was written for, is on 30 as well, because the bevy it is on is.
-wgpu = "30"
+# of what an OpenXR or an Apple backend has to do with one.
+#
+# From a fork, and pinned to the commit rather than the branch: this is the one thing the WebXR backend needs
+# that upstream does not have - `RequestAdapterOptions::xr_compatible`, without which a wgpu device cannot be
+# an XR-compatible one and `XRGPUBinding` refuses it. Upstream's #9350 proposed it and was closed without
+# landing it, so the fork (branch `xr-compatible-adapter`) carries it. When a release grows the field, this
+# becomes `wgpu = "31"` or whatever that release is, and the fork has nothing left to carry.
+wgpu = { git = "https://github.com/yukarikaname/wgpu", rev = "8939f7ef5842aed37de461cfc9b7806829cbb8b6" }
 thiserror = "2"
 log = "0.4"
 

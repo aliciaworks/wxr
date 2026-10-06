@@ -79,6 +79,11 @@ and the session is told about it, through `XR_KHR_vulkan_enable`. Its `Import` i
 30 the game it was written for is on), its `input` is OpenXR's action sets, and `examples/headless.rs` is the
 proof that it reaches a real runtime - which needs a machine whose runtime is running.
 
+That wgpu comes from a **fork**, pinned to a commit: it carries one field upstream does not have,
+`RequestAdapterOptions::xr_compatible`, without which a wgpu device can never be XR-compatible on the web. The
+history and the removal condition are in the workspace `Cargo.toml`, and the field itself is one line of
+`wgpu-types` plus two of the browser backend.
+
 **`wxr-webxr`** is the one that did not fit: WebXR's session, its reference spaces and its frames all arrive
 asynchronously, which is why the core has `State::Connecting` and why a space is asked for before it exists.
 It also cannot give a renderer any images yet - WebXR's WebGPU binding (`XRGPUBinding`) is not in `web-sys`,

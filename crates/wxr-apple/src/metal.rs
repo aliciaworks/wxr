@@ -76,7 +76,11 @@ pub unsafe fn texture(
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 view_formats: &[],
             },
+            // And `false`, which is the newer of `create_texture_from_hal`'s two extra arguments: it says
+            // whether the contents are already defined. A compositor's image is not - it is the compositor's,
+            // and every frame clears it - so `false` is the honest answer to the question.
             wgpu::TextureUses::UNINITIALIZED,
+            false,
         )
     })
 }
