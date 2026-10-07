@@ -35,7 +35,12 @@ interface Navigator {};
 // would be a second Rust type for one object. What WebXR names is the *type* of the attribute.
 typedef any Gamepad;
 
-enum PermissionState { "granted", "denied", "prompt" };
+// A `typedef` and not an `enum`, which needs explaining: a generated string enum is a JavaScript object that
+// `wasm-bindgen` registers under its JavaScript name, and two of them with one name is a duplicate it refuses
+// when the bindings are generated. `PermissionState` belongs to the Permissions specification and `web-sys`
+// declares it too, so a graph that enables that feature - and this workspace's does not have to, someone else
+// in it does - gets two. It is a string at the boundary either way, and nothing here reads it.
+typedef DOMString PermissionState;
 
 // WebGPU: named, never mirrored.
 typedef any GPUDevice;

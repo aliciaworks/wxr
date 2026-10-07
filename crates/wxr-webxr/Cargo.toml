@@ -23,6 +23,11 @@ web-sys = { version = "0.3", features = [
     # not merely dislike, it refuses: two enums with the same JavaScript name are a duplicate it reports when
     # the bindings are generated, which is how this list was found to be too long.
     #
+    # This list is only half of that condition. It is the *graph* that decides which of `web-sys`'s enums exist,
+    # and some other crate in a game's graph can enable one of these without asking here - which is what a
+    # `PermissionState` collision turned out to be. The names in the generated module are the specification's
+    # and cannot be changed, so the answer is to keep the overlap at nothing.
+    #
     # What is left is the page (`window`, `navigator`), and the gamepad, which is a stable interface with a
     # stable shape and nobody's to mirror.
     "Window",

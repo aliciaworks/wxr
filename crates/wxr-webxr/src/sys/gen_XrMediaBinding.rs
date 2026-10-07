@@ -58,7 +58,7 @@ extern "C" {
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRMediaBinding/createQuadLayer)"]
     pub fn create_quad_layer(this: &XrMediaBinding, video: &::wasm_bindgen::JsValue)
-    -> XrQuadLayer;
+        -> XrQuadLayer;
     #[wasm_bindgen(method, js_class = "XRMediaBinding", js_name = "createQuadLayer")]
     #[doc = "The `createQuadLayer()` method."]
     #[doc = ""]

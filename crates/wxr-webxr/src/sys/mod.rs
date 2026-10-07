@@ -53,11 +53,6 @@ mod gen_PermissionDescriptor;
 pub use gen_PermissionDescriptor::*;
 
 #[allow(non_snake_case)]
-mod gen_PermissionState;
-#[allow(unused_imports)]
-pub use gen_PermissionState::*;
-
-#[allow(non_snake_case)]
 mod gen_PermissionStatus;
 #[allow(unused_imports)]
 pub use gen_PermissionStatus::*;
