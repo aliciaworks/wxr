@@ -47,7 +47,7 @@ pub use hit::{Hit, HitTestSource};
 pub use input::{
     Axes, Buttons, Hand, HandJoint, Handedness, InputId, InputSource, Joint, TargetRayMode,
 };
-pub use layer::{Layer, LayerShape};
+pub use layer::{Layer, LayerImage, LayerShape};
 pub use light::{LightEstimate, LightProbe};
 pub use plane::{Plane, PlaneOrientation};
 pub use session::{

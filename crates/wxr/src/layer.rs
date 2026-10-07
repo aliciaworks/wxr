@@ -13,12 +13,16 @@
 //! core specification and its cylinder, equirect and cube are extensions, and WebXR's are shapes an app asks a
 //! session for by name.
 
+use crate::frame::Viewport;
+use crate::target::ImageMeta;
+
 /// A shape a layer's picture can be, and the geometry of it.
 ///
 /// The parameters are the ones both platforms agree on, under the names the platforms use: WebXR's
 /// `XRQuadLayerInit` and OpenXR's `XrCompositionLayerQuad` want the same width and height in metres; a cylinder
 /// wants a radius, the angle it opens through, and the aspect of what is drawn on it on both; an equirect wants
-/// a radius and how far it opens horizontally and vertically. Sizes are metres and angles are radians.
+/// a radius and how far it opens horizontally and above and below the horizon. Sizes are metres and angles are
+/// radians.
 ///
 /// What is *not* here is anything about how a layer meets the others: which one is on top, whether it is blended
 /// with what is behind it, or which eyes see it. Those are the compositor's rules on every platform that has
@@ -36,10 +40,15 @@ pub enum LayerShape {
         aspect: f32,
     },
     /// A sphere's worth of picture, which is what 360° content and a skybox are.
+    ///
+    /// Two vertical openings rather than one total: both platforms describe how far the picture reaches above
+    /// and below the horizon, because a skybox that stops at the horizon and one that covers the zenith are
+    /// different pictures that can have the same total height.
     Equirect {
         radius: f32,
         central_horizontal: f32,
-        central_vertical: f32,
+        upper_vertical: f32,
+        lower_vertical: f32,
     },
     /// Six faces of a cube, in one image - a skybox the compositor can turn without resampling it.
     Cube,
@@ -81,6 +90,33 @@ impl Layer {
     }
 }
 
+/// What a layer's picture is, and where in it the app draws.
+///
+/// The image itself is [`crate::Session::Image`], and it is the same kind of thing a frame's is: a compositor's
+/// image is a compositor's image whether the app is drawing a world into it or a menu. What is beside it here is
+/// everything else a render target needs to be built from it - and it comes back per frame, because on every
+/// platform that has layers the runtime hands out the picture the compositor is about to read, not one the app
+/// keeps.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct LayerImage {
+    /// The format and extent of the image, which is what decides the render target's own.
+    pub meta: ImageMeta,
+    /// The part of the image that belongs to this layer. All of it on a platform that gives a layer its own
+    /// texture, which every platform here does; a sub-rectangle on one that pools several layers into one.
+    pub viewport: Viewport,
+}
+
+impl LayerImage {
+    /// Whether the viewport is the whole image, which is the common case and the one a renderer can skip
+    /// looking at.
+    pub fn is_whole(self) -> bool {
+        self.viewport.x == 0
+            && self.viewport.y == 0
+            && self.viewport.width == self.meta.extent.width
+            && self.viewport.height == self.meta.extent.height
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,6 +140,45 @@ mod tests {
             }
             .name(),
             "cylinder"
+        );
+    }
+
+    #[test]
+    fn a_layer_image_knows_when_it_is_the_whole_image() {
+        let meta = ImageMeta {
+            extent: crate::Extent2d::new(1024, 768),
+            ..Default::default()
+        };
+        let whole = LayerImage {
+            meta,
+            viewport: Viewport {
+                x: 0,
+                y: 0,
+                width: 1024,
+                height: 768,
+            },
+        };
+        assert!(whole.is_whole());
+        // One pixel short is not the whole image, and a viewport that starts inside it is not either.
+        assert!(
+            !LayerImage {
+                viewport: Viewport {
+                    width: 1023,
+                    ..whole.viewport
+                },
+                ..whole
+            }
+            .is_whole()
+        );
+        assert!(
+            !LayerImage {
+                viewport: Viewport {
+                    x: 1,
+                    ..whole.viewport
+                },
+                ..whole
+            }
+            .is_whole()
         );
     }
 }

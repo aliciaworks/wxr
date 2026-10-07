@@ -11,7 +11,7 @@ use crate::feature::Features;
 use crate::frame::Frame;
 use crate::hit::{Hit, HitTestSource};
 use crate::input::{Hand, InputId, InputSource};
-use crate::layer::{Layer, LayerShape};
+use crate::layer::{Layer, LayerImage, LayerShape};
 use crate::light::{LightEstimate, LightProbe};
 use crate::plane::Plane;
 use crate::space::{Pose, ReferenceSpace, SpaceKind};
@@ -343,16 +343,28 @@ pub trait Session: Any {
     /// Which shapes a session has is [`Features::LAYER_QUAD`] and its siblings, one bit per shape, because that
     /// is how the platforms say it too. A session with none of them answers [`Error::Unsupported`] rather than
     /// handing back a layer that nothing will ever place.
-    fn layer(&mut self, _space: ReferenceSpace, _shape: LayerShape) -> Result<Layer, Error> {
+    ///
+    /// `pixels` is the resolution to draw it at, which is the app's choice on every platform - a menu rendered
+    /// at 512 square and one rendered at the display's own density are different pictures and only the app knows
+    /// which it wants. The runtime may adjust the request, and what it settled on comes back from
+    /// [`Session::layer_image`]; the *shape*'s aspect is the geometry's, so an aspect that disagrees with
+    /// `pixels` is the picture stretched, which is a choice and not an error.
+    fn layer(
+        &mut self,
+        _space: ReferenceSpace,
+        _shape: LayerShape,
+        _pixels: crate::Extent2d,
+    ) -> Result<Layer, Error> {
         Err(Error::Unsupported("layers".into()))
     }
 
-    /// Where a layer's picture goes and what shape it is, as this platform names it.
+    /// What to draw into for a layer this frame, and where in it.
     ///
     /// `None` while there is nothing to draw into yet - a layer is made asynchronously on every platform that
-    /// has them - and `None` for a backend that was never taught layers at all, which is the same answer to a
-    /// caller that only draws when it has something to draw into.
-    fn layer_image(&mut self, _layer: Layer) -> Option<(&Self::Image, ImageMeta)> {
+    /// has them, and a layer's image is the compositor's for one frame and not the app's to keep - and `None`
+    /// for a backend that was never taught layers at all, which is the same answer to a caller that only draws
+    /// when it has something to draw into.
+    fn layer_image(&mut self, _layer: Layer) -> Option<(&Self::Image, LayerImage)> {
         None
     }
 

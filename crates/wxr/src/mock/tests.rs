@@ -274,3 +274,93 @@ fn a_stopped_session_asks_to_exit() {
     session.begin(Duration::ZERO, &mut frame).unwrap();
     assert_eq!(frame.state, FrameState::Exit);
 }
+
+#[test]
+fn a_session_without_the_layer_feature_refuses_one() {
+    let mut session = running();
+    let space = session.space(SpaceKind::LocalFloor).unwrap();
+    let refused = session.layer(
+        space,
+        LayerShape::Quad {
+            width: 1.0,
+            height: 1.0,
+        },
+        Extent2d::new(256, 256),
+    );
+    // Refused, and not handed back a layer that nothing would ever place - which is what the capability bit is
+    // for: an app that branches on `features` never sees this, and one that does not gets an error rather than a
+    // silent nothing.
+    assert!(matches!(refused, Err(Error::Unsupported(_))));
+    assert!(!session.features().contains(Features::LAYER_QUAD));
+    assert_eq!(session.layer_count(), 0);
+}
+
+/// The mock with the one capability it can have, polled to `Visible` like a real session.
+fn with_layers() -> MockSession {
+    let mut session = MockBackend {
+        quad_layers: true,
+        ..Default::default()
+    }
+    .connect((), SessionMode::ImmersiveVr)
+    .unwrap();
+    while let Some(event) = session.poll() {
+        if let Event::VisibilityChanged(Visibility::Visible) = event {
+            break;
+        }
+    }
+    session
+}
+
+#[test]
+fn a_layer_is_made_placed_drawn_into_and_released() {
+    let mut session = with_layers();
+    assert!(session.features().contains(Features::LAYER_QUAD));
+
+    let space = session.space(SpaceKind::LocalFloor).unwrap();
+    let shape = LayerShape::Quad {
+        width: 1.2,
+        height: 0.8,
+    };
+    let pixels = Extent2d::new(512, 384);
+    let layer = session.layer(space, shape, pixels).unwrap();
+    assert_eq!(session.layer_count(), 1);
+    assert_eq!(session.layer_shape(layer), Some((shape, pixels)));
+    assert_eq!(session.layer_space(layer), Some(space));
+
+    let placed = Pose {
+        position: Vec3::new(0.0, 1.5, -1.0),
+        orientation: Quat::IDENTITY,
+    };
+    session.set_layer_pose(layer, placed).unwrap();
+    assert_eq!(session.layer_pose(layer), Some(placed));
+
+    // A frame hands out an image, and the next frame hands out a different one: a layer's picture belongs to the
+    // frame, and a renderer that kept the first would draw into a picture the compositor has taken back.
+    let mut frame = Frame::default();
+    session.begin(Duration::ZERO, &mut frame).unwrap();
+    let (first, image) = session.layer_image(layer).unwrap();
+    let first = *first;
+    assert_eq!(image.meta.extent, pixels);
+    assert_eq!(image.meta.layers, 1, "a quad is one picture for both eyes");
+    assert!(image.is_whole(), "a layer gets a texture of its own");
+
+    let mut frame = Frame::default();
+    session.begin(Duration::ZERO, &mut frame).unwrap();
+    let (second, _) = session.layer_image(layer).unwrap();
+    assert_ne!(first, *second);
+
+    session.release_layer(layer);
+    assert_eq!(session.layer_count(), 0);
+    assert!(session.layer_image(layer).is_none());
+}
+
+#[test]
+fn a_shape_the_session_does_not_have_is_refused_even_with_layers() {
+    let mut session = with_layers();
+    let space = session.space(SpaceKind::LocalFloor).unwrap();
+    let refused = session.layer(space, LayerShape::Cube, Extent2d::new(256, 256));
+    // The bit is per shape on both platforms, so a session with a quad and no cube is the normal case rather
+    // than an odd one.
+    assert!(matches!(refused, Err(Error::Unsupported(_))));
+    assert_eq!(session.layer_count(), 0);
+}

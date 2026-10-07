@@ -13,6 +13,7 @@ use glam::{Quat, Vec3};
 use crate::feature::Features;
 use crate::frame::{Eye, FieldOfView, Frame, FrameState, View, Viewport};
 use crate::input::{Axes, Buttons, Handedness, InputId, InputSource, TargetRayMode};
+use crate::layer::{Layer, LayerImage, LayerShape};
 use crate::session::{
     Backend, Error, Event, Presentation, Session, SessionMode, State, Visibility,
 };
@@ -36,6 +37,10 @@ pub struct MockBackend {
     /// The visibility rungs to hand out after them, in order. What makes the other ladder something to test
     /// rather than something to assume - and the rung that a core with one ladder had nowhere to put.
     pub visibility: Vec<Visibility>,
+    /// Whether this mock has a quad layer to hand out, which it does not by default: a session with no
+    /// capabilities is the floor every backend shares, and the one the mock is by default so that a test of
+    /// "a session without the feature" has a session without the feature.
+    pub quad_layers: bool,
 }
 
 impl Default for MockBackend {
@@ -49,6 +54,7 @@ impl Default for MockBackend {
                 Visibility::Visible,
                 Visibility::VisibleBlurred,
             ],
+            quad_layers: false,
         }
     }
 }
@@ -79,11 +85,24 @@ impl Backend for MockBackend {
             pending,
             extent: self.extent,
             stereo: self.stereo,
+            quad_layers: self.quad_layers,
             spaces: 0,
             frames: 0,
             image: 0,
+            layers: Vec::new(),
         })
     }
+}
+
+/// A layer the mock is holding, so that placing one and drawing into it are things a test can see.
+struct MockLayer {
+    shape: LayerShape,
+    space: ReferenceSpace,
+    pose: Pose,
+    /// What the app asked to draw it at, which is what comes back as the image's extent.
+    pixels: Extent2d,
+    /// This frame's image, which changes the way the session's own does and for the same reason.
+    image: u32,
 }
 
 /// A session with no runtime behind it.
@@ -103,6 +122,10 @@ pub struct MockSession {
     /// textures, a swapchain's acquired image - and a mock that handed out one handle forever would let a
     /// renderer cache it and still look right.
     image: u32,
+    quad_layers: bool,
+    /// `None` for one that was released, so that a test can tell the difference between a layer that is gone and
+    /// one that was never there - which is the difference `release_layer` exists to make.
+    layers: Vec<Option<MockLayer>>,
 }
 
 impl Session for MockSession {
@@ -122,8 +145,13 @@ impl Session for MockSession {
     }
 
     fn features(&self) -> Features {
-        // A mock has a session and nothing else, which is every backend's floor.
-        Features::NONE
+        // The floor is a session and nothing else; a mock told to have a quad layer says so, and that is the
+        // only capability it can have - which is what makes it a thing to test against.
+        if self.quad_layers {
+            Features::LAYER_QUAD
+        } else {
+            Features::NONE
+        }
     }
 
     fn poll(&mut self) -> Option<Event> {
@@ -152,6 +180,71 @@ impl Session for MockSession {
 
     fn image(&self, index: usize) -> Option<&Self::Image> {
         (index == 0).then_some(&self.image)
+    }
+
+    fn layer(
+        &mut self,
+        space: ReferenceSpace,
+        shape: LayerShape,
+        pixels: Extent2d,
+    ) -> Result<Layer, Error> {
+        // One shape, and the refusal is the interesting half: a mock that quietly made a cylinder would be a
+        // mock that let a renderer ship code for a capability no session here has.
+        if !self.quad_layers || !matches!(shape, LayerShape::Quad { .. }) {
+            return Err(Error::Unsupported(format!("{} layers", shape.name())));
+        }
+        self.layers.push(Some(MockLayer {
+            shape,
+            space,
+            pose: Pose::IDENTITY,
+            pixels,
+            image: 0,
+        }));
+        Ok(Layer::new((self.layers.len() - 1) as u32))
+    }
+
+    fn layer_image(&mut self, layer: Layer) -> Option<(&Self::Image, LayerImage)> {
+        let frames = self.frames;
+        let slot = self.layers.get_mut(layer.id() as usize)?.as_mut()?;
+        // Unlike the session's own image, this one carries its name as well: two layers are two pictures, and a
+        // renderer handed the same handle for both would draw one of them twice.
+        slot.image = (frames + layer.id() as u64) as u32;
+        let image = &slot.image;
+        let meta = ImageMeta {
+            format: ColorFormat::Rgba8Srgb,
+            extent: slot.pixels,
+            // One: a quad is one picture for both eyes, which is the whole reason to hand it to a compositor.
+            layers: 1,
+        };
+        Some((
+            image,
+            LayerImage {
+                meta,
+                viewport: Viewport {
+                    width: meta.extent.width,
+                    height: meta.extent.height,
+                    ..Default::default()
+                },
+            },
+        ))
+    }
+
+    fn set_layer_pose(&mut self, layer: Layer, pose: Pose) -> Result<(), Error> {
+        let Some(slot) = self
+            .layers
+            .get_mut(layer.id() as usize)
+            .and_then(Option::as_mut)
+        else {
+            return Err(Error::Unsupported("no such layer".into()));
+        };
+        slot.pose = pose;
+        Ok(())
+    }
+
+    fn release_layer(&mut self, layer: Layer) {
+        if let Some(slot) = self.layers.get_mut(layer.id() as usize) {
+            *slot = None;
+        }
     }
 
     fn space(&mut self, kind: SpaceKind) -> Result<ReferenceSpace, Error> {
@@ -320,6 +413,36 @@ impl MockSession {
     /// has to be able to pass on.
     pub fn reset(&mut self, space: ReferenceSpace) {
         self.pending.push_back(Event::Reset(space));
+    }
+
+    /// How many layers are live, so a test can tell a release from a leak.
+    pub fn layer_count(&self) -> usize {
+        self.layers.iter().filter(|layer| layer.is_some()).count()
+    }
+
+    /// Where a layer was last placed, which is how a test sees that placing it did something.
+    pub fn layer_pose(&self, layer: Layer) -> Option<Pose> {
+        self.layers
+            .get(layer.id() as usize)
+            .and_then(Option::as_ref)
+            .map(|slot| slot.pose)
+    }
+
+    /// The shape and the resolution a layer was made with, which the core deliberately does not hand back: a
+    /// caller that asked knows, and a test that asks is checking that it was kept.
+    pub fn layer_shape(&self, layer: Layer) -> Option<(LayerShape, Extent2d)> {
+        self.layers
+            .get(layer.id() as usize)
+            .and_then(Option::as_ref)
+            .map(|slot| (slot.shape, slot.pixels))
+    }
+
+    /// The space a layer was made in.
+    pub fn layer_space(&self, layer: Layer) -> Option<ReferenceSpace> {
+        self.layers
+            .get(layer.id() as usize)
+            .and_then(Option::as_ref)
+            .map(|slot| slot.space)
     }
 }
 
