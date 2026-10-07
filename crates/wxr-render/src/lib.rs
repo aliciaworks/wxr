@@ -303,12 +303,14 @@ impl Renderer {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         importer: &I,
-        meta: wxr::ImageMeta,
         image: &I::Image,
         layer: wxr::LayerImage,
         draw: impl FnOnce(&mut wgpu::RenderPass<'_>),
     ) -> bool {
-        let Some(texture) = importer.texture(device, meta, image) else {
+        // The format and the extent are the layer's, which is what a render target is made from - so there is
+        // nothing else to pass: an `ImageMeta` beside them would be the same fact twice, and one of the two
+        // could be wrong.
+        let Some(texture) = importer.texture(device, layer.meta, image) else {
             return false;
         };
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
