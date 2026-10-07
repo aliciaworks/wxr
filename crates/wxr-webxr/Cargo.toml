@@ -18,45 +18,15 @@ wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 web-sys = { version = "0.3", features = [
+    # The DOM this backend still uses, and nothing else. WebXR is generated here rather than taken from
+    # `web-sys`, and taking both would be two Rust types for one JavaScript object - which `wasm-bindgen` does
+    # not merely dislike, it refuses: two enums with the same JavaScript name are a duplicate it reports when
+    # the bindings are generated, which is how this list was found to be too long.
+    #
+    # What is left is the page (`window`, `navigator`), and the gamepad, which is a stable interface with a
+    # stable shape and nobody's to mirror.
     "Window",
     "Navigator",
-    "XrSystem",
-    "XrSession",
-    "XrSessionInit",
-    "XrSessionMode",
-    "XrVisibilityState",
-    "XrFrame",
-    "XrViewerPose",
-    "XrView",
-    "XrEye",
-    "XrViewport",
-    "XrReferenceSpace",
-    "XrReferenceSpaceType",
-    "XrBoundedReferenceSpace",
-    # The render state, so that presenting a *layer* comes from the bindings rather than from a hand-built
-    # object: `XrRenderStateInit::set_layers` is what a WebGPU-compatible session presents through.
-    "XrLayer",
-    "XrRenderStateInit",
-    "XrRigidTransform",
-    "XrPose",
-    "XrSpace",
-    "XrInputSource",
-    "XrInputSourceArray",
-    "XrInputSourceEvent",
-    # A hand is a map of joints to spaces, and a joint's pose is a pose with a radius: `XrPose` comes with
-    # `XrJointPose`, which extends it.
-    "XrHand",
-    "XrHandJoint",
-    "XrJointSpace",
-    "XrJointPose",
-    "XrPose",
-    "XrHandedness",
     "Gamepad",
     "GamepadButton",
-    # `XrRigidTransform` reports its position and orientation as DOM points, and takes them the same way when
-    # one is made - which is how an offset reference space is asked for.
-    "DomPoint",
-    "DomPointInit",
-    "DomPointReadOnly",
-    "Event",
 ] }
