@@ -43,6 +43,13 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
+      # `wxr-apple` is only *compiled* in the visionos job, and that job has no Apple to link or run
+      # against either - so a wrong `extern "C"` signature would reach a device unnoticed. What any machine
+      # can do is compare each declaration against Apple's own prototype, out of an SDK mirror, WebKit's
+      # soft-link headers and mirrors of the documentation. It skips itself when the network is not there.
+      - name: The Apple declarations
+        run: python3 Tools/check_apple_sys.py
+
   wasm:
     name: wasm32
     runs-on: ubuntu-latest

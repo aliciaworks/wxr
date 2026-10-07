@@ -1,12 +1,27 @@
 //! The C functions that neither binding crate declares.
 //!
 //! `objc2-compositor-services` is generated from Apple's headers and binds most of CompositorServices - but
-//! not the three calls this backend needs to place an eye. `cp_view_get_transform`, `cp_view_get_tangents`
-//! and `cp_drawable_set_device_anchor` are real: Apple's own C guide,
+//! not the four calls this backend needs to place an eye. `cp_view_get_transform`, `cp_view_get_tangents`,
+//! `cp_drawable_set_depth_range` and `cp_drawable_set_device_anchor` are real: Apple's own C guide,
 //! [Drawing fully immersive content using Metal](https://developer.apple.com/documentation/compositorservices/drawing-fully-immersive-content-using-metal),
-//! calls all three, and WebKit soft-links `cp_view_get_transform` for exactly the reason this file exists.
-//! So they are declared here from those signatures, with the note that says why they are not in the crate
+//! calls them, and WebKit soft-links `cp_view_get_transform` for exactly the reason this file exists. So
+//! they are declared here from those signatures, with the note that says why they are not in the crate
 //! above them.
+//!
+//! **Nothing here is from memory.** [`Tools/check_apple_sys.py`] reads Apple's headers out of an SDK mirror
+//! - the same headers an extractor without extended-attribute support reads as empty, which is what made
+//! this file unverifiable for a while - and compares each name, its argument count and the shape of what it
+//! returns; where the mirror has no header for something, WebKit's soft-link headers and Apple's
+//! documentation do. It runs in CI, and that is the whole of what makes a file of `extern "C"` a thing to
+//! keep rather than a thing to fear: a wrong signature compiles here and fails on a device, and there is no
+//! device here.
+//!
+//! One of the four is a call Apple has moved on from, and its header says so in words: `cp_view_get_tangents`
+//! is `API_DEPRECATED("Use cp_drawable_compute_projection instead", visionos(1.0, 2.0))` and unavailable on
+//! macOS. The replacement is in `objc2-compositor-services` already, so this is the one declaration here
+//! that is expected to be *deleted* rather than corrected, and `projection` is where that swap would land.
+//!
+//! [Tools/check_apple_sys.py]: https://github.com/aliciaworks/wxr/blob/main/Tools/check_apple_sys.py
 //!
 //! ARKit is the other half. Its visionOS *Swift* API - `ARKitSession`, `WorldTrackingProvider` - has no
 //! Objective-C presence at all, which is why `objc2` cannot reach it and why this workspace first thought a
