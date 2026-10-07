@@ -78,12 +78,6 @@ pub type ArHandAnchor = *mut c_void;
 /// both, which every one of these does.
 pub const QUERY_SUCCESS: isize = 0;
 
-/// `ar_transform_correction_none`: transforms are the actual locations.
-///
-/// The other case, `ar_transform_correction_rendered`, moves an anchor so that content drawn at it lands
-/// over the physical object in passthrough. Input wants where the hand *is*, not where to draw it.
-pub const TRANSFORM_NONE: isize = 0;
-
 // SAFETY: every declaration below is transcribed from Apple's C header or from Apple's own C guide, and the
 // framework is linked rather than loaded by hand. What is *not* proven here is the ABI - a wrong signature
 // would still compile - which is why the types are `repr(C)` and aligned as the C ones are, and why the
@@ -159,11 +153,15 @@ unsafe extern "C-unwind" {
         hand_anchor_right: ArHandAnchor,
     ) -> bool;
     pub fn ar_hand_anchor_create() -> ArHandAnchor;
-    /// Where the hand is, with the correction named - see [`TRANSFORM_NONE`].
-    pub fn ar_hand_anchor_get_origin_from_anchor_transform_with_correction(
-        hand_anchor: ArHandAnchor,
-        transform_correction: isize,
-    ) -> Float4x4;
+    /// Where the hand is.
+    ///
+    /// Apple's documentation has a page for
+    /// `ar_hand_anchor_get_origin_from_anchor_transform_with_correction`, and visionOS 26.5's ARKit has
+    /// no such symbol: the headers carry this one and nothing with "correction" in it, and a link against
+    /// the SDK says `symbol(s) not found`. What the correction was for is a transform moved so that
+    /// content drawn at it lands over the physical object in passthrough - input wants where the hand
+    /// *is*, so the plain call is the one this backend wanted all along.
+    pub fn ar_hand_anchor_get_origin_from_anchor_transform(hand_anchor: ArHandAnchor) -> Float4x4;
 
     /// Releases one reference, the counterpart to every `*_create` above.
     pub fn ar_release(object: *mut c_void);

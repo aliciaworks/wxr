@@ -216,12 +216,8 @@ impl ArKit {
         .into_iter()
         .map(|(handedness, anchor)| {
             // SAFETY: the anchor is live, and both reads are of properties ARKit filled in.
-            let transform = unsafe {
-                sys::ar_hand_anchor_get_origin_from_anchor_transform_with_correction(
-                    anchor.pointer(),
-                    sys::TRANSFORM_NONE,
-                )
-            };
+            let transform =
+                unsafe { sys::ar_hand_anchor_get_origin_from_anchor_transform(anchor.pointer()) };
             let tracked = unsafe { sys::ar_trackable_anchor_is_tracked(anchor.pointer()) };
             (handedness, Mat4::from_cols_array(&transform.0), tracked)
         })
