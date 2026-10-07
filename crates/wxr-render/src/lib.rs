@@ -289,6 +289,69 @@ impl Renderer {
         Ok(drawn)
     }
 
+    /// Draw a layer's picture, once, into the image the compositor handed over.
+    ///
+    /// A layer is not an eye and not a view: the compositor places it and warps it for the optics, which is the
+    /// whole reason to hand it one - so it is drawn once, and there is no [`wxr::View`] to draw it with. What
+    /// decides how it is seen is the content, which is why the drawing is a callback and not a scene, and what
+    /// is here is the part every layer shares: the image, the attachments, and what an empty one is worth.
+    ///
+    /// `false` is a session that handed over an image this renderer cannot wrap, which is a frame with no
+    /// layer rather than a frame to fail - the same answer the eyes get.
+    pub fn draw_layer<I: Import>(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        importer: &I,
+        meta: wxr::ImageMeta,
+        image: &I::Image,
+        layer: wxr::LayerImage,
+        draw: impl FnOnce(&mut wgpu::RenderPass<'_>),
+    ) -> bool {
+        let Some(texture) = importer.texture(device, meta, image) else {
+            return false;
+        };
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("wxr layer"),
+        });
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("wxr layer"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    // Cleared and not loaded: the compositor's image is the compositor's, and nothing here knows
+                    // what is in it. A panel's empty parts are nothing, which is what `Renderer::new`'s colour
+                    // says - and the alpha in it is why a layer has to be presented with source alpha.
+                    load: wgpu::LoadOp::Clear(self.clear),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            // No depth: a layer is one picture with nothing behind it, and the compositor has the world for
+            // that.
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            ..Default::default()
+        });
+        // The part of the image that is this layer's, which is all of it on a platform that gives a layer its
+        // own texture and a sub-rectangle on one that pools them.
+        pass.set_viewport(
+            layer.viewport.x as f32,
+            layer.viewport.y as f32,
+            layer.viewport.width as f32,
+            layer.viewport.height as f32,
+            0.0,
+            1.0,
+        );
+        draw(&mut pass);
+        drop(pass);
+        queue.submit(Some(encoder.finish()));
+        true
+    }
+
     /// The depth buffer for this view: the session's if it offered one this renderer can draw into, and a
     /// private one otherwise.
     ///
