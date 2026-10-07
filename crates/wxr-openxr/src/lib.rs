@@ -33,7 +33,10 @@
 //! function pointers like the rest of the spatial extensions, so `anchor` is the core's `Unsupported` until
 //! they are driven by hand.
 
-#![cfg(not(target_family = "wasm"))]
+// Not wasm, and not Apple: this backend speaks Vulkan, and `wgpu::hal::api::Vulkan` is a type that does
+// not exist where wgpu has no Vulkan - so a macOS or visionOS build is a build where this crate is
+// empty rather than one that fails on a type it cannot name.
+#![cfg(all(not(target_family = "wasm"), not(target_vendor = "apple")))]
 
 mod convert;
 mod hal;

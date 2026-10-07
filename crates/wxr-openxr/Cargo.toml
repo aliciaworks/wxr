@@ -6,7 +6,7 @@ edition.workspace = true
 
 # The same rule as `wxr-webxr`, the other way round: OpenXR is a native API, so on a browser this crate is
 # empty rather than broken.
-[target.'cfg(not(target_family = "wasm"))'.dependencies]
+[target.'cfg(all(not(target_family = "wasm"), not(target_vendor = "apple")))'.dependencies]
 wxr = { path = "../wxr" }
 wxr-render = { path = "../wxr-render" }
 # The renderer's layer. The device a session is given is a wgpu device; nothing here creates one.
