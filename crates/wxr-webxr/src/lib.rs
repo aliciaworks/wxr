@@ -13,37 +13,37 @@
 //! * A frame arrives in the animation callback rather than from a `wait`. The callback puts it in a slot,
 //!   `wxr::Session::begin` drains it, and the next one is asked for when the frame is handed back.
 //!
-//! And there is one thing this cannot do at all yet: **images**. WebXR's binding for WebGPU
-//! (`XRGPUBinding`) is not in `web-sys`, and in a browser it is behind the `webxr-webgpu-binding` flag -
-//! a developer feature that has to be asked for, which *does* work on Linux even though the announcement
-//! named Windows and Android. The WebGL one gives a framebuffer that wgpu cannot draw into. So the session
-//! is `wxr::Presentation::Composited` with no images: it hands a renderer the head, the eyes and the timing,
-//! and where the picture goes until the binding is on by default is the renderer's own canvas. Saying that
-//! plainly is better than an `Image` type that is not one.
+//! And images: this *does* hand them over, through WebXR's binding for WebGPU (`XRGPUBinding`), and only when
+//! three things line up, because each of the three is off by default somewhere:
 //!
-//! Two things about that binding are worth writing down before it is wired in, because both are surprises.
-//! A WebGPU-compatible session is **layers-only**: `baseLayer` must not be set, and a projection layer made
-//! through `XRGPUBinding` is what a session needs - *without* a layer, `requestAnimationFrame` calls back
-//! zero times, which is the spec's design and not a bug in anybody's code. And such a session reports
-//! projection matrices in a `0..w` clip depth range instead of WebGL's `-w..w`, so the conversion a WebGL
-//! session needs is the wrong one for it.
+//! * the browser has `XRGPUBinding` at all, which in Chromium is the `webxr-webgpu-binding` flag - a developer
+//!   feature that has to be asked for, and one that *does* work on Linux even though the announcement named
+//!   Windows and Android. `WebXr::gpu_binding()` is how to ask.
+//! * the session grants the `webgpu` feature, which is why it is asked for as *optional* rather than required:
+//!   a browser that will not grant it renders WebGL, and a required feature that is not there is a session that
+//!   does not exist at all.
+//! * the device came from an adapter requested with `xrCompatible: true`. This is the one wgpu does not have:
+//!   upstream's pull request to add the field dropped it for being a breaking change to a public struct, which
+//!   is why this workspace patches wgpu to a fork that carries it. Without the field, `XRGPUBinding`'s
+//!   constructor throws, and this backend says so and carries on with no images.
 //!
-//! The explainer's three steps, for whoever wires this up, are: `new XRGPUBinding(session, device)`,
-//! `binding.createProjectionLayer({ colorFormat: binding.getPreferredColorFormat() })`, and
-//! `session.updateRenderState({ layers: [layer] })` - after which a frame's `binding.getViewSubImage(layer,
-//! view)` answers with the **same** colour and depth textures for both eyes and a *per-view* texture view
-//! descriptor and viewport. That last part is the same shape the core already carries: `View::viewport` is
-//! exactly what a sub-image reports, and the two eyes are views of one texture rather than two textures.
+//! When any of them is missing, the session is `wxr::Presentation::Composited` with no images: it hands a
+//! renderer the head, the eyes and the timing, and where the picture goes is the renderer's own canvas. Saying
+//! that plainly is better than an `Image` type that is not one.
 //!
-//! **The import path for those images exists, and so does the history of why it does not work yet.** wgpu's
-//! ["Add WebGPU backend interop for WebXR integration"](https://github.com/gfx-rs/wgpu/pull/9350) set out to
-//! add three things and landed two: `Device::as_webgpu` and `Device::create_texture_from_webgpu_handle` - both
-//! in the wgpu this workspace is on - while `RequestAdapterOptions::xr_compatible` was dropped for being a
-//! breaking change to a public struct. Without that field a wgpu device cannot be an XR-compatible one, so it
-//! cannot be given to `XRGPUBinding`, and the images stay the browser's. It is a known and agreed gap rather
-//! than a mystery: wgpu's [issue #8329](https://github.com/gfx-rs/wgpu/issues/8329) is where the shape of the
-//! fix was settled - forward the flag on the web, ignore it on native. `WebXr::gpu_binding` is what an app
-//! can ask in the meantime, and the three things a session will need are written down above.
+//! Two things about the binding are worth writing down, because both are surprises. A WebGPU-compatible session
+//! is **layers-only**: `baseLayer` must not be set, and a projection layer made through `XRGPUBinding` is what
+//! a session needs - *without* a layer, `requestAnimationFrame` calls back zero times, which is the spec's
+//! design and not a bug in anybody's code. And such a session reports projection matrices in a `0..w` clip
+//! depth range instead of WebGL's `-w..w`, so the conversion a WebGL session needs is the wrong one for it.
+//!
+//! What the binding needs is three calls, and they are the three `gpu` and `session` make: `new
+//! XRGPUBinding(session, device)`, `binding.createProjectionLayer({ colorFormat:
+//! binding.getPreferredColorFormat() })`, and `session.updateRenderState({ layers: [layer] })` - after which a
+//! frame's `binding.getViewSubImage(layer, view)` answers with the **same** colour and depth textures for both
+//! eyes and a *per-view* texture view descriptor and viewport. That last part is the same shape the core
+//! already carries: `View::viewport` is exactly what a sub-image reports, and the two eyes are views of one
+//! texture rather than two textures.
 
 #![cfg(target_family = "wasm")]
 
@@ -77,9 +77,10 @@ use crate::session::Connect;
 
 /// What the renderer made.
 ///
-/// Nothing is handed to the runtime yet, because there is no binding to hand it to - but the type exists,
-/// because a renderer written against one backend is written against all of them, and because the day the
-/// WebGPU binding ships this is where the sub-images will be made from.
+/// The device is the part that matters: `XRGPUBinding` is constructed from it, so it has to be one a WebXR
+/// session will accept - a device from an adapter requested with `xrCompatible: true`, which is the field this
+/// workspace's wgpu fork carries and upstream does not. A renderer with any other device gets a session with
+/// the head, the eyes and the timing and no images.
 pub struct Device {
     pub instance: wgpu::Instance,
     pub device: wgpu::Device,
@@ -114,9 +115,9 @@ impl WebXr {
     /// Whether the page has the WebXR/WebGPU binding at all.
     ///
     /// `XRGPUBinding` is in Chromium behind the `webxr-webgpu-binding` flag, so this is a question with two
-    /// answers on the same browser run twice. It says the *browser* could hand over images; it does not say
-    /// this crate can use them, and the module documentation says exactly where that stands - one missing
-    /// field in wgpu's adapter options, and not on this side of the boundary.
+    /// answers on the same browser run twice. It says the *browser* could hand over images; whether a session
+    /// does is the other two conditions - the session granting `webgpu`, and a device from an XR-compatible
+    /// adapter - and both of those are things an app arranges rather than reads.
     pub fn gpu_binding() -> bool {
         js_sys::Reflect::has(&js_sys::global(), &JsValue::from_str("XRGPUBinding")).unwrap_or(false)
     }
