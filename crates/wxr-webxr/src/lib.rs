@@ -59,13 +59,14 @@ pub mod sys;
 mod anchors;
 mod convert;
 mod depth;
-mod gpu;
 mod hit;
 mod import;
 mod input;
+mod layers;
 mod light;
 mod planes;
 mod session;
+mod throws;
 
 pub use import::Images;
 pub use session::{FrameImage, WebXrSession};
@@ -79,10 +80,10 @@ use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{XrSession, XrSessionMode};
 
 use crate::convert::session_mode;
 use crate::session::Connect;
+use crate::sys::{XrDepthStateInit, XrSession, XrSessionInit, XrSessionMode, XrSystem};
 
 /// What the renderer made.
 ///
@@ -97,7 +98,7 @@ pub struct Device {
 
 /// The browser's XR system, if the browser has one.
 pub struct WebXr {
-    system: web_sys::XrSystem,
+    system: XrSystem,
 }
 
 impl WebXr {
@@ -106,19 +107,24 @@ impl WebXr {
     /// connected": that is a question for [`WebXr::is_supported`].
     pub fn load() -> Result<Self, Error> {
         let navigator = web_sys::window().ok_or(Error::NoWindow)?.navigator();
-        // web-sys hands back the type whether or not the browser has one, so the question is asked of the
-        // value: a browser without WebXR gives an `undefined` where the object should be.
-        let system = navigator.xr();
-        if JsValue::from(system.clone()).is_undefined() {
-            return Err(Error::NoXr);
+        // Read by name, and not through `web-sys`: `Navigator.xr` is generated here rather than taken from
+        // there, which is the whole point of the generated module - one WebXR surface, in one place, with no
+        // build-wide cfg under it. What a browser without WebXR hands back is an `undefined` where the object
+        // should be, which is the question asked of the value.
+        match js_sys::Reflect::get(&navigator, &JsValue::from_str("xr")) {
+            Ok(value) if !value.is_undefined() && !value.is_null() => Ok(Self {
+                system: value.unchecked_into(),
+            }),
+            _ => Err(Error::NoXr),
         }
-        Ok(Self { system })
     }
 
     /// Whether the browser can start a session of this kind, which is an async question with no synchronous
     /// answer - the promise is the answer.
     pub fn is_supported(&self, mode: XrSessionMode) -> js_sys::Promise<js_sys::Boolean> {
-        self.system.is_session_supported(mode)
+        // The generated binding leaves the promise untyped, because WebXR's IDL does: what it resolves to is
+        // the caller's to know.
+        self.system.is_session_supported(mode).unchecked_into()
     }
 
     /// Whether the page has the WebXR/WebGPU binding at all.
@@ -130,6 +136,16 @@ impl WebXr {
     pub fn gpu_binding() -> bool {
         js_sys::Reflect::has(&js_sys::global(), &JsValue::from_str("XRGPUBinding")).unwrap_or(false)
     }
+}
+
+/// A feature list as the browser takes it: an array of strings, which is what a `FrozenArray<DOMString>` is on
+/// the way in as well as on the way out.
+fn features(names: &[&str]) -> JsValue {
+    let array = js_sys::Array::new();
+    for name in names {
+        array.push(&JsValue::from_str(name));
+    }
+    array.into()
 }
 
 impl wxr::Backend for WebXr {
@@ -144,59 +160,47 @@ impl wxr::Backend for WebXr {
         // The options form, because `local-floor` is asked for and not optional: a runtime that cannot say
         // where the floor is would put the player's feet at their eyes, and a session that is refused for
         // asking is a session that was never going to be usable.
-        let init = web_sys::XrSessionInit::new();
+        let init = XrSessionInit::new();
         // A floor is asked for only where there is a room to have one: an inline session has no floor, and a
         // required feature a runtime will not grant is a session that does not exist at all.
         if mode != wxr::SessionMode::Inline {
-            init.set_required_features(&[JsValue::from_str("local-floor")]);
+            init.set_required_features(&features(&["local-floor"]));
         }
         // `webgpu` is asked for as an *optional* feature: a browser that will not grant it is a browser that
         // renders WebGL, and a required feature that is not there is a session that does not exist at all. What
-        // came back is what `gpu::has_feature` asks about before any of the binding is attempted.
-        let mut optional = vec![JsValue::from_str("webgpu")];
-        // Surfaces are asked for in the session that is drawn over the world, which is the only kind that has
-        // them - and as optional, because a browser that will not grant them is a session with no table in it
-        // rather than no session.
+        // came back is what `Session::features` asks about before any of the binding is attempted.
+        let mut optional = vec!["webgpu"];
+        // A session that draws over the world is also the one that has hands, a room and the modules that read
+        // it - and every one of them is optional, because a browser that will not grant one is a session
+        // without that thing rather than no session.
         if mode != wxr::SessionMode::Inline {
-            // Hands are an input mode in both immersive sessions, and a browser that will not grant them is a
-            // session with controllers or nothing.
-            optional.push(JsValue::from_str("hand-tracking"));
+            optional.push("hand-tracking");
+            // Non-projection layers need the feature descriptor as well as the binding: a session can have a
+            // WebGPU binding and still refuse to composite a quad, and asking is how that is found out.
+            optional.push("layers");
         }
         if mode == wxr::SessionMode::ImmersiveAr {
             // What the world-understanding modules need, and only in the session that has a world.
-            optional.push(JsValue::from_str("plane-detection"));
-            optional.push(JsValue::from_str("hit-test"));
-            optional.push(JsValue::from_str("light-estimation"));
-            optional.push(JsValue::from_str("depth-sensing"));
-            optional.push(JsValue::from_str("anchors"));
+            optional.push("plane-detection");
+            optional.push("hit-test");
+            optional.push("light-estimation");
+            optional.push("depth-sensing");
+            optional.push("anchors");
         }
-        init.set_optional_features(&optional);
-        // Depth is asked for as `gpu-optimized`, which is the delivery that hands over a buffer rather than
+        init.set_optional_features(&features(&optional));
+        // Depth is asked for as `gpu-optimized`, which is the delivery that hands over a texture rather than
         // bytes - the one the core's `Session::Depth` is shaped for, and the one a renderer can test against.
         // `depth-sensing` as a feature is not enough: the specification wants this key beside it whenever the
         // feature is granted.
         if mode == wxr::SessionMode::ImmersiveAr {
-            let sensing = js_sys::Object::new();
-            let _ = js_sys::Reflect::set(
-                &sensing,
-                &JsValue::from_str("usagePreference"),
-                &js_sys::Array::of1(&JsValue::from_str("gpu-optimized")),
-            );
-            let _ = js_sys::Reflect::set(
-                &sensing,
-                &JsValue::from_str("dataFormatPreference"),
-                &js_sys::Array::of1(&JsValue::from_str("float32")),
-            );
-            let _ = js_sys::Reflect::set(
-                init.unchecked_ref::<JsValue>(),
-                &JsValue::from_str("depthSensing"),
-                &sensing,
-            );
+            init.set_depth_sensing(&XrDepthStateInit::new(
+                &features(&["float32"]),
+                &features(&["gpu-optimized"]),
+            ));
         }
-        let requested = self
+        let requested: js_sys::Promise = self
             .system
             .request_session_with_options(session_mode(mode), &init);
-        let requested: js_sys::Promise = requested.unchecked_into();
 
         let slot = result.clone();
         wasm_bindgen_futures::spawn_local(async move {

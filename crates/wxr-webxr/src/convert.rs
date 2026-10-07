@@ -1,10 +1,11 @@
 //! Platform values in the core's terms.
 //!
-//! Everything here is one direction or the other between what `web-sys` reports and what the core says, kept
-//! together so the mappings can be read next to each other.
+//! Everything here is one direction or the other between what the generated WebXR bindings report and what the
+//! core says, kept together so the mappings can be read next to each other.
 
-use web_sys::{
-    XrHandJoint, XrReferenceSpace, XrReferenceSpaceType, XrRigidTransform, XrSessionMode,
+use crate::sys::{
+    DomPointInit, XrHandJoint, XrReferenceSpace, XrReferenceSpaceType, XrRigidTransform,
+    XrSessionMode, XrVisibilityState,
 };
 
 use wxr::glam::{Quat, Vec3};
@@ -13,11 +14,14 @@ use wxr::glam::{Quat, Vec3};
 ///
 /// It is the same vocabulary: WebXR is where the core's [`wxr::Visibility`] came from, three rungs and all.
 /// Nothing is folded and nothing is invented.
-pub(crate) fn visibility(state: web_sys::XrVisibilityState) -> wxr::Visibility {
+pub(crate) fn visibility(state: XrVisibilityState) -> wxr::Visibility {
     match state {
-        web_sys::XrVisibilityState::Visible => wxr::Visibility::Visible,
-        web_sys::XrVisibilityState::VisibleBlurred => wxr::Visibility::VisibleBlurred,
-        _ => wxr::Visibility::Hidden,
+        XrVisibilityState::Visible => wxr::Visibility::Visible,
+        XrVisibilityState::VisibleBlurred => wxr::Visibility::VisibleBlurred,
+        XrVisibilityState::Hidden => wxr::Visibility::Hidden,
+        // A value from a newer specification than these bindings: a session whose visibility is not understood
+        // is not one to assume is visible.
+        XrVisibilityState::__Invalid => wxr::Visibility::Hidden,
     }
 }
 
@@ -56,11 +60,11 @@ pub(crate) fn offset_reference_space(
 /// A position is a point and a quaternion one with four coordinates, which is the shape the constructor asks
 /// for - the constructor, because an `XRRigidTransform` has no setters worth using.
 pub(crate) fn rigid(pose: wxr::Pose) -> Result<XrRigidTransform, wxr::Error> {
-    let position = web_sys::DomPointInit::new();
+    let position = DomPointInit::new();
     position.set_x(pose.position.x as f64);
     position.set_y(pose.position.y as f64);
     position.set_z(pose.position.z as f64);
-    let orientation = web_sys::DomPointInit::new();
+    let orientation = DomPointInit::new();
     orientation.set_x(pose.orientation.x as f64);
     orientation.set_y(pose.orientation.y as f64);
     orientation.set_z(pose.orientation.z as f64);
@@ -110,7 +114,7 @@ pub(crate) fn hand_joint(joint: wxr::HandJoint) -> XrHandJoint {
 }
 
 /// A transform in the core's terms.
-pub(crate) fn transform(transform: web_sys::XrRigidTransform) -> wxr::Pose {
+pub(crate) fn transform(transform: XrRigidTransform) -> wxr::Pose {
     let position = transform.position();
     let orientation = transform.orientation();
     // The browser reports these as doubles, and a pose is `f32` everywhere else.

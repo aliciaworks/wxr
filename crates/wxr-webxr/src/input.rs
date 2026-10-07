@@ -9,7 +9,8 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
-use web_sys::{XrInputSource, XrInputSourceEvent, XrSession};
+
+use crate::sys::{Event, XrInputSource, XrInputSourceEvent, XrSession, XrTargetRayMode};
 
 /// The sources a session has seen, in the order it first saw them.
 ///
@@ -42,17 +43,19 @@ impl Sources {
     }
 }
 
-/// How a source is aimed, read off the source itself.
+/// How a source is aimed, which is one of WebXR's four modes.
 ///
-/// `web-sys` binds `XrTargetRayMode` without the specification's fourth value, `transient-pointer`, so the
-/// string is what is read - the way `environmentBlendMode` is read, and for the same reason.
+/// All four are in the generated binding, `transient-pointer` included - which `web-sys` never had, and which
+/// was the reason this used to be read as a string.
 pub fn target_ray_mode(source: &XrInputSource) -> wxr::TargetRayMode {
-    let value = js_sys::Reflect::get(source.as_ref(), &JsValue::from_str("targetRayMode"));
-    match value.ok().and_then(|value| value.as_string()).as_deref() {
-        Some("gaze") => wxr::TargetRayMode::Gaze,
-        Some("screen") => wxr::TargetRayMode::Screen,
-        Some("transient-pointer") => wxr::TargetRayMode::TransientPointer,
-        _ => wxr::TargetRayMode::TrackedPointer,
+    match source.target_ray_mode() {
+        XrTargetRayMode::Gaze => wxr::TargetRayMode::Gaze,
+        XrTargetRayMode::Screen => wxr::TargetRayMode::Screen,
+        XrTargetRayMode::TransientPointer => wxr::TargetRayMode::TransientPointer,
+        XrTargetRayMode::TrackedPointer => wxr::TargetRayMode::TrackedPointer,
+        // A value from a newer specification than these bindings, and a pointer is what a source is until
+        // something says otherwise.
+        XrTargetRayMode::__Invalid => wxr::TargetRayMode::TrackedPointer,
     }
 }
 
@@ -67,7 +70,7 @@ pub struct Events {
     /// The handler for the set of inputs changing. It carries no source and so is a different type from the six
     /// above, and it is kept for the same reason.
     #[allow(dead_code)]
-    changed: Option<Closure<dyn FnMut(web_sys::Event)>>,
+    changed: Option<Closure<dyn FnMut(Event)>>,
 }
 
 impl Events {
@@ -118,9 +121,9 @@ impl Events {
         // is where the sources are - so this one says only that there is news.
         let changed = {
             let queue = queue.clone();
-            Closure::wrap(Box::new(move |_: web_sys::Event| {
+            Closure::wrap(Box::new(move |_: Event| {
                 queue.borrow_mut().push_back(wxr::Event::InputsChanged);
-            }) as Box<dyn FnMut(web_sys::Event)>)
+            }) as Box<dyn FnMut(Event)>)
         };
         session.set_oninputsourceschange(Some(changed.as_ref().unchecked_ref()));
 

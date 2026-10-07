@@ -8,13 +8,17 @@ use std::time::Duration;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{XrFrame, XrReferenceSpace, XrSession, XrView};
 
 use crate::convert::{
     field_of_view, hand_joint, offset_reference_space, reference_space_type, rigid, transform,
     visibility,
 };
-use crate::{anchors, depth, gpu, hit, input, light, planes};
+use crate::sys::{
+    DomPointReadOnly, Event, XrBoundedReferenceSpace, XrEnvironmentBlendMode, XrEye, XrFrame,
+    XrHandedness, XrLayerLayout, XrProjectionLayer, XrReferenceSpace, XrRenderStateInit, XrSession,
+    XrView, XrgpuBinding, XrgpuProjectionLayerInit, XrgpuQuadLayerInit,
+};
+use crate::{anchors, depth, hit, input, layers, light, planes, throws};
 
 impl Drop for WebXrSession {
     /// End the browser's session when this one is dropped.
@@ -61,7 +65,7 @@ struct Space {
     /// The `reset` handler, kept alive for as long as the space is: a closure the browser holds and this drops
     /// is a closure that stops being called. Nothing reads it - holding it is the work.
     #[allow(dead_code)]
-    on_reset: Option<Closure<dyn FnMut(web_sys::Event)>>,
+    on_reset: Option<Closure<dyn FnMut(Event)>>,
 }
 
 impl Space {
@@ -87,8 +91,8 @@ pub struct FrameImage {
 
 /// The binding and the layer, which only exist together: a binding with no layer presents nothing.
 struct Gpu {
-    binding: gpu::XRGPUBinding,
-    layer: gpu::XrProjectionLayer,
+    binding: XrgpuBinding,
+    layer: XrProjectionLayer,
 }
 
 /// A live WebXR session.
@@ -150,6 +154,12 @@ pub struct WebXrSession {
     /// The near and far planes the app asked for, kept because a session that has not arrived has no render
     /// state to put them on yet.
     depth_range: Option<(f32, f32)>,
+    /// The layers the app has made, each `None` once released. The index *is* the handle's id, which is why a
+    /// release leaves a hole rather than shifting the ones after it.
+    layers: Vec<Option<layers::Slot>>,
+    /// This frame's picture of each layer, kept for as long as the reference into it is handed out - the same
+    /// reason `depth_image` is kept, and the same reason it is dropped at the start of a frame.
+    layer_images: Vec<Option<FrameImage>>,
 }
 
 impl WebXrSession {
@@ -187,6 +197,8 @@ impl WebXrSession {
                 ..Default::default()
             },
             depth_range: None,
+            layers: Vec::new(),
+            layer_images: Vec::new(),
         }
     }
 
@@ -198,7 +210,7 @@ impl WebXrSession {
     /// eyes and a clock and no picture - which is what this backend could already say for itself, so it is a
     /// warning rather than a failure.
     fn start_gpu(&mut self, session: &XrSession) {
-        if self.gpu.is_some() || !gpu::has_feature(session, "webgpu") {
+        if self.gpu.is_some() || !has_feature(session, "webgpu") {
             return;
         }
         let Some(device) = &self.device else {
@@ -210,29 +222,59 @@ impl WebXrSession {
             );
             return;
         };
-        let binding = match gpu::XRGPUBinding::new(session, js_device.as_ref()) {
+        let binding = match XrgpuBinding::new(session, js_device.as_ref()) {
             Ok(binding) => binding,
             Err(error) => {
                 log::warn!("wxr-webxr: no images: {error:?}");
                 return;
             }
         };
-        let init = gpu::projection_layer_init(
-            &binding.get_preferred_color_format(),
-            gpu::DEPTH_FORMAT_NAME,
-        );
-        let layer = match binding.create_projection_layer(&init) {
+        // The colour format is the runtime's own preference; the depth format is named here, because a
+        // projection layer made without one has no depth texture at all and one made with another would hand
+        // over depth the renderer's pipeline cannot be attached to.
+        let init = XrgpuProjectionLayerInit::new(&binding.get_preferred_color_format());
+        init.set_depth_stencil_format(Some(DEPTH_FORMAT_NAME));
+        let layer = match throws::create_projection_layer(&binding, &init) {
             Ok(layer) => layer,
             Err(error) => {
                 log::warn!("wxr-webxr: the browser would not make a projection layer: {error:?}");
                 return;
             }
         };
-        gpu::set_layers(session, &layer);
-        log::info!("wxr-webxr: a projection layer, and with it the frames");
         self.gpu = Some(Gpu { binding, layer });
+        // The render state is handed the projection layer before anything else, because a WebGPU-compatible
+        // session with no layer set is a session whose animation frames never arrive at all.
+        if let Err(error) = self.present_layers() {
+            log::warn!("wxr-webxr: the browser took no layer list: {error}");
+        }
+        log::info!("wxr-webxr: a projection layer, and with it the frames");
         // A foveation amount asked for before there was a layer goes on now that there is one.
         self.apply_foveation();
+    }
+
+    /// Hand the browser the whole layer list: the projection layer first, then every layer the app has made.
+    ///
+    /// Called again whenever a layer appears or goes away, because the render state is where a layer *is* - a
+    /// layer the browser was never told about is a texture nothing composites.
+    fn present_layers(&self) -> Result<(), wxr::Error> {
+        let Some(gpu) = &self.gpu else {
+            return Ok(());
+        };
+        let session = self.inner.borrow().session.clone();
+        let Some(session) = session else {
+            return Ok(());
+        };
+        let state = XrRenderStateInit::new();
+        let presented = js_sys::Array::new();
+        presented.push(gpu.layer.as_ref());
+        for slot in self.layers.iter().flatten() {
+            presented.push(slot.layer.as_ref());
+        }
+        state.set_layers(&presented);
+        // Caught, because `updateRenderState` throws during an animation frame and a layer list is handed over
+        // between frames: a caller that breaks that rule gets an error rather than a trap.
+        throws::update_render_state(&session, &state)
+            .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))
     }
 
     /// Put the near and far planes on the browser's render state, if there is a session to put them on.
@@ -245,10 +287,12 @@ impl WebXrSession {
         else {
             return;
         };
-        let state = web_sys::XrRenderStateInit::new();
+        let state = XrRenderStateInit::new();
         state.set_depth_near(near as f64);
         state.set_depth_far(far as f64);
-        session.update_render_state_with_state(&state);
+        if let Err(error) = throws::update_render_state(&session, &state) {
+            log::warn!("wxr-webxr: the near and far planes were refused: {error:?}");
+        }
     }
 
     /// Put the foveation amount on the layer, when there is one - a session with no binding has no layer, and
@@ -257,7 +301,7 @@ impl WebXrSession {
         let (Some(gpu), Some(foveation)) = (&self.gpu, self.foveation) else {
             return;
         };
-        gpu.layer.set_fixed_foveation(foveation as f64);
+        gpu.layer.set_fixed_foveation(Some(foveation));
     }
 
     /// Ask for the next frame, once there is a session to ask.
@@ -322,14 +366,19 @@ impl wxr::Session for WebXrSession {
             (wxr::Features::HAND_TRACKING, "hand-tracking"),
             (wxr::Features::ANCHORS, "anchors"),
         ] {
-            if gpu::has_feature(&session, name) {
+            if has_feature(&session, name) {
                 features = features.union(bit);
             }
         }
         // Depth is granted by a feature and readable only through the binding that gives a texture: a browser
         // that granted it and no binding is a depth this backend cannot hand over.
-        if gpu::has_feature(&session, "depth-sensing") && self.gpu.is_some() {
+        if has_feature(&session, "depth-sensing") && self.gpu.is_some() {
             features = features.union(wxr::Features::DEPTH);
+        }
+        // Layers need two things and the session has to have both: the binding, which is what makes one, and the
+        // feature descriptor, which is what lets a non-projection layer be composited at all.
+        if self.gpu.is_some() && has_feature(&session, "layers") {
+            features = features.union(wxr::Features::LAYER_QUAD);
         }
         features
     }
@@ -350,7 +399,9 @@ impl wxr::Session for WebXrSession {
         if let Some(session) = arrived {
             self.state = wxr::State::Ready;
             // Before the frame loop starts, because a WebGPU-compatible session with no layer set is a session
-            // whose animation frames never arrive at all.
+            // whose animation frames never arrive at all - and before that, the session is put where the layer
+            // list can find it, because handing over a layer is a thing done *to* a session.
+            self.inner.borrow_mut().session = Some(session.clone());
             self.start_gpu(&session);
 
             // The browser can end a session on its own - the person takes the headset off, the page loses the
@@ -364,7 +415,6 @@ impl wxr::Session for WebXrSession {
             // only moment there is one to ask.
             self.input = Some(input::Events::new(&session, &self.sources));
 
-            self.inner.borrow_mut().session = Some(session);
             // A depth range the app set before the session existed goes on now that there is a render state.
             self.apply_depth_range();
             self.request_frame();
@@ -419,21 +469,19 @@ impl wxr::Session for WebXrSession {
 
     /// What the display shows behind the picture, which WebXR calls `environmentBlendMode`.
     ///
-    /// `web-sys` does not bind it - it is in the browser's own `XRSession` prototype and not in the bindings,
-    /// which is how this reads it, the same way `gpu::has_feature` reads `enabledFeatures`. Opaque until there
-    /// is a session to ask.
+    /// Opaque until there is a session to ask, which is the honest answer for a session that is not here: what a
+    /// display does with the world behind it is a fact about the display, and there is none.
     fn blend(&self) -> wxr::Blend {
         let Some(session) = self.inner.borrow().session.clone() else {
             return wxr::Blend::Opaque;
         };
-        let name = js_sys::Reflect::get(
-            session.unchecked_ref::<JsValue>(),
-            &JsValue::from_str("environmentBlendMode"),
-        );
-        match name.ok().and_then(|value| value.as_string()).as_deref() {
-            Some("additive") => wxr::Blend::Additive,
-            Some("alpha-blend") => wxr::Blend::AlphaBlend,
-            _ => wxr::Blend::Opaque,
+        match session.environment_blend_mode() {
+            XrEnvironmentBlendMode::Additive => wxr::Blend::Additive,
+            XrEnvironmentBlendMode::AlphaBlend => wxr::Blend::AlphaBlend,
+            XrEnvironmentBlendMode::Opaque => wxr::Blend::Opaque,
+            // A value from a newer specification than these bindings. Opaque is the conservative answer: it
+            // says nothing about the world behind the picture, which is what not knowing means.
+            XrEnvironmentBlendMode::__Invalid => wxr::Blend::Opaque,
         }
     }
 
@@ -490,7 +538,7 @@ impl wxr::Session for WebXrSession {
                 // The space itself says when its origin was recentered, and every pose measured in it is stale
                 // afterwards - so it is passed on as the session's news, because a core event has no space to
                 // arrive on.
-                let handler = Closure::<dyn FnMut(web_sys::Event)>::new(move |_| {
+                let handler = Closure::<dyn FnMut(Event)>::new(move |_| {
                     reset
                         .borrow_mut()
                         .push_back(wxr::Event::Reset(wxr::ReferenceSpace::new(kind, id)));
@@ -545,8 +593,10 @@ impl wxr::Session for WebXrSession {
     fn begin(&mut self, _now: Duration, out: &mut wxr::Frame) -> Result<(), wxr::Error> {
         out.views_mut().clear();
         self.located = 0;
-        // Last frame's views are not this frame's, and a depth buffer is about *that* frame's eyes.
+        // Last frame's views are not this frame's, and a depth buffer is about *that* frame's eyes. The same
+        // is true of a layer's picture: it is the compositor's for one frame and taken back at the end of it.
         self.frame_views.clear();
+        self.layer_images.clear();
 
         // The frame is whatever the last callback left behind, and the clock is the callback's own: WebXR
         // has no other.
@@ -601,33 +651,40 @@ impl wxr::Session for WebXrSession {
             // texture and which array layer - and the texture itself is taken here too, so that `images` has
             // it by the time the renderer asks.
             let (viewport, layer) = match &self.gpu {
-                Some(gpu) => {
-                    let sub = gpu.binding.get_view_sub_image(&gpu.layer, &view);
-                    let color = sub.color_texture();
-                    let depth = sub.depth_stencil_texture();
-                    let viewport = sub.viewport();
-                    self.meta = gpu::image_meta(&color);
-                    self.image = Some(FrameImage {
-                        color,
-                        depth: (!depth.is_null_or_undefined()).then_some(depth),
-                    });
-                    (
-                        wxr::Viewport {
-                            x: viewport.x().max(0) as u32,
-                            y: viewport.y().max(0) as u32,
-                            width: viewport.width().max(0) as u32,
-                            height: viewport.height().max(0) as u32,
-                        },
-                        gpu::base_array_layer(&sub.get_view_descriptor()),
-                    )
-                }
+                Some(gpu) => match throws::get_view_sub_image(&gpu.binding, &gpu.layer, &view) {
+                    Ok(sub) => {
+                        let color = sub.color_texture();
+                        let depth = sub.depth_stencil_texture();
+                        let viewport = sub.viewport();
+                        self.meta = image_meta(&color);
+                        self.image = Some(FrameImage {
+                            color,
+                            depth: (!depth.is_null_or_undefined()).then_some(depth),
+                        });
+                        (
+                            wxr::Viewport {
+                                x: viewport.x().max(0) as u32,
+                                y: viewport.y().max(0) as u32,
+                                width: viewport.width().max(0) as u32,
+                                height: viewport.height().max(0) as u32,
+                            },
+                            base_array_layer(&sub.get_view_descriptor()),
+                        )
+                    }
+                    // A sub-image the browser will not give is a frame with no picture, which is the same
+                    // answer as a session that never had a binding.
+                    Err(error) => {
+                        log::warn!("wxr-webxr: no sub-image for a view: {error:?}");
+                        (wxr::Viewport::default(), 0)
+                    }
+                },
                 None => (wxr::Viewport::default(), 0),
             };
             out_views.push(wxr::View {
                 eye: match view.eye() {
-                    web_sys::XrEye::Left => wxr::Eye::Left,
-                    web_sys::XrEye::Right => wxr::Eye::Right,
-                    _ => wxr::Eye::Mono,
+                    XrEye::Left => wxr::Eye::Left,
+                    XrEye::Right => wxr::Eye::Right,
+                    XrEye::None | XrEye::__Invalid => wxr::Eye::Mono,
                 },
                 pose: transform(view.transform()),
                 fov: field_of_view(&view.projection_matrix()),
@@ -673,17 +730,21 @@ impl wxr::Session for WebXrSession {
                 continue;
             };
             let handedness = match source.handedness() {
-                web_sys::XrHandedness::Left => wxr::Handedness::Left,
-                web_sys::XrHandedness::Right => wxr::Handedness::Right,
-                _ => wxr::Handedness::Unknown,
+                XrHandedness::Left => wxr::Handedness::Left,
+                XrHandedness::Right => wxr::Handedness::Right,
+                XrHandedness::None | XrHandedness::__Invalid => wxr::Handedness::Unknown,
             };
 
             let grip = source
                 .grip_space()
-                .and_then(|space| frame.get_pose(&space, reference.unchecked_ref()));
-            let aim = frame.get_pose(&source.target_ray_space(), reference.unchecked_ref());
+                .and_then(|space| frame.get_pose(&space, &reference));
+            let aim = frame.get_pose(&source.target_ray_space(), &reference);
 
-            let gamepad = source.gamepad();
+            // The generated attribute names the DOM type and this backend leaves it to `web-sys`: a gamepad
+            // is not WebXR's object, and mirroring it would be a second Rust type for one thing.
+            let gamepad = (!source.gamepad().is_null_or_undefined())
+                .then(|| source.gamepad())
+                .and_then(|value| value.dyn_into::<web_sys::Gamepad>().ok());
             let button = |index: u32| {
                 gamepad.as_ref().and_then(|gamepad| {
                     gamepad
@@ -760,7 +821,7 @@ impl wxr::Session for WebXrSession {
         // a joint that is not tracked, which is what `None` in an empty `Hand` already means.
         for joint in wxr::HandJoint::ALL {
             let space = hand.get(hand_joint(joint));
-            if let Some(pose) = frame.get_joint_pose(&space, reference.unchecked_ref()) {
+            if let Some(pose) = frame.get_joint_pose(&space, &reference) {
                 out.joints_mut()[joint.index()] = Some(wxr::Joint {
                     pose: transform(pose.transform()),
                     radius: pose.radius(),
@@ -805,11 +866,11 @@ impl wxr::Session for WebXrSession {
         };
         // `boundsGeometry` is on the bounded-floor space and nowhere else, so a space that is not one is not
         // this type - which is an outline with no points rather than a failure.
-        let Ok(bounds) = space.dyn_into::<web_sys::XrBoundedReferenceSpace>() else {
+        let Ok(bounds) = space.dyn_into::<XrBoundedReferenceSpace>() else {
             return Ok(());
         };
         for point in bounds.bounds_geometry().iter() {
-            let Ok(point) = point.dyn_into::<web_sys::DomPointReadOnly>() else {
+            let Ok(point) = point.dyn_into::<DomPointReadOnly>() else {
                 continue;
             };
             out.push(wxr::glam::Vec2::new(point.x() as f32, point.z() as f32));
@@ -826,6 +887,12 @@ impl wxr::Session for WebXrSession {
                 "the session has not started yet".into(),
             ));
         };
+        // Asked of the session before the browser is: `requestHitTestSource` throws `NotSupportedError` when the
+        // feature was not granted, and a session that says it does not have hit testing is a better answer than
+        // an exception from inside a frame.
+        if !has_feature(&session, "hit-test") {
+            return Err(wxr::Error::Unsupported("hit-test".into()));
+        }
         let Some(base) = self.spaces.get(space.id() as usize).cloned() else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
@@ -884,6 +951,11 @@ impl wxr::Session for WebXrSession {
                 "the session has not started yet".into(),
             ));
         };
+        // For the same reason as a hit-test source: `requestLightProbe` throws `NotSupportedError` rather than
+        // rejecting when the feature is not there.
+        if !has_feature(&session, "light-estimation") {
+            return Err(wxr::Error::Unsupported("light-estimation".into()));
+        }
         let slot = Rc::new(RefCell::new(light::Slot::default()));
         light::request(&session, slot.clone());
         self.light_probes.push(slot);
@@ -990,10 +1062,201 @@ impl wxr::Session for WebXrSession {
         self.depth_image.as_ref().map(|image| (image, info))
     }
 
+    fn layer(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        shape: wxr::LayerShape,
+        pixels: wxr::Extent2d,
+    ) -> Result<wxr::Layer, wxr::Error> {
+        let Some(gpu) = self.gpu.as_ref() else {
+            return Err(wxr::Error::Unsupported(
+                "this session has no binding to make a layer from".into(),
+            ));
+        };
+        // A quad is the one shape this backend makes. The bit is per shape on the platform too, so a session
+        // with one shape and not another is the ordinary case rather than an odd one.
+        let (width, height) = match shape {
+            wxr::LayerShape::Quad { width, height } => (width, height),
+            other => return Err(wxr::Error::Unsupported(format!("{} layers", other.name()))),
+        };
+        // A layer is made *in* a space, so a space that is still a promise is a layer to ask for again - the
+        // same answer `hit_test_source` gives, for the same reason.
+        let Some(reference) = self
+            .spaces
+            .get(space.id() as usize)
+            .and_then(|slot| slot.borrow().space.clone())
+        else {
+            return Err(wxr::Error::Unavailable(
+                "the space has not resolved yet".into(),
+            ));
+        };
+        let init = XrgpuQuadLayerInit::new(
+            &gpu.binding.get_preferred_color_format(),
+            &reference,
+            pixels.height,
+            pixels.width,
+        );
+        // Set again by name, because the constructor takes them in the IDL's order and this is the one place a
+        // transposed pair would still compile.
+        init.set_view_pixel_height(pixels.height);
+        init.set_view_pixel_width(pixels.width);
+        // One picture for both eyes, which is the thing that makes a quad worth handing to a compositor at all -
+        // and the only layout this backend asks for, though it is also the default.
+        init.set_layout(XrLayerLayout::Mono);
+        init.set_width(width);
+        init.set_height(height);
+        let layer = throws::create_quad_layer(&gpu.binding, &init)
+            .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?;
+        let id = self.layers.len() as u32;
+        self.layers.push(Some(layers::Slot {
+            layer,
+            pose: wxr::Pose::IDENTITY,
+        }));
+        // The browser composites what the render state names, so a layer it has not been told about is a
+        // texture nothing reads.
+        if let Err(error) = self.present_layers() {
+            log::warn!("wxr-webxr: the new layer was not presented: {error}");
+        }
+        log::info!(
+            "wxr-webxr: a quad layer, {width}x{height} m at {}x{} px",
+            pixels.width,
+            pixels.height
+        );
+        Ok(wxr::Layer::new(id))
+    }
+
+    fn layer_image(&mut self, layer: wxr::Layer) -> Option<(&Self::Image, wxr::LayerImage)> {
+        let index = layer.id() as usize;
+        let (image, meta, viewport) = {
+            let gpu = self.gpu.as_ref()?;
+            let frame = self.current.clone()?;
+            let slot = self.layers.get(index)?.as_ref()?;
+            // One picture per layer per frame, and a second ask in the same frame gets the same texture - so
+            // this is the frame's picture, and the frame is what takes it back.
+            let sub = throws::get_sub_image(&gpu.binding, &slot.layer, &frame, XrEye::None).ok()?;
+            let color = sub.color_texture();
+            let depth = sub.depth_stencil_texture();
+            let viewport = sub.viewport();
+            (
+                FrameImage {
+                    color: color.clone(),
+                    depth: (!depth.is_null_or_undefined()).then_some(depth),
+                },
+                image_meta(&color),
+                wxr::Viewport {
+                    x: viewport.x().max(0) as u32,
+                    y: viewport.y().max(0) as u32,
+                    width: viewport.width().max(0) as u32,
+                    height: viewport.height().max(0) as u32,
+                },
+            )
+        };
+        self.layer_images.resize_with(self.layers.len(), || None);
+        self.layer_images[index] = Some(image);
+        let image = self.layer_images[index].as_ref()?;
+        Some((image, wxr::LayerImage { meta, viewport }))
+    }
+
+    fn set_layer_pose(&mut self, layer: wxr::Layer, pose: wxr::Pose) -> Result<(), wxr::Error> {
+        let Some(slot) = self
+            .layers
+            .get_mut(layer.id() as usize)
+            .and_then(Option::as_mut)
+        else {
+            return Err(wxr::Error::Unsupported("no such layer".into()));
+        };
+        // Relative to the layer's own space, which is why the slot keeps the space it was made in rather than
+        // taking one here.
+        slot.layer.set_transform(&rigid(pose)?);
+        slot.pose = pose;
+        Ok(())
+    }
+
+    fn release_layer(&mut self, layer: wxr::Layer) {
+        let Some(slot) = self.layers.get_mut(layer.id() as usize) else {
+            return;
+        };
+        let Some(slot) = slot.take() else {
+            return;
+        };
+        // Told explicitly rather than left to the collector: a layer the runtime is not told about is a picture
+        // the compositor keeps presenting.
+        slot.layer.destroy();
+        if let Err(error) = self.present_layers() {
+            log::warn!("wxr-webxr: the layer list was not updated: {error}");
+        }
+    }
+
     fn end(&mut self, _frame: &mut wxr::Frame) -> Result<(), wxr::Error> {
         // There is nothing to hand back: the compositor has no image of ours. The next frame is asked for,
         // which is what keeps the session running.
         self.request_frame();
         Ok(())
+    }
+}
+
+/// The WebGPU name of the depth format this workspace draws with.
+///
+/// Named here because this is where it is asked for: a projection layer made without a depth format has no depth
+/// texture at all, and one made with another would hand over depth the renderer's pipeline cannot be attached to.
+const DEPTH_FORMAT_NAME: &str = "depth32float";
+
+/// Whether a session was granted a feature, which is what `enabledFeatures` answers.
+///
+/// That attribute is generated now, so this is a translation rather than a read by name: a feature is the same
+/// string in the request and in the answer, which is WebXR's own spelling of it.
+fn has_feature(session: &XrSession, feature: &str) -> bool {
+    session
+        .enabled_features()
+        .iter()
+        .any(|granted| granted.as_string().as_deref() == Some(feature))
+}
+
+/// The array layer a sub-image's descriptor starts at: how a stereo projection layer says which eye a view is.
+fn base_array_layer(descriptor: &JsValue) -> u32 {
+    js_sys::Reflect::get(descriptor, &JsValue::from_str("baseArrayLayer"))
+        .ok()
+        .and_then(|value| value.as_f64())
+        .map(|value| value.max(0.0) as u32)
+        .unwrap_or(0)
+}
+
+/// What a browser `GPUTexture` says about itself, in the core's terms.
+///
+/// Read from the texture rather than from the layer's configuration, for the same reason the Apple backend reads
+/// it from the texture it is handed: it is what will actually be drawn into. A `GPUTexture` is deliberately not
+/// a generated type - it belongs to wgpu and to the browser - so this is the one place the two meet.
+fn image_meta(texture: &JsValue) -> wxr::ImageMeta {
+    let field = |name: &str| {
+        js_sys::Reflect::get(texture, &JsValue::from_str(name))
+            .ok()
+            .and_then(|value| value.as_f64())
+    };
+    let format = js_sys::Reflect::get(texture, &JsValue::from_str("format"))
+        .ok()
+        .and_then(|value| value.as_string())
+        .map(|name| color_format(&name))
+        .unwrap_or_default();
+    wxr::ImageMeta {
+        format,
+        extent: wxr::Extent2d::new(
+            field("width").unwrap_or(0.0).max(0.0) as u32,
+            field("height").unwrap_or(0.0).max(0.0) as u32,
+        ),
+        layers: field("depthOrArrayLayers").unwrap_or(1.0).max(1.0) as u32,
+    }
+}
+
+/// A `GPUTextureFormat` in the core's terms. `Unknown` for one this core has not learned, which the renderer
+/// turns into a frame it does not draw rather than one drawn in the wrong colour space.
+fn color_format(name: &str) -> wxr::ColorFormat {
+    match name {
+        "bgra8unorm-srgb" => wxr::ColorFormat::Bgra8Srgb,
+        "bgra8unorm" => wxr::ColorFormat::Bgra8Unorm,
+        "rgba8unorm-srgb" => wxr::ColorFormat::Rgba8Srgb,
+        "rgba8unorm" => wxr::ColorFormat::Rgba8Unorm,
+        "rgba16float" => wxr::ColorFormat::Rgba16Float,
+        "rgb10a2unorm" => wxr::ColorFormat::Rgb10a2Unorm,
+        _ => wxr::ColorFormat::Unknown,
     }
 }
