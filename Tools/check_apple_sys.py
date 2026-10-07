@@ -148,6 +148,11 @@ def from_c(text: str, pattern: str) -> dict[str, tuple[list[str], str]]:
     attribute macros contain parentheses."""
     text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
     text = re.sub(r"//[^\n]*", " ", text)
+    # Availability macros carry parentheses of their own, and a prototype that has one between `AR_EXTERN`
+    # and its return type reads as a function called `MSG` to anything looking for `name(`. They say
+    # nothing about the shape, so they go first.
+    text = re.sub(r"__SWIFT_UNAVAILABLE_MSG\([^)]*\)", " ", text)
+    text = re.sub(r"API_[A-Z_]+\([^)]*\)", " ", text)
     text = " ".join(text.split())
 
     found: dict[str, tuple[list[str], str]] = {}
@@ -161,6 +166,38 @@ def from_c(text: str, pattern: str) -> dict[str, tuple[list[str], str]]:
                 depth -= 1
                 if depth == 0:
                     found[name] = (arguments(text[opening + 1 : index]), kind(match.group(1)))
+                    break
+    return found
+
+
+def from_sdk(sdk: Path) -> dict[str, tuple[list[str], str]]:
+    """Every prototype in an SDK's own headers - the authority the other three only stand in for.
+
+    An SDK is not always readable: most of Xcode's headers ship `decmpfs`-compressed, and an extractor that
+    drops extended attributes leaves files that look right and read as empty. This is given a path someone
+    has already made, so it reads what is there and says when that is nothing.
+    """
+    raw = ""
+    for framework in HEADERS:
+        directory = sdk / "System/Library/Frameworks" / f"{framework}.framework" / "Headers"
+        for path in sorted(directory.glob("*.h")):
+            text = path.read_text(errors="replace")
+            if text.startswith("NULLcanary") or not text.strip():
+                print(f"check-apple-sys: {path} is not readable - extracted without xattrs?", file=sys.stderr)
+                return {}
+            raw += "\n" + text
+
+    found = from_c(raw, r"(?:AR|CP)_EXTERN\s+(.+?)(\w+)\s*\(")
+    for match in re.finditer(r"\n\s*([A-Za-z_][A-Za-z0-9_ ]*?)\s*\n\s*(\w+)\s*\(", raw):
+        name, opening = match.group(2), match.end() - 1
+        depth = 0
+        for index in range(opening, len(raw)):
+            if raw[index] == "(":
+                depth += 1
+            elif raw[index] == ")":
+                depth -= 1
+                if depth == 0:
+                    found.setdefault(name, (arguments(raw[opening + 1 : index]), kind(match.group(1))))
                     break
     return found
 
@@ -205,7 +242,16 @@ def declared(path: Path) -> dict[str, tuple[list[str], str]]:
 
 
 def main() -> int:
-    source = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("crates/wxr-apple/src/sys.rs")
+    # An optional `--sdk <path>` first, so that the one authoritative source can be used when it is here:
+    # everything else in this file is a stand-in for an SDK someone has already extracted.
+    arguments = list(sys.argv[1:])
+    sdk = None
+    if "--sdk" in arguments:
+        index = arguments.index("--sdk")
+        sdk = Path(arguments[index + 1])
+        del arguments[index : index + 2]
+
+    source = Path(arguments[0]) if arguments else Path("crates/wxr-apple/src/sys.rs")
     if not source.exists():
         print(f"check-apple-sys: no {source}", file=sys.stderr)
         return 1
@@ -214,13 +260,14 @@ def main() -> int:
     if not rust:
         return 0
 
-    headers = from_headers()
+    headers = from_sdk(sdk) if sdk else from_headers()
     if not headers:
-        print("check-apple-sys: could not reach the SDK mirror; skipping", file=sys.stderr)
+        print("check-apple-sys: no SDK there, and the mirror could not be reached; skipping", file=sys.stderr)
         return 0
     soft_links = from_soft_links()
 
-    print(f"{len(rust)} declarations in {source.name}, against {len(headers)} prototypes in Xcode 26.5\n")
+    origin = f"the SDK at {sdk}" if sdk else "an Xcode 26.5 mirror"
+    print(f"{len(rust)} declarations in {source.name}, against {len(headers)} prototypes in {origin}\n")
     problems = 0
     for name, (arguments_rust, returns_rust) in sorted(rust.items()):
         source_name, prototype = "the header", headers.get(name)
