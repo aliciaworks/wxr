@@ -31,6 +31,7 @@ pub mod feature;
 pub mod frame;
 pub mod hit;
 pub mod input;
+pub mod layer;
 pub mod light;
 pub mod mock;
 pub mod plane;
@@ -46,6 +47,7 @@ pub use hit::{Hit, HitTestSource};
 pub use input::{
     Axes, Buttons, Hand, HandJoint, Handedness, InputId, InputSource, Joint, TargetRayMode,
 };
+pub use layer::{Layer, LayerShape};
 pub use light::{LightEstimate, LightProbe};
 pub use plane::{Plane, PlaneOrientation};
 pub use session::{

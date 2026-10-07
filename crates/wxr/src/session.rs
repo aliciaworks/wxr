@@ -11,6 +11,7 @@ use crate::feature::Features;
 use crate::frame::Frame;
 use crate::hit::{Hit, HitTestSource};
 use crate::input::{Hand, InputId, InputSource};
+use crate::layer::{Layer, LayerShape};
 use crate::light::{LightEstimate, LightProbe};
 use crate::plane::Plane;
 use crate::space::{Pose, ReferenceSpace, SpaceKind};
@@ -330,6 +331,46 @@ pub trait Session: Any {
 
     /// The image at `index`, as this platform names it.
     fn image(&self, index: usize) -> Option<&Self::Image>;
+
+    /// Make a picture the compositor places itself, which is WebXR's `XRCompositionLayer`s and OpenXR's
+    /// `XrCompositionLayer`s other than the projection one.
+    ///
+    /// It is the one part of a frame that is not drawn per eye: the runtime takes the image, puts it where the
+    /// shape and the space say, and warps it for the optics. So what an app draws into it is drawn once - a
+    /// menu, a video, a 360° photograph - and what it gives up is the compositor's own idea of where that
+    /// picture is and how it meets the others, which is not an app's to decide on any platform that has layers.
+    ///
+    /// Which shapes a session has is [`Features::LAYER_QUAD`] and its siblings, one bit per shape, because that
+    /// is how the platforms say it too. A session with none of them answers [`Error::Unsupported`] rather than
+    /// handing back a layer that nothing will ever place.
+    fn layer(&mut self, _space: ReferenceSpace, _shape: LayerShape) -> Result<Layer, Error> {
+        Err(Error::Unsupported("layers".into()))
+    }
+
+    /// Where a layer's picture goes and what shape it is, as this platform names it.
+    ///
+    /// `None` while there is nothing to draw into yet - a layer is made asynchronously on every platform that
+    /// has them - and `None` for a backend that was never taught layers at all, which is the same answer to a
+    /// caller that only draws when it has something to draw into.
+    fn layer_image(&mut self, _layer: Layer) -> Option<(&Self::Image, ImageMeta)> {
+        None
+    }
+
+    /// Put a layer where it is, in the space it was made in - WebXR's `XRCompositionLayer.transform`, OpenXR's
+    /// layer pose.
+    ///
+    /// Per frame for a layer that moves, and once for one that does not: a panel put on a wall is placed when it
+    /// is put there, and a panel the wearer carries is placed every frame from wherever they are.
+    fn set_layer_pose(&mut self, _layer: Layer, _pose: Pose) -> Result<(), Error> {
+        Err(Error::Unsupported("layers".into()))
+    }
+
+    /// Tell the runtime the app is done with a layer.
+    ///
+    /// Nothing by default, because a backend with no layers has none to release - and unlike an anchor or a
+    /// light probe, a layer holds an image the runtime wants back, which is a reason to say so rather than to
+    /// let a handle go out of scope.
+    fn release_layer(&mut self, _layer: Layer) {}
 
     /// Ask for a space to measure poses in. A runtime that does not have the one asked for says so, rather
     /// than quietly handing back a worse one - a scene that asked to stand on the floor and got a head

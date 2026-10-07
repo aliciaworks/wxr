@@ -28,6 +28,15 @@ impl Features {
     /// Places the runtime keeps fixed in the room: [`crate::Session::anchor`].
     pub const ANCHORS: Self = Self(1 << 5);
 
+    /// A flat rectangle the compositor places: [`crate::Session::layer`] with [`crate::LayerShape::Quad`].
+    pub const LAYER_QUAD: Self = Self(1 << 6);
+    /// A rectangle bent around a vertical cylinder: [`crate::LayerShape::Cylinder`].
+    pub const LAYER_CYLINDER: Self = Self(1 << 7);
+    /// A sphere's worth of picture: [`crate::LayerShape::Equirect`].
+    pub const LAYER_EQUIRECT: Self = Self(1 << 8);
+    /// Six faces of a cube in one image: [`crate::LayerShape::Cube`].
+    pub const LAYER_CUBE: Self = Self(1 << 9);
+
     /// Whether every bit of `other` is in this set.
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
