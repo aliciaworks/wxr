@@ -106,10 +106,8 @@ async fn setup() {
         "a WebGPU device, made by the page (asked for an XR-compatible adapter: {xr_compatible})"
     ));
 
-    let session = match backend.connect(
-        wxr_webxr::Device { instance, device },
-        wxr::SessionMode::ImmersiveVr,
-    ) {
+    let session = match backend.connect(wxr_webxr::Device { device }, wxr::SessionMode::ImmersiveVr)
+    {
         Ok(session) => session,
         Err(error) => return say(&format!("connect refused: {error}")),
     };

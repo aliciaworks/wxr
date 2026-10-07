@@ -77,12 +77,12 @@ use crate::session::Connect;
 
 /// What the renderer made.
 ///
-/// The device is the part that matters: `XRGPUBinding` is constructed from it, so it has to be one a WebXR
-/// session will accept - a device from an adapter requested with `xrCompatible: true`, which is the field this
+/// The device is the whole of it, and that is not a simplification: `XRGPUBinding` is constructed from the
+/// device, and there is nothing else of the renderer's a WebXR session wants. It has to be a device a session
+/// will accept, though - one from an adapter requested with `xrCompatible: true`, which is the field this
 /// workspace's wgpu fork carries and upstream does not. A renderer with any other device gets a session with
 /// the head, the eyes and the timing and no images.
 pub struct Device {
-    pub instance: wgpu::Instance,
     pub device: wgpu::Device,
 }
 
