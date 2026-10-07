@@ -56,6 +56,37 @@ pub struct OpenXrSession {
     /// The foveation profile the app last asked for, kept because the swapchain points at it - dropping it
     /// would leave the swapchain with a dangling one.
     foveation: Option<xr::FoveationProfileFB>,
+    /// The swapchain format as the runtime names it, kept because a layer's swapchain has to be made in a
+    /// format the runtime offered too - and the same one is the honest choice: the renderer's pipeline is
+    /// built once.
+    format: u32,
+    /// The layers the app made, each `None` once released. The index is the handle's id, so a release leaves a
+    /// hole rather than shifting the ones after it.
+    layers: Vec<Option<Layer>>,
+}
+
+/// A layer the app made, and the swapchain it draws into.
+///
+/// One swapchain per layer, which is what a composition layer *is* on OpenXR: the runtime reads the image the
+/// layer names at `xrEndFrame`, and a swapchain is how an app hands one over without the compositor and the
+/// renderer sharing a fence. The projection layer is the same machinery and is not one of these, because a
+/// session has it whether an app asked for one or not.
+struct Layer {
+    swapchain: xr::Swapchain<xr::Vulkan>,
+    /// Its images, as the runtime names them - a `VkImage`, which on this platform is an integer - for the
+    /// renderer to wrap, the same shape the eyes' images arrive in.
+    images: Vec<u64>,
+    /// The space it was made in, by the session's own index, and where in it. Both are needed at submission,
+    /// because a layer's pose is read then and not when it is placed.
+    space: usize,
+    pose: xr::Posef,
+    /// The shape in the terms `xrEndFrame` wants: the size in metres for a quad.
+    size: xr::Extent2Df,
+    /// And the image's size in pixels, which is the resolution the app asked to draw at - a different fact, and
+    /// the one a renderer makes its target from.
+    extent: wxr::Extent2d,
+    /// Which image this frame took, until it is given back.
+    held: Option<u32>,
 }
 
 impl OpenXrSession {
@@ -199,6 +230,8 @@ impl OpenXrSession {
             begun: false,
             lost: false,
             foveation: None,
+            format,
+            layers: Vec::new(),
         })
     }
 }
@@ -221,12 +254,19 @@ impl wxr::Session for OpenXrSession {
     }
 
     fn features(&self) -> wxr::Features {
+        // A quad layer is in the core specification rather than behind an extension, and a swapchain is the
+        // only thing one needs - so every session of this backend has a quad, which is the one shape it makes.
+        // The other three are `XR_KHR_composition_layer_*`, and the bits for them stay unset until those are
+        // enabled and driven.
+        let mut features = wxr::Features::LAYER_QUAD;
         // A hand tracker is the skeleton, so a session that was given one has hand tracking. Everything else
         // this backend asks for - the depth layer, surfaces - it does not get.
-        match &self.hands {
-            Some(hands) if hands.has_tracking() => wxr::Features::HAND_TRACKING,
-            _ => wxr::Features::NONE,
+        if let Some(hands) = &self.hands
+            && hands.has_tracking()
+        {
+            features = features.union(wxr::Features::HAND_TRACKING);
         }
+        features
     }
 
     fn set_foveation(&mut self, amount: f32) {
@@ -436,6 +476,110 @@ impl wxr::Session for OpenXrSession {
         ))
     }
 
+    fn layer(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        shape: wxr::LayerShape,
+        pixels: wxr::Extent2d,
+    ) -> Result<wxr::Layer, wxr::Error> {
+        // A quad is in the core specification; the other three are `XR_KHR_composition_layer_*`, which this
+        // instance does not enable - so the refusal is per shape, which is how the platforms state it and what
+        // the capability bits are for.
+        let size = match shape {
+            wxr::LayerShape::Quad { width, height } => xr::Extent2Df { width, height },
+            other => return Err(wxr::Error::Unsupported(format!("{} layers", other.name()))),
+        };
+        if self.spaces.get(space.id() as usize).is_none() {
+            return Err(wxr::Error::NoSpace(space.kind));
+        }
+        let swapchain = self
+            .session
+            .create_swapchain(&xr::SwapchainCreateInfo {
+                create_flags: xr::SwapchainCreateFlags::EMPTY,
+                usage_flags: xr::SwapchainUsageFlags::COLOR_ATTACHMENT
+                    | xr::SwapchainUsageFlags::SAMPLED,
+                // The format the session is drawing the world in, which is the one the runtime offered and the
+                // one the renderer's pipeline is already built for.
+                format: self.format,
+                sample_count: 1,
+                width: pixels.width,
+                height: pixels.height,
+                face_count: 1,
+                // One: a quad is one picture for both eyes, which is the whole reason to hand it to a
+                // compositor instead of drawing it twice.
+                array_size: 1,
+                mip_count: 1,
+            })
+            .map_err(|error| Error::runtime("create a layer's swapchain", error))?;
+        let images = swapchain
+            .enumerate_images()
+            .map_err(|error| Error::runtime("enumerate a layer's images", error))?;
+        let id = self.layers.len() as u32;
+        self.layers.push(Some(Layer {
+            swapchain,
+            images,
+            space: space.id() as usize,
+            pose: xr::Posef::IDENTITY,
+            size,
+            extent: pixels,
+            held: None,
+        }));
+        log::info!(
+            "wxr-openxr: a quad layer, {}x{} m at {}x{} px",
+            size.width,
+            size.height,
+            pixels.width,
+            pixels.height
+        );
+        Ok(wxr::Layer::new(id))
+    }
+
+    fn layer_image(&mut self, layer: wxr::Layer) -> Option<(&Self::Image, wxr::LayerImage)> {
+        let slot = self.layers.get(layer.id() as usize)?.as_ref()?;
+        let held = slot.held?;
+        let image = slot.images.get(held as usize)?;
+        // One image and the whole of it: a layer's swapchain is the layer's, so there is no atlas to take a
+        // sub-rectangle out of - which is the difference between this and the projection layer's sub-image.
+        Some((
+            image,
+            wxr::LayerImage {
+                meta: wxr::ImageMeta {
+                    format: self.color,
+                    extent: slot.extent,
+                    layers: 1,
+                },
+                viewport: wxr::Viewport {
+                    x: 0,
+                    y: 0,
+                    width: slot.extent.width,
+                    height: slot.extent.height,
+                },
+            },
+        ))
+    }
+
+    fn set_layer_pose(&mut self, layer: wxr::Layer, pose: wxr::Pose) -> Result<(), wxr::Error> {
+        let Some(slot) = self
+            .layers
+            .get_mut(layer.id() as usize)
+            .and_then(Option::as_mut)
+        else {
+            return Err(wxr::Error::Unsupported("no such layer".into()));
+        };
+        // Kept rather than applied: a composition layer's pose is read at `xrEndFrame`, so placing one is not a
+        // call into the runtime - it is where the next frame will say it is.
+        slot.pose = posef(pose);
+        Ok(())
+    }
+
+    fn release_layer(&mut self, layer: wxr::Layer) {
+        // Dropping the swapchain is the whole of it: OpenXR has no `destroy` to call, and a layer the app stops
+        // naming at `xrEndFrame` has stopped being presented.
+        if let Some(slot) = self.layers.get_mut(layer.id() as usize) {
+            *slot = None;
+        }
+    }
+
     fn begin(&mut self, _now: Duration, out: &mut wxr::Frame) -> Result<(), wxr::Error> {
         // A runtime is not asked to wait for a frame until the session has been begun. `xrWaitFrame` before
         // `xrBeginSession` is an error at best, and the event that says to begin arrives on the same poll the
@@ -491,6 +635,21 @@ impl wxr::Session for OpenXrSession {
             .wait_image(xr::Duration::INFINITE)
             .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
         self.held = Some(held);
+
+        // Each layer has a swapchain of its own, and each is taken in the same frame the eyes are: an image the
+        // runtime has not handed over is not one an app may draw into, and waiting is unbounded for the reason
+        // the eyes' wait is - the runtime is the one that knows when it is free.
+        for layer in self.layers.iter_mut().flatten() {
+            let held = layer
+                .swapchain
+                .acquire_image()
+                .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+            layer
+                .swapchain
+                .wait_image(xr::Duration::INFINITE)
+                .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+            layer.held = Some(held);
+        }
         Ok(())
     }
 
@@ -585,6 +744,14 @@ impl wxr::Session for OpenXrSession {
         self.swapchain
             .release_image()
             .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+        for layer in self.layers.iter_mut().flatten() {
+            if layer.held.take().is_some() {
+                layer
+                    .swapchain
+                    .release_image()
+                    .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+            }
+        }
 
         // The layer borrows this frame's views, so it is built here and lives only until it is submitted.
         // Each eye is a rectangle of the one image, in its own array layer.
@@ -615,8 +782,47 @@ impl wxr::Session for OpenXrSession {
             .space(&self.spaces[0])
             .views(&views);
 
+        // The app's layers, in the order they were made: a quad is a rectangle at a pose, and the whole of its
+        // swapchain image is the picture. They are built here and not kept, because a sub-image borrows the
+        // swapchain and this is the one place a frame is submitted.
+        let quads: Vec<xr::CompositionLayerQuad<'_, xr::Vulkan>> = self
+            .layers
+            .iter()
+            .flatten()
+            .filter_map(|layer| {
+                Some(
+                    xr::CompositionLayerQuad::new()
+                        .space(self.spaces.get(layer.space)?)
+                        .eye_visibility(xr::EyeVisibility::BOTH)
+                        .pose(layer.pose)
+                        .size(layer.size)
+                        .sub_image(
+                            xr::SwapchainSubImage::new()
+                                .swapchain(&layer.swapchain)
+                                .image_array_index(0)
+                                .image_rect(xr::Rect2Di {
+                                    offset: xr::Offset2Di { x: 0, y: 0 },
+                                    extent: xr::Extent2Di {
+                                        width: layer.extent.width as i32,
+                                        height: layer.extent.height as i32,
+                                    },
+                                }),
+                        ),
+                )
+            })
+            .collect();
+
+        // The world first and the app's pictures over it: the projection layer is what a scene is drawn into,
+        // and a panel that arrived behind it would be a panel nobody sees.
+        let mut present: Vec<&xr::CompositionLayerBase<'_, xr::Vulkan>> =
+            Vec::with_capacity(1 + quads.len());
+        present.push(&layer);
+        for quad in &quads {
+            present.push(quad);
+        }
+
         self.stream
-            .end(self.predicted, self.blend, &[&layer])
+            .end(self.predicted, self.blend, &present)
             .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
         Ok(())
     }
