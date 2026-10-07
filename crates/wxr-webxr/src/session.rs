@@ -1107,6 +1107,10 @@ impl wxr::Session for WebXrSession {
         init.set_height(height);
         let layer = throws::create_quad_layer(&gpu.binding, &init)
             .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?;
+        // A layer is a picture *over* what is already there, so its alpha is part of the picture: a panel drawn
+        // with a transparent background is transparent, which it is not if the compositor ignores the channel.
+        // Opaque content says the same thing with every alpha at one.
+        layer.set_blend_texture_source_alpha(true);
         let id = self.layers.len() as u32;
         self.layers.push(Some(layers::Slot {
             layer,

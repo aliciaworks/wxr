@@ -792,6 +792,11 @@ impl wxr::Session for OpenXrSession {
             .filter_map(|layer| {
                 Some(
                     xr::CompositionLayerQuad::new()
+                        // A layer is a picture *over* what is already there, so its alpha is part of the
+                        // picture: without this bit the compositor ignores the channel and a panel with a
+                        // transparent background is a black rectangle. Opaque content says the same thing with
+                        // every alpha at one.
+                        .layer_flags(xr::CompositionLayerFlags::BLEND_TEXTURE_SOURCE_ALPHA)
                         .space(self.spaces.get(layer.space)?)
                         .eye_visibility(xr::EyeVisibility::BOTH)
                         .pose(layer.pose)
