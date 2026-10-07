@@ -22,6 +22,9 @@
 set -euo pipefail
 
 REPO_FORK=https://github.com/aliciaworks/objc2.git
+# Resolved before anything changes directory: the script is invoked by a relative path and ends up
+# inside the fork, where `${BASH_SOURCE[0]}` no longer means anything.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BRANCH=visionos-arkit
 ARTIFACT=visionos-generated
 
@@ -44,9 +47,11 @@ if [[ ! -d "${fork}/.git" ]]; then
   git clone --branch "${BRANCH}" "${REPO_FORK}" "${fork}"
 fi
 cd "${fork}"
-git fetch origin "${BRANCH}" --quiet
+# The fork by URL, not `origin`: a checkout of upstream has its `origin` pointing there, and this
+# repository is only ever the fork.
+git fetch "${REPO_FORK}" "${BRANCH}" --quiet
 git checkout "${BRANCH}" --quiet
-git reset --hard "origin/${BRANCH}" --quiet
+git reset --hard FETCH_HEAD --quiet
 
 mkdir -p out
 for crate in objc2-ar-kit objc2-compositor-services; do
@@ -71,13 +76,13 @@ resolves a whole workspace before it builds a member of it, and those two crates
 more of them than their generated module.
 EOF
 )"
-  git push origin "${BRANCH}"
+  git push "${REPO_FORK}" "${BRANCH}"
 fi
 
 commit="$(git rev-parse HEAD)"
 echo "fork at ${commit}"
 
-cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${ROOT}"
 python3 - "${commit}" <<'PY'
 import sys
 from pathlib import Path
