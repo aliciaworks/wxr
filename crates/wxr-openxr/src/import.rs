@@ -82,11 +82,7 @@ impl wxr_render::Import for Images {
                 // The image arrived from a compositor that has not told us what state it is in, and
                 // `UNINITIALIZED` is wgpu's way of saying "transition it yourself, the contents are mine to
                 // discard" - which is true: every frame clears it.
-                // And `false`, which is the newer of `create_texture_from_hal`'s two extra arguments: it says
-                // whether the contents are already defined. A compositor's image is not - it is the compositor's,
-                // and every frame clears it - so `false` is the honest answer to the question.
                 wgpu::TextureUses::UNINITIALIZED,
-                false,
             )
         })
     }

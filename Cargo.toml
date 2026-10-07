@@ -46,8 +46,15 @@ log = "0.4"
 
 # The one thing a WebXR app needs that upstream wgpu does not have, and a patch rather than a dependency so
 # that it reaches this workspace's builds and stops at its edge.
+#
+# It is based on the `v30.0.1` release and carries one commit on top of it, which is not a detail: the fork used
+# to sit on a `main` commit from before that release, where `Device::create_texture_from_hal` still took a
+# `cleared` argument that the released `30.0.1` does not. A patch whose API differs from the crate it replaces
+# is a patch that only builds here - `wxr-openxr` compiled against the fork and against the registry can be two
+# different crates, and this is what keeps them one. When upstream grows the field, the branch has nothing left
+# to carry.
 [patch.crates-io]
-wgpu = { git = "https://github.com/yukarikaname/wgpu", rev = "8939f7ef5842aed37de461cfc9b7806829cbb8b6" }
+wgpu = { git = "https://github.com/yukarikaname/wgpu", rev = "bebc862056a36688d51afa2894586309cdcdf97a" }
 
 [profile.dev]
 opt-level = 1
