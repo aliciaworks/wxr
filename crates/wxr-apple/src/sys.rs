@@ -36,6 +36,24 @@
 //! invisible until it is not. Hence [`Float4x4`] and [`Float4`], which are `repr(C)` and aligned the way the
 //! C type they stand for is.
 
+//! **Where the line between generated and written falls, and why.** Once the visionOS SDK was on hand,
+//! these were run through `objc2`'s own translator, and the answer is *sixteen* of the twenty-one:
+//! everything whose signature is plain C, plus `cp_drawable_set_device_anchor` once two lines that
+//! skipped it were removed - they were there because ARKit is generated from the iOS SDK, which has no
+//! visionOS module, and that is not true of this configuration.
+//!
+//! The five left over are the ones whose signature carries a `simd` type: four returning `simd_float4x4`
+//! and one taking `simd_float2`. The translator says so itself - "simd types are not yet possible in
+//! functions" - so the split is a *boundary* rather than a preference, and it is written down because a
+//! reader would otherwise have to guess which declaration came from where.
+//!
+//! To redo it: `aliciaworks/objc2`, branch `visionos-arkit` - a one-line fix (an attribute macro with no
+//! argument was read as one with), and `objc2-ar-kit`'s config naming `visionos` alone so that framework is
+//! read from the SDK that has the module. The workflow `generate-visionos.yml` runs there on a macOS
+//! runner with Xcode 26.6, one framework per run, because a run rewrites its crate's feature list and the
+//! second run then cannot resolve the workspace. It was tried on Linux first and does not work there: the
+//! libclang to hand is years newer than the one the translator was written against.
+
 use std::ffi::c_void;
 
 use objc2_compositor_services::{cp_drawable_t, cp_view_t};
