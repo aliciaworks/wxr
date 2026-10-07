@@ -8,7 +8,7 @@
 //! they are declared here from those signatures, with the note that says why they are not in the crate
 //! above them.
 //!
-//! **Nothing here is from memory.** [`Tools/check_apple_sys.py`] reads Apple's headers out of an SDK mirror
+//! **Nothing here is from memory.** [`Tools/check_apple_sys.py`](https://github.com/aliciaworks/wxr/blob/main/Tools/check_apple_sys.py) reads Apple's headers out of an SDK mirror
 //! - the same headers an extractor without extended-attribute support reads as empty, which is what made
 //!   this file unverifiable for a while - and compares each name, its argument count and the shape of what it
 //!   returns; where the mirror has no header for something, WebKit's soft-link headers and Apple's
@@ -21,7 +21,6 @@
 //! macOS. The replacement is in `objc2-compositor-services` already, so this is the one declaration here
 //! that is expected to be *deleted* rather than corrected, and `projection` is where that swap would land.
 //!
-//! [Tools/check_apple_sys.py]: https://github.com/aliciaworks/wxr/blob/main/Tools/check_apple_sys.py
 //!
 //! ARKit is the other half. Its visionOS *Swift* API - `ARKitSession`, `WorldTrackingProvider` - has no
 //! Objective-C presence at all, which is why `objc2` cannot reach it and why this workspace first thought a
