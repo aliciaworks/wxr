@@ -106,12 +106,15 @@ without letting it become the vocabulary - which stays WebXR's, the smallest of 
 ## Layout
 
 ```
-crates/wxr/                the core: session, space, frame, target, input. No platform code, no graphics API.
+crates/wxr/                the core: session, space, frame, target, layer, input. No platform code, no
+                           graphics API.
 crates/wxr-openxr/         the OpenXR backend, on Vulkan handles that already exist.
-crates/wxr-webxr/          the WebXR backend, for wasm.
+crates/wxr-webxr/          the WebXR backend, for wasm, with `webidl/` (the snapshot) and `src/sys/` (the
+                           bindings generated from it).
 crates/wxr-webxr-smoke/    the page that runs it, so that it has been run.
 crates/wxr-apple/          the Apple backend: CompositorServices to present, ARKit to track. All of it is C.
 crates/wxr-render/         the renderer: takes a frame and a device, draws into the images.
+Tools/                     the two scripts that keep the generated bindings honest.
 ```
 
 There is no `apple/` directory of Swift, and that is a finding rather than an omission - see below.
@@ -133,14 +136,26 @@ WebXR session patches the fork in the same way; one that only wants OpenXR or Ap
 
 **`wxr-webxr`** is the one that did not fit: WebXR's session, its reference spaces and its frames all arrive
 asynchronously, which is why the core has `State::Connecting` and why a space is asked for before it exists.
-It also cannot give a renderer any images yet - WebXR's WebGPU binding (`XRGPUBinding`) is not in `web-sys`,
-and in a browser it is behind the `webxr-webgpu-binding` flag, which does work on Linux although the
-announcement named Windows and Android - so it hands over the head, the eyes and the timing and says so
-plainly. It has a smoke page of its own, `crates/wxr-webxr-smoke` with a `serve.py` that builds it and serves
-it, because a backend nobody has run is a backend nobody has seen work: in a browser with the Immersive Web
-Emulator it gets a real session, and stops exactly where this paragraph says it must - with visibility
-`Hidden`, never `Visible`, because a session does not become visible without a base layer and there is no WebGPU
-binding to make one from in that browser.
+It hands a renderer images when three things line up, and each is off by default somewhere: the browser has
+WebXR's WebGPU binding at all, which in Chromium is behind the `webxr-webgpu-binding` flag; the session granted
+`webgpu`; and the device came from an adapter requested with `xrCompatible: true`, which is the field this
+workspace's wgpu fork carries. When any of them is missing the session is one with a head, two eyes, a clock
+and no picture, and says so rather than pretending.
+
+The API it speaks is **generated here rather than taken from `web-sys`**, which has WebXR's core, gates it
+behind a build-wide cfg, and has none of the Layers module or the WebGPU binding. `crates/wxr-webxr/webidl/`
+is the snapshot - webref's IDL for eleven specifications, and two cut out of their Bikeshed source because
+webref does not carry them - and `crates/wxr-webxr/src/sys` is generated from it, committed, and checked by
+`Tools/check_webxr_sys.py`. That is why nothing here needs `web_sys_unstable_apis`, and why a wrong name in
+the bindings is not a thing that can compile: the generator has the names, and the only part written by hand
+is the externs file and the short list in `throws.rs` of calls whose throw the specification states in prose.
+
+Its smoke page, `crates/wxr-webxr-smoke` with a `serve.py` that builds it and serves it, is what says the
+backend has been run: in a browser with the Immersive Web Emulator it gets a real session, and stops exactly
+where this paragraph says it can - at visibility `Hidden`, never `Visible`, because a session does not become
+visible without a layer and that browser has no WebGPU binding to make one from. The WebGPU path itself is
+checked against a fake runtime instead: `Tools/xr_mock.js` in the game that consumes this is a session with a
+real `GPUTexture`, and what it proves is the whole path from `XRGPUBinding` to two eyes drawn with parallax.
 
 **`wxr-apple`** was going to need a Swift shim, and does not. Two things were learned from Apple's own
 documentation rather than assumed:
@@ -168,6 +183,9 @@ The model, the seam, and a mock:
 - `frame` - `View`, `Eye`, `FieldOfView`, `Frame`, `FrameState`. Asymmetric fields of view, because a
   headset lens is not centred on its panel.
 - `target` - `ImageMeta`, `ColorFormat`, `Extent2d`. The *shape* of the images, not the images.
+- `layer` - `Layer`, `LayerShape`, `LayerImage`. The pictures a compositor places itself, which is the one part
+  of a frame that is not drawn per eye: a menu, a video, a skybox. The vocabulary is the shape both platforms
+  share, and which shapes a session has is `Features::LAYER_QUAD` and its siblings.
 - `session` - the `Session` and `Backend` traits, `State`, `Event`, `Presentation`, `Error`.
 - `input` - `InputSource`, `Buttons`, `Axes`. One entry per hand, with a grip pose and an aim pose, because a
   controller is one thing with two places on it. The buttons are only what all three platforms have, and on a
@@ -181,7 +199,7 @@ There is no headset here, so verification is what compiles and what is tested:
 
 ```sh
 cargo fmt --all --check
-cargo test                                                  # 27, on the host
+cargo test                                                  # 53, on the host
 cargo clippy --workspace --all-targets -- -D warnings
 cargo clippy --workspace --all-targets --target wasm32-unknown-unknown -- -D warnings
 cargo clippy -p wxr-apple --target aarch64-apple-visionos --all-targets -- -D warnings
@@ -190,8 +208,24 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 
 Each backend crate is empty outside its own target family - `wxr-openxr` off wasm, `wxr-webxr` off wasm the
 other way, `wxr-apple` off Apple - so a host build tests the core and the renderer and leaves the platforms to
-a cross-compiler. `.github/workflows/ci.yml` runs exactly this list. What none of it proves is that any of the
-three has drawn a frame on real hardware, because none of them has.
+a cross-compiler. `.github/workflows/ci.yml` runs exactly this list.
+
+Beyond the compiler, three things are checked, and each is checked by the one that can:
+
+```sh
+python3 Tools/check_webxr_sys.py                            # the generated bindings, against their IDL
+cargo run -p wxr-openxr --example layers                    # a quad layer, against the runtime this machine has
+```
+
+The first compares the generator's output with its input - every declaration in the snapshot has a file, every
+member a name - because a declaration the generator cannot resolve is one it leaves out in silence. It also
+compares against a captured browser's prototypes when one is beside the IDL, which is where a name written by
+hand can be caught; `Tools/capture_webxr_prototypes.js` is what produces the dump. The second is the OpenXR
+half of the layer API against a real runtime: `xrWaitFrame` waits for a session that never becomes visible on a
+machine with no display, so a *frame* is not available - but a layer is made against an idle session, and the
+runtime takes the swapchain, hands back its images and lets go of it on release.
+
+What none of it proves is that any of the three has drawn a frame on real hardware, because none of them has.
 
 ## What is not decided yet
 
