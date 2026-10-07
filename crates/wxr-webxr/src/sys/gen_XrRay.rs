@@ -18,12 +18,12 @@ extern "C" {
     #[doc = "Getter for the `origin` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRRay/origin)"]
-    pub fn origin(this: &XrRay) -> ::wasm_bindgen::JsValue;
+    pub fn origin(this: &XrRay) -> DomPointReadOnly;
     #[wasm_bindgen(method, getter, js_class = "XRRay", js_name = "direction")]
     #[doc = "Getter for the `direction` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRRay/direction)"]
-    pub fn direction(this: &XrRay) -> ::wasm_bindgen::JsValue;
+    pub fn direction(this: &XrRay) -> DomPointReadOnly;
     #[wasm_bindgen(method, getter, js_class = "XRRay", js_name = "matrix")]
     #[doc = "Getter for the `matrix` field of this object."]
     #[doc = ""]
@@ -34,6 +34,19 @@ extern "C" {
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRRay/XRRay)"]
     pub fn new() -> Result<XrRay, JsValue>;
+    #[wasm_bindgen(catch, constructor, js_class = "XRRay")]
+    #[doc = "The `new XrRay(..)` constructor, creating a new instance of `XrRay`."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRRay/XRRay)"]
+    pub fn new_with_dom_point_init(origin: &DomPointInit) -> Result<XrRay, JsValue>;
+    #[wasm_bindgen(catch, constructor, js_class = "XRRay")]
+    #[doc = "The `new XrRay(..)` constructor, creating a new instance of `XrRay`."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRRay/XRRay)"]
+    pub fn new_with_dom_point_init_and_direction(
+        origin: &DomPointInit,
+        direction: &XrRayDirectionInit,
+    ) -> Result<XrRay, JsValue>;
     #[wasm_bindgen(catch, constructor, js_class = "XRRay")]
     #[doc = "The `new XrRay(..)` constructor, creating a new instance of `XrRay`."]
     #[doc = ""]

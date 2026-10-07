@@ -8,6 +8,16 @@
 //! Regenerating is `python3 Tools/refresh_webxr_idl.py`; it says what it needs.
 
 #[allow(non_snake_case)]
+mod gen_DomPointInit;
+#[allow(unused_imports)]
+pub use gen_DomPointInit::*;
+
+#[allow(non_snake_case)]
+mod gen_DomPointReadOnly;
+#[allow(unused_imports)]
+pub use gen_DomPointReadOnly::*;
+
+#[allow(non_snake_case)]
 mod gen_Event;
 #[allow(unused_imports)]
 pub use gen_Event::*;
@@ -18,14 +28,14 @@ mod gen_EventInit;
 pub use gen_EventInit::*;
 
 #[allow(non_snake_case)]
+mod gen_EventListener;
+#[allow(unused_imports)]
+pub use gen_EventListener::*;
+
+#[allow(non_snake_case)]
 mod gen_EventTarget;
 #[allow(unused_imports)]
 pub use gen_EventTarget::*;
-
-#[allow(non_snake_case)]
-mod gen_Gamepad;
-#[allow(unused_imports)]
-pub use gen_Gamepad::*;
 
 #[allow(non_snake_case)]
 mod gen_Navigator;
@@ -48,9 +58,24 @@ mod gen_PermissionStatus;
 pub use gen_PermissionStatus::*;
 
 #[allow(non_snake_case)]
+mod gen_XrAnchor;
+#[allow(unused_imports)]
+pub use gen_XrAnchor::*;
+
+#[allow(non_snake_case)]
+mod gen_XrAnchorSet;
+#[allow(unused_imports)]
+pub use gen_XrAnchorSet::*;
+
+#[allow(non_snake_case)]
 mod gen_XrBoundedReferenceSpace;
 #[allow(unused_imports)]
 pub use gen_XrBoundedReferenceSpace::*;
+
+#[allow(non_snake_case)]
+mod gen_XrCamera;
+#[allow(unused_imports)]
+pub use gen_XrCamera::*;
 
 #[allow(non_snake_case)]
 mod gen_XrCompositionLayer;

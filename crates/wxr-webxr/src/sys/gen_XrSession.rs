@@ -15,6 +15,11 @@ extern "C" {
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession)"]
     pub type XrSession;
+    #[wasm_bindgen(method, getter, js_class = "XRSession", js_name = "persistentAnchors")]
+    #[doc = "Getter for the `persistentAnchors` field of this object."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/persistentAnchors)"]
+    pub fn persistent_anchors(this: &XrSession) -> ::js_sys::Array;
     #[wasm_bindgen(
         method,
         getter,
@@ -119,12 +124,12 @@ extern "C" {
     #[doc = "Getter for the `onend` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onend)"]
-    pub fn onend(this: &XrSession) -> ::wasm_bindgen::JsValue;
+    pub fn onend(this: &XrSession) -> Option<::js_sys::Function>;
     #[wasm_bindgen(method, setter, js_class = "XRSession", js_name = "onend")]
     #[doc = "Setter for the `onend` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onend)"]
-    pub fn set_onend(this: &XrSession, value: &::wasm_bindgen::JsValue);
+    pub fn set_onend(this: &XrSession, value: Option<&::js_sys::Function>);
     #[wasm_bindgen(
         method,
         getter,
@@ -134,7 +139,7 @@ extern "C" {
     #[doc = "Getter for the `oninputsourceschange` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/oninputsourceschange)"]
-    pub fn oninputsourceschange(this: &XrSession) -> ::wasm_bindgen::JsValue;
+    pub fn oninputsourceschange(this: &XrSession) -> Option<::js_sys::Function>;
     #[wasm_bindgen(
         method,
         setter,
@@ -144,87 +149,87 @@ extern "C" {
     #[doc = "Setter for the `oninputsourceschange` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/oninputsourceschange)"]
-    pub fn set_oninputsourceschange(this: &XrSession, value: &::wasm_bindgen::JsValue);
+    pub fn set_oninputsourceschange(this: &XrSession, value: Option<&::js_sys::Function>);
     #[wasm_bindgen(method, getter, js_class = "XRSession", js_name = "onselect")]
     #[doc = "Getter for the `onselect` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onselect)"]
-    pub fn onselect(this: &XrSession) -> ::wasm_bindgen::JsValue;
+    pub fn onselect(this: &XrSession) -> Option<::js_sys::Function>;
     #[wasm_bindgen(method, setter, js_class = "XRSession", js_name = "onselect")]
     #[doc = "Setter for the `onselect` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onselect)"]
-    pub fn set_onselect(this: &XrSession, value: &::wasm_bindgen::JsValue);
+    pub fn set_onselect(this: &XrSession, value: Option<&::js_sys::Function>);
     #[wasm_bindgen(method, getter, js_class = "XRSession", js_name = "onselectstart")]
     #[doc = "Getter for the `onselectstart` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onselectstart)"]
-    pub fn onselectstart(this: &XrSession) -> ::wasm_bindgen::JsValue;
+    pub fn onselectstart(this: &XrSession) -> Option<::js_sys::Function>;
     #[wasm_bindgen(method, setter, js_class = "XRSession", js_name = "onselectstart")]
     #[doc = "Setter for the `onselectstart` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onselectstart)"]
-    pub fn set_onselectstart(this: &XrSession, value: &::wasm_bindgen::JsValue);
+    pub fn set_onselectstart(this: &XrSession, value: Option<&::js_sys::Function>);
     #[wasm_bindgen(method, getter, js_class = "XRSession", js_name = "onselectend")]
     #[doc = "Getter for the `onselectend` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onselectend)"]
-    pub fn onselectend(this: &XrSession) -> ::wasm_bindgen::JsValue;
+    pub fn onselectend(this: &XrSession) -> Option<::js_sys::Function>;
     #[wasm_bindgen(method, setter, js_class = "XRSession", js_name = "onselectend")]
     #[doc = "Setter for the `onselectend` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onselectend)"]
-    pub fn set_onselectend(this: &XrSession, value: &::wasm_bindgen::JsValue);
+    pub fn set_onselectend(this: &XrSession, value: Option<&::js_sys::Function>);
     #[wasm_bindgen(method, getter, js_class = "XRSession", js_name = "onsqueeze")]
     #[doc = "Getter for the `onsqueeze` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onsqueeze)"]
-    pub fn onsqueeze(this: &XrSession) -> ::wasm_bindgen::JsValue;
+    pub fn onsqueeze(this: &XrSession) -> Option<::js_sys::Function>;
     #[wasm_bindgen(method, setter, js_class = "XRSession", js_name = "onsqueeze")]
     #[doc = "Setter for the `onsqueeze` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onsqueeze)"]
-    pub fn set_onsqueeze(this: &XrSession, value: &::wasm_bindgen::JsValue);
+    pub fn set_onsqueeze(this: &XrSession, value: Option<&::js_sys::Function>);
     #[wasm_bindgen(method, getter, js_class = "XRSession", js_name = "onsqueezestart")]
     #[doc = "Getter for the `onsqueezestart` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onsqueezestart)"]
-    pub fn onsqueezestart(this: &XrSession) -> ::wasm_bindgen::JsValue;
+    pub fn onsqueezestart(this: &XrSession) -> Option<::js_sys::Function>;
     #[wasm_bindgen(method, setter, js_class = "XRSession", js_name = "onsqueezestart")]
     #[doc = "Setter for the `onsqueezestart` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onsqueezestart)"]
-    pub fn set_onsqueezestart(this: &XrSession, value: &::wasm_bindgen::JsValue);
+    pub fn set_onsqueezestart(this: &XrSession, value: Option<&::js_sys::Function>);
     #[wasm_bindgen(method, getter, js_class = "XRSession", js_name = "onsqueezeend")]
     #[doc = "Getter for the `onsqueezeend` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onsqueezeend)"]
-    pub fn onsqueezeend(this: &XrSession) -> ::wasm_bindgen::JsValue;
+    pub fn onsqueezeend(this: &XrSession) -> Option<::js_sys::Function>;
     #[wasm_bindgen(method, setter, js_class = "XRSession", js_name = "onsqueezeend")]
     #[doc = "Setter for the `onsqueezeend` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onsqueezeend)"]
-    pub fn set_onsqueezeend(this: &XrSession, value: &::wasm_bindgen::JsValue);
+    pub fn set_onsqueezeend(this: &XrSession, value: Option<&::js_sys::Function>);
     #[wasm_bindgen(method, getter, js_class = "XRSession", js_name = "onvisibilitychange")]
     #[doc = "Getter for the `onvisibilitychange` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onvisibilitychange)"]
-    pub fn onvisibilitychange(this: &XrSession) -> ::wasm_bindgen::JsValue;
+    pub fn onvisibilitychange(this: &XrSession) -> Option<::js_sys::Function>;
     #[wasm_bindgen(method, setter, js_class = "XRSession", js_name = "onvisibilitychange")]
     #[doc = "Setter for the `onvisibilitychange` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onvisibilitychange)"]
-    pub fn set_onvisibilitychange(this: &XrSession, value: &::wasm_bindgen::JsValue);
+    pub fn set_onvisibilitychange(this: &XrSession, value: Option<&::js_sys::Function>);
     #[wasm_bindgen(method, getter, js_class = "XRSession", js_name = "onframeratechange")]
     #[doc = "Getter for the `onframeratechange` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onframeratechange)"]
-    pub fn onframeratechange(this: &XrSession) -> ::wasm_bindgen::JsValue;
+    pub fn onframeratechange(this: &XrSession) -> Option<::js_sys::Function>;
     #[wasm_bindgen(method, setter, js_class = "XRSession", js_name = "onframeratechange")]
     #[doc = "Setter for the `onframeratechange` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/onframeratechange)"]
-    pub fn set_onframeratechange(this: &XrSession, value: &::wasm_bindgen::JsValue);
+    pub fn set_onframeratechange(this: &XrSession, value: Option<&::js_sys::Function>);
     #[wasm_bindgen(method, getter, js_class = "XRSession", js_name = "maxRenderLayers")]
     #[doc = "Getter for the `maxRenderLayers` field of this object."]
     #[doc = ""]
@@ -235,6 +240,11 @@ extern "C" {
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/cancelAnimationFrame)"]
     pub fn cancel_animation_frame(this: &XrSession, handle: u32);
+    #[wasm_bindgen(method, js_class = "XRSession", js_name = "deletePersistentAnchor")]
+    #[doc = "The `deletePersistentAnchor()` method."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/deletePersistentAnchor)"]
+    pub fn delete_persistent_anchor(this: &XrSession, uuid: &str) -> ::js_sys::Promise;
     #[wasm_bindgen(method, js_class = "XRSession")]
     #[doc = "The `end()` method."]
     #[doc = ""]
@@ -296,6 +306,11 @@ extern "C" {
         this: &XrSession,
         type_: XrReferenceSpaceType,
     ) -> ::js_sys::Promise;
+    #[wasm_bindgen(method, js_class = "XRSession", js_name = "restorePersistentAnchor")]
+    #[doc = "The `restorePersistentAnchor()` method."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/restorePersistentAnchor)"]
+    pub fn restore_persistent_anchor(this: &XrSession, uuid: &str) -> ::js_sys::Promise;
     #[wasm_bindgen(method, js_class = "XRSession", js_name = "resumeDepthSensing")]
     #[doc = "The `resumeDepthSensing()` method."]
     #[doc = ""]

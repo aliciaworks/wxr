@@ -107,6 +107,11 @@ extern "C" {
         this: &XrWebGlBinding,
         init: &XrQuadLayerInit,
     ) -> XrQuadLayer;
+    #[wasm_bindgen(method, js_class = "XRWebGLBinding", js_name = "getCameraImage")]
+    #[doc = "The `getCameraImage()` method."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRWebGLBinding/getCameraImage)"]
+    pub fn get_camera_image(this: &XrWebGlBinding, camera: &XrCamera) -> ::wasm_bindgen::JsValue;
     #[wasm_bindgen(method, js_class = "XRWebGLBinding", js_name = "getDepthInformation")]
     #[doc = "The `getDepthInformation()` method."]
     #[doc = ""]

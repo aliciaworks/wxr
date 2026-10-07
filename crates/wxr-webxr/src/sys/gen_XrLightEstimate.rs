@@ -33,7 +33,7 @@ extern "C" {
     #[doc = "Getter for the `primaryLightDirection` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRLightEstimate/primaryLightDirection)"]
-    pub fn primary_light_direction(this: &XrLightEstimate) -> ::wasm_bindgen::JsValue;
+    pub fn primary_light_direction(this: &XrLightEstimate) -> DomPointReadOnly;
     #[wasm_bindgen(
         method,
         getter,
@@ -43,5 +43,5 @@ extern "C" {
     #[doc = "Getter for the `primaryLightIntensity` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRLightEstimate/primaryLightIntensity)"]
-    pub fn primary_light_intensity(this: &XrLightEstimate) -> ::wasm_bindgen::JsValue;
+    pub fn primary_light_intensity(this: &XrLightEstimate) -> DomPointReadOnly;
 }

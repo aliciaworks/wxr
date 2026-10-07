@@ -18,12 +18,12 @@ extern "C" {
     #[doc = "Getter for the `position` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRRigidTransform/position)"]
-    pub fn position(this: &XrRigidTransform) -> ::wasm_bindgen::JsValue;
+    pub fn position(this: &XrRigidTransform) -> DomPointReadOnly;
     #[wasm_bindgen(method, getter, js_class = "XRRigidTransform", js_name = "orientation")]
     #[doc = "Getter for the `orientation` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRRigidTransform/orientation)"]
-    pub fn orientation(this: &XrRigidTransform) -> ::wasm_bindgen::JsValue;
+    pub fn orientation(this: &XrRigidTransform) -> DomPointReadOnly;
     #[wasm_bindgen(method, getter, js_class = "XRRigidTransform", js_name = "matrix")]
     #[doc = "Getter for the `matrix` field of this object."]
     #[doc = ""]
@@ -39,4 +39,17 @@ extern "C" {
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRRigidTransform/XRRigidTransform)"]
     pub fn new() -> Result<XrRigidTransform, JsValue>;
+    #[wasm_bindgen(catch, constructor, js_class = "XRRigidTransform")]
+    #[doc = "The `new XrRigidTransform(..)` constructor, creating a new instance of `XrRigidTransform`."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRRigidTransform/XRRigidTransform)"]
+    pub fn new_with_position(position: &DomPointInit) -> Result<XrRigidTransform, JsValue>;
+    #[wasm_bindgen(catch, constructor, js_class = "XRRigidTransform")]
+    #[doc = "The `new XrRigidTransform(..)` constructor, creating a new instance of `XrRigidTransform`."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRRigidTransform/XRRigidTransform)"]
+    pub fn new_with_position_and_orientation(
+        position: &DomPointInit,
+        orientation: &DomPointInit,
+    ) -> Result<XrRigidTransform, JsValue>;
 }

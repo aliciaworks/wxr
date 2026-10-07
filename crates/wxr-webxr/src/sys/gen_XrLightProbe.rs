@@ -29,7 +29,7 @@ extern "C" {
     #[doc = "Getter for the `onreflectionchange` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRLightProbe/onreflectionchange)"]
-    pub fn onreflectionchange(this: &XrLightProbe) -> ::wasm_bindgen::JsValue;
+    pub fn onreflectionchange(this: &XrLightProbe) -> Option<::js_sys::Function>;
     #[wasm_bindgen(
         method,
         setter,
@@ -39,5 +39,5 @@ extern "C" {
     #[doc = "Setter for the `onreflectionchange` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRLightProbe/onreflectionchange)"]
-    pub fn set_onreflectionchange(this: &XrLightProbe, value: &::wasm_bindgen::JsValue);
+    pub fn set_onreflectionchange(this: &XrLightProbe, value: Option<&::js_sys::Function>);
 }

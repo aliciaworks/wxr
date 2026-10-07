@@ -64,10 +64,10 @@ extern "C" {
     pub fn set_view_pixel_width(this: &XrgpuCubeLayerInit, val: u32);
     #[doc = "Get the `orientation` field of this object."]
     #[wasm_bindgen(method, getter = "orientation")]
-    pub fn get_orientation(this: &XrgpuCubeLayerInit) -> ::wasm_bindgen::JsValue;
+    pub fn get_orientation(this: &XrgpuCubeLayerInit) -> Option<DomPointReadOnly>;
     #[doc = "Change the `orientation` field of this object."]
     #[wasm_bindgen(method, setter = "orientation")]
-    pub fn set_orientation(this: &XrgpuCubeLayerInit, val: &::wasm_bindgen::JsValue);
+    pub fn set_orientation(this: &XrgpuCubeLayerInit, val: Option<&DomPointReadOnly>);
 }
 impl XrgpuCubeLayerInit {
     #[doc = "Construct a new `XrgpuCubeLayerInit`."]
@@ -131,8 +131,8 @@ impl XrgpuCubeLayerInit {
         self
     }
     #[deprecated = "Use `set_orientation()` instead."]
-    pub fn orientation(&mut self, val: Option<&::wasm_bindgen::JsValue>) -> &mut Self {
-        self.set_orientation(val.unwrap_or(&::wasm_bindgen::JsValue::NULL));
+    pub fn orientation(&mut self, val: Option<&DomPointReadOnly>) -> &mut Self {
+        self.set_orientation(val);
         self
     }
 }

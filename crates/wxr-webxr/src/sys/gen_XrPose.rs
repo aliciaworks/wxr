@@ -23,12 +23,12 @@ extern "C" {
     #[doc = "Getter for the `linearVelocity` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRPose/linearVelocity)"]
-    pub fn linear_velocity(this: &XrPose) -> ::wasm_bindgen::JsValue;
+    pub fn linear_velocity(this: &XrPose) -> Option<DomPointReadOnly>;
     #[wasm_bindgen(method, getter, js_class = "XRPose", js_name = "angularVelocity")]
     #[doc = "Getter for the `angularVelocity` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRPose/angularVelocity)"]
-    pub fn angular_velocity(this: &XrPose) -> ::wasm_bindgen::JsValue;
+    pub fn angular_velocity(this: &XrPose) -> Option<DomPointReadOnly>;
     #[wasm_bindgen(method, getter, js_class = "XRPose", js_name = "emulatedPosition")]
     #[doc = "Getter for the `emulatedPosition` field of this object."]
     #[doc = ""]

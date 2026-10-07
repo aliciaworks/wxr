@@ -61,10 +61,10 @@ extern "C" {
     #[doc = "Getter for the `onredraw` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRQuadLayer/onredraw)"]
-    pub fn onredraw(this: &XrQuadLayer) -> ::wasm_bindgen::JsValue;
+    pub fn onredraw(this: &XrQuadLayer) -> Option<::js_sys::Function>;
     #[wasm_bindgen(method, setter, js_class = "XRQuadLayer", js_name = "onredraw")]
     #[doc = "Setter for the `onredraw` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRQuadLayer/onredraw)"]
-    pub fn set_onredraw(this: &XrQuadLayer, value: &::wasm_bindgen::JsValue);
+    pub fn set_onredraw(this: &XrQuadLayer, value: Option<&::js_sys::Function>);
 }

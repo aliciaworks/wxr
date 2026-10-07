@@ -111,10 +111,10 @@ extern "C" {
     #[doc = "Getter for the `onredraw` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XREquirectLayer/onredraw)"]
-    pub fn onredraw(this: &XrEquirectLayer) -> ::wasm_bindgen::JsValue;
+    pub fn onredraw(this: &XrEquirectLayer) -> Option<::js_sys::Function>;
     #[wasm_bindgen(method, setter, js_class = "XREquirectLayer", js_name = "onredraw")]
     #[doc = "Setter for the `onredraw` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XREquirectLayer/onredraw)"]
-    pub fn set_onredraw(this: &XrEquirectLayer, value: &::wasm_bindgen::JsValue);
+    pub fn set_onredraw(this: &XrEquirectLayer, value: Option<&::js_sys::Function>);
 }

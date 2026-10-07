@@ -14,6 +14,11 @@ extern "C" {
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRFrame)"]
     pub type XrFrame;
+    #[wasm_bindgen(method, getter, js_class = "XRFrame", js_name = "trackedAnchors")]
+    #[doc = "Getter for the `trackedAnchors` field of this object."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRFrame/trackedAnchors)"]
+    pub fn tracked_anchors(this: &XrFrame) -> XrAnchorSet;
     #[wasm_bindgen(method, getter, js_class = "XRFrame", js_name = "detectedPlanes")]
     #[doc = "Getter for the `detectedPlanes` field of this object."]
     #[doc = ""]
@@ -24,6 +29,15 @@ extern "C" {
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRFrame/session)"]
     pub fn session(this: &XrFrame) -> XrSession;
+    #[wasm_bindgen(method, js_class = "XRFrame", js_name = "createAnchor")]
+    #[doc = "The `createAnchor()` method."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRFrame/createAnchor)"]
+    pub fn create_anchor(
+        this: &XrFrame,
+        pose: &XrRigidTransform,
+        space: &XrSpace,
+    ) -> ::js_sys::Promise;
     #[wasm_bindgen(catch, method, js_class = "XRFrame", js_name = "fillJointRadii")]
     #[doc = "The `fillJointRadii()` method."]
     #[doc = ""]

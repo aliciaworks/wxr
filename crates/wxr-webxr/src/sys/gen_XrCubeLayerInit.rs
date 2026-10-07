@@ -58,10 +58,10 @@ extern "C" {
     pub fn set_view_pixel_width(this: &XrCubeLayerInit, val: u32);
     #[doc = "Get the `orientation` field of this object."]
     #[wasm_bindgen(method, getter = "orientation")]
-    pub fn get_orientation(this: &XrCubeLayerInit) -> ::wasm_bindgen::JsValue;
+    pub fn get_orientation(this: &XrCubeLayerInit) -> Option<DomPointReadOnly>;
     #[doc = "Change the `orientation` field of this object."]
     #[wasm_bindgen(method, setter = "orientation")]
-    pub fn set_orientation(this: &XrCubeLayerInit, val: &::wasm_bindgen::JsValue);
+    pub fn set_orientation(this: &XrCubeLayerInit, val: Option<&DomPointReadOnly>);
 }
 impl XrCubeLayerInit {
     #[doc = "Construct a new `XrCubeLayerInit`."]
@@ -114,8 +114,8 @@ impl XrCubeLayerInit {
         self
     }
     #[deprecated = "Use `set_orientation()` instead."]
-    pub fn orientation(&mut self, val: Option<&::wasm_bindgen::JsValue>) -> &mut Self {
-        self.set_orientation(val.unwrap_or(&::wasm_bindgen::JsValue::NULL));
+    pub fn orientation(&mut self, val: Option<&DomPointReadOnly>) -> &mut Self {
+        self.set_orientation(val);
         self
     }
 }

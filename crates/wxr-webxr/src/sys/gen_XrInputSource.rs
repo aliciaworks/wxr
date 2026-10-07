@@ -18,7 +18,7 @@ extern "C" {
     #[doc = "Getter for the `gamepad` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRInputSource/gamepad)"]
-    pub fn gamepad(this: &XrInputSource) -> Option<Gamepad>;
+    pub fn gamepad(this: &XrInputSource) -> ::wasm_bindgen::JsValue;
     #[wasm_bindgen(method, getter, js_class = "XRInputSource", js_name = "hand")]
     #[doc = "Getter for the `hand` field of this object."]
     #[doc = ""]

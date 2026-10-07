@@ -71,10 +71,10 @@ extern "C" {
     #[doc = "Getter for the `onredraw` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRCylinderLayer/onredraw)"]
-    pub fn onredraw(this: &XrCylinderLayer) -> ::wasm_bindgen::JsValue;
+    pub fn onredraw(this: &XrCylinderLayer) -> Option<::js_sys::Function>;
     #[wasm_bindgen(method, setter, js_class = "XRCylinderLayer", js_name = "onredraw")]
     #[doc = "Setter for the `onredraw` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRCylinderLayer/onredraw)"]
-    pub fn set_onredraw(this: &XrCylinderLayer, value: &::wasm_bindgen::JsValue);
+    pub fn set_onredraw(this: &XrCylinderLayer, value: Option<&::js_sys::Function>);
 }

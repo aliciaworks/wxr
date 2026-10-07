@@ -19,6 +19,11 @@ extern "C" {
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRView/isFirstPersonObserver)"]
     pub fn is_first_person_observer(this: &XrView) -> bool;
+    #[wasm_bindgen(method, getter, js_class = "XRView", js_name = "camera")]
+    #[doc = "Getter for the `camera` field of this object."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRView/camera)"]
+    pub fn camera(this: &XrView) -> Option<XrCamera>;
     #[wasm_bindgen(method, getter, js_class = "XRView", js_name = "eye")]
     #[doc = "Getter for the `eye` field of this object."]
     #[doc = ""]

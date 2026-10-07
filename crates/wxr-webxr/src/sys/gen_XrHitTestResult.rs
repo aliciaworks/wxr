@@ -14,6 +14,11 @@ extern "C" {
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRHitTestResult)"]
     pub type XrHitTestResult;
+    #[wasm_bindgen(method, js_class = "XRHitTestResult", js_name = "createAnchor")]
+    #[doc = "The `createAnchor()` method."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRHitTestResult/createAnchor)"]
+    pub fn create_anchor(this: &XrHitTestResult) -> ::js_sys::Promise;
     #[wasm_bindgen(method, js_class = "XRHitTestResult", js_name = "getPose")]
     #[doc = "The `getPose()` method."]
     #[doc = ""]

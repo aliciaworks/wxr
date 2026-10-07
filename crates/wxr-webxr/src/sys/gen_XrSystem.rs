@@ -19,12 +19,12 @@ extern "C" {
     #[doc = "Getter for the `ondevicechange` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSystem/ondevicechange)"]
-    pub fn ondevicechange(this: &XrSystem) -> ::wasm_bindgen::JsValue;
+    pub fn ondevicechange(this: &XrSystem) -> Option<::js_sys::Function>;
     #[wasm_bindgen(method, setter, js_class = "XRSystem", js_name = "ondevicechange")]
     #[doc = "Setter for the `ondevicechange` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSystem/ondevicechange)"]
-    pub fn set_ondevicechange(this: &XrSystem, value: &::wasm_bindgen::JsValue);
+    pub fn set_ondevicechange(this: &XrSystem, value: Option<&::js_sys::Function>);
     #[wasm_bindgen(method, js_class = "XRSystem", js_name = "isSessionSupported")]
     #[doc = "The `isSessionSupported()` method."]
     #[doc = ""]

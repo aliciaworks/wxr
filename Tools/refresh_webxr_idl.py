@@ -29,6 +29,7 @@ and then point this script at the binary it built, by `--webidl-bin` or by `WASM
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import urllib.request
@@ -38,8 +39,8 @@ from pathlib import Path
 # what this backend can rely on, and reading the diff is the point of pinning it.
 WEBREF = "7fc4c84bdc356eab59dccb571643c8a1e1f703dd"
 
-# The WebXR specifications that have IDL in webref. `anchors` and `raw-camera-access` are not among them -
-# they are still Community Group drafts that webref has not picked up - so they are not here either.
+# The WebXR specifications that have IDL in webref. The two below it do not: they are Community Group drafts
+# webref has not picked up, so their IDL is cut out of the Bikeshed source instead.
 SPECS = [
     "webxr",
     "webxrlayers",
@@ -53,6 +54,26 @@ SPECS = [
     "webxr-lighting-estimation",
     "webxr-plane-detection",
 ]
+
+# (file name, repository, commit) for the specifications webref does not carry. Each is a Bikeshed source with
+# its IDL in `<script type="idl">` blocks, which is a convention the extraction below knows and nothing else
+# does - so the day one of them is in webref, it moves up to `SPECS` and this disappears with it.
+EXTRAS = [
+    (
+        "webxr-anchors",
+        "immersive-web/anchors",
+        "d9c6266d5e28caf98bff046dcbba31abd0b6d3f1",
+    ),
+    (
+        "webxr-raw-camera-access",
+        "immersive-web/raw-camera-access",
+        "52d2f29b8a42f935646170143905b0117998db4b",
+    ),
+]
+
+# `<script type="idl">` and `<script type=idl>` are both in use across these repositories.
+IDL_BLOCK = re.compile(r'<script\s+type="?idl"?\s*>(.*?)</script>', re.S)
+
 
 BANNER = """\
 //! The WebXR API, as Rust.
@@ -90,6 +111,18 @@ def fetch() -> None:
         path = enabled / f"{spec}.webidl"
         path.write_bytes(body)
         print(f"fetched {url} -> {path.relative_to(repo_root())} ({len(body)} bytes)")
+
+    for name, repository, commit in EXTRAS:
+        url = f"https://raw.githubusercontent.com/{repository}/{commit}/index.bs"
+        with urllib.request.urlopen(url) as response:
+            source = response.read().decode("utf-8")
+        blocks = IDL_BLOCK.findall(source)
+        if not blocks:
+            sys.exit(f"{url} has no <script type=idl> blocks, so the extraction below is wrong for it")
+        body = "\n\n".join(block.strip() for block in blocks) + "\n"
+        path = enabled / f"{name}.webidl"
+        path.write_text(body)
+        print(f"fetched {url} -> {path.relative_to(repo_root())} ({len(blocks)} blocks)")
 
 
 def generator(args: argparse.Namespace) -> Path:
