@@ -393,7 +393,7 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 [[package]]
 name = "naga"
 version = "30.0.1"
-source = "git+https://github.com/yukarikaname/wgpu?rev=bebc862056a36688d51afa2894586309cdcdf97a#bebc862056a36688d51afa2894586309cdcdf97a"
+source = "git+https://github.com/aliciaworks/wgpu?rev=cd49dae62f799f455b8786a409abea6bd24c57bb#cd49dae62f799f455b8786a409abea6bd24c57bb"
 dependencies = [
  "arrayvec",
  "bit-set",
@@ -418,7 +418,7 @@ dependencies = [
 [[package]]
 name = "naga-types"
 version = "30.0.1"
-source = "git+https://github.com/yukarikaname/wgpu?rev=bebc862056a36688d51afa2894586309cdcdf97a#bebc862056a36688d51afa2894586309cdcdf97a"
+source = "git+https://github.com/aliciaworks/wgpu?rev=cd49dae62f799f455b8786a409abea6bd24c57bb#cd49dae62f799f455b8786a409abea6bd24c57bb"
 dependencies = [
  "hashbrown 0.17.1",
  "indexmap",
@@ -956,7 +956,7 @@ dependencies = [
 [[package]]
 name = "wgpu"
 version = "30.0.1"
-source = "git+https://github.com/yukarikaname/wgpu?rev=bebc862056a36688d51afa2894586309cdcdf97a#bebc862056a36688d51afa2894586309cdcdf97a"
+source = "git+https://github.com/aliciaworks/wgpu?rev=cd49dae62f799f455b8786a409abea6bd24c57bb#cd49dae62f799f455b8786a409abea6bd24c57bb"
 dependencies = [
  "arrayvec",
  "bitflags",
@@ -985,7 +985,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core"
 version = "30.0.1"
-source = "git+https://github.com/yukarikaname/wgpu?rev=bebc862056a36688d51afa2894586309cdcdf97a#bebc862056a36688d51afa2894586309cdcdf97a"
+source = "git+https://github.com/aliciaworks/wgpu?rev=cd49dae62f799f455b8786a409abea6bd24c57bb#cd49dae62f799f455b8786a409abea6bd24c57bb"
 dependencies = [
  "arrayvec",
  "bit-set",
@@ -1018,7 +1018,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-apple"
 version = "30.0.1"
-source = "git+https://github.com/yukarikaname/wgpu?rev=bebc862056a36688d51afa2894586309cdcdf97a#bebc862056a36688d51afa2894586309cdcdf97a"
+source = "git+https://github.com/aliciaworks/wgpu?rev=cd49dae62f799f455b8786a409abea6bd24c57bb#cd49dae62f799f455b8786a409abea6bd24c57bb"
 dependencies = [
  "wgpu-hal",
 ]
@@ -1026,7 +1026,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-emscripten"
 version = "30.0.1"
-source = "git+https://github.com/yukarikaname/wgpu?rev=bebc862056a36688d51afa2894586309cdcdf97a#bebc862056a36688d51afa2894586309cdcdf97a"
+source = "git+https://github.com/aliciaworks/wgpu?rev=cd49dae62f799f455b8786a409abea6bd24c57bb#cd49dae62f799f455b8786a409abea6bd24c57bb"
 dependencies = [
  "wgpu-hal",
 ]
@@ -1034,7 +1034,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-windows-linux-android"
 version = "30.0.1"
-source = "git+https://github.com/yukarikaname/wgpu?rev=bebc862056a36688d51afa2894586309cdcdf97a#bebc862056a36688d51afa2894586309cdcdf97a"
+source = "git+https://github.com/aliciaworks/wgpu?rev=cd49dae62f799f455b8786a409abea6bd24c57bb#cd49dae62f799f455b8786a409abea6bd24c57bb"
 dependencies = [
  "wgpu-hal",
 ]
@@ -1042,7 +1042,7 @@ dependencies = [
 [[package]]
 name = "wgpu-hal"
 version = "30.0.1"
-source = "git+https://github.com/yukarikaname/wgpu?rev=bebc862056a36688d51afa2894586309cdcdf97a#bebc862056a36688d51afa2894586309cdcdf97a"
+source = "git+https://github.com/aliciaworks/wgpu?rev=cd49dae62f799f455b8786a409abea6bd24c57bb#cd49dae62f799f455b8786a409abea6bd24c57bb"
 dependencies = [
  "android_system_properties",
  "arrayvec",
@@ -1097,7 +1097,7 @@ dependencies = [
 [[package]]
 name = "wgpu-naga-bridge"
 version = "30.0.1"
-source = "git+https://github.com/yukarikaname/wgpu?rev=bebc862056a36688d51afa2894586309cdcdf97a#bebc862056a36688d51afa2894586309cdcdf97a"
+source = "git+https://github.com/aliciaworks/wgpu?rev=cd49dae62f799f455b8786a409abea6bd24c57bb#cd49dae62f799f455b8786a409abea6bd24c57bb"
 dependencies = [
  "naga",
  "wgpu-types",
@@ -1106,7 +1106,7 @@ dependencies = [
 [[package]]
 name = "wgpu-types"
 version = "30.0.1"
-source = "git+https://github.com/yukarikaname/wgpu?rev=bebc862056a36688d51afa2894586309cdcdf97a#bebc862056a36688d51afa2894586309cdcdf97a"
+source = "git+https://github.com/aliciaworks/wgpu?rev=cd49dae62f799f455b8786a409abea6bd24c57bb#cd49dae62f799f455b8786a409abea6bd24c57bb"
 dependencies = [
  "bitflags",
  "bytemuck",

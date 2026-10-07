@@ -23,7 +23,7 @@
 //!   a browser that will not grant it renders WebGL, and a required feature that is not there is a session that
 //!   does not exist at all.
 //! * the device came from an adapter requested with `xrCompatible: true`. This is the one wgpu does not have:
-//!   upstream's pull request to add the field dropped it for being a breaking change to a public struct, which
+//!   the field has been proposed upstream and not landed, for being a breaking change to a public struct, which
 //!   is why this workspace patches wgpu to a fork that carries it. Without the field, `XRGPUBinding`'s
 //!   constructor throws, and this backend says so and carries on with no images.
 //!

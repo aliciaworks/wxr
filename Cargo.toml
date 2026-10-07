@@ -31,7 +31,7 @@ glam = "0.30"
 #
 # **From the registry, and that is the point.** A WebXR *app* needs one field upstream does not have -
 # `RequestAdapterOptions::xr_compatible`, without which a wgpu device cannot be an XR-compatible one and
-# `XRGPUBinding` refuses it - and a fork carries it (upstream's #9350 proposed it and did not land it). But a
+# `XRGPUBinding` refuses it - and a fork carries it, since the field has been proposed upstream and not landed.
 # *library* that depends on a git wgpu is a library no wgpu renderer can be handed a device by: two sources are
 # two packages, so two `wgpu::Device`s that are different types. A game on bevy is exactly that case, and bevy
 # builds `RequestAdapterOptions` field by field, so it could not take the fork even if it wanted to.
@@ -54,7 +54,7 @@ log = "0.4"
 # different crates, and this is what keeps them one. When upstream grows the field, the branch has nothing left
 # to carry.
 [patch.crates-io]
-wgpu = { git = "https://github.com/yukarikaname/wgpu", rev = "bebc862056a36688d51afa2894586309cdcdf97a" }
+wgpu = { git = "https://github.com/aliciaworks/wgpu", rev = "cd49dae62f799f455b8786a409abea6bd24c57bb" }
 
 [profile.dev]
 opt-level = 1

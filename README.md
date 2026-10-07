@@ -199,10 +199,8 @@ three has drawn a frame on real hardware, because none of them has.
   counterpart of the `texture_from_raw` the other two backends wrap their compositors' images with - and what
   is missing is one field a session needs before any of it can be used: a WebGPU-compatible session wants a
   device from an adapter requested with `xrCompatible: true`, and wgpu's public adapter options have no such
-  option, because the pull request that would have added it
-  ([#9350](https://github.com/gfx-rs/wgpu/pull/9350)) dropped it as a breaking change after agreeing the shape
-  of it ([#8329](https://github.com/gfx-rs/wgpu/issues/8329)). That is the whole of what stands between this
-  backend and a picture.
+  option: it has been proposed upstream and has not landed, for being a breaking change to a public struct.
+  That is the whole of what stands between this backend and a picture.
 - **The Apple app.** The Rust half of its entry point is `wxr_apple::entry::run`: connect, pick a space, and
   run frames until the space closes, with a callback for the app's own work. What is left is the SwiftUI file
   around it, its `Info.plist` - `NSWorldSensingUsageDescription` is what ARKit refuses without - and the
