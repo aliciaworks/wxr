@@ -13,10 +13,10 @@
 use wasm_bindgen::prelude::*;
 use web_sys::XrView;
 
-use crate::gpu::XrGpuBinding;
+use crate::gpu::XRGPUBinding;
 
 /// The depth buffer for `view`, and what it means, from the binding that hands it over.
-pub fn information(binding: &XrGpuBinding, view: &XrView) -> Option<(JsValue, wxr::DepthInfo)> {
+pub fn information(binding: &XRGPUBinding, view: &XrView) -> Option<(JsValue, wxr::DepthInfo)> {
     // It throws when the session was not configured for GPU depth, which is why it is caught: a session with
     // depth it cannot read is a session without depth, not a frame to fail.
     let information = binding.get_depth_information(view).ok()?;

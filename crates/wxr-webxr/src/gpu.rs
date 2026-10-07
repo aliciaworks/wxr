@@ -18,8 +18,14 @@ use web_sys::{XrSession, XrView, XrViewport};
 /// The binding a WebGPU-compatible session renders through.
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(js_name = XRGPUBinding)]
-    pub type XrGpuBinding;
+    // The Rust name is the JavaScript one, spelled the JavaScript way, and that is not a style choice:
+    // `js_name` on an `extern "C"` type names it for the methods and getters, but the *constructor* is looked
+    // up by the Rust name - a `#[wasm_bindgen(constructor)]` compiles to `new XrGpuBinding(...)`, which is a
+    // `ReferenceError` in a browser where the global is `XRGPUBinding`. It is what this was called in a real
+    // browser, so it is what it is called here.
+    #[allow(non_camel_case_types)]
+    #[wasm_bindgen]
+    pub type XRGPUBinding;
 
     /// `new XRGPUBinding(session, device)`.
     ///
@@ -27,30 +33,30 @@ extern "C" {
     /// from an XR-compatible adapter - so this is the call that cannot be worked around, and the reason the
     /// whole module is written to fail softly.
     #[wasm_bindgen(constructor, catch)]
-    pub fn new(session: &XrSession, device: &JsValue) -> Result<XrGpuBinding, JsValue>;
+    pub fn new(session: &XrSession, device: &JsValue) -> Result<XRGPUBinding, JsValue>;
 
-    #[wasm_bindgen(method, catch)]
+    #[wasm_bindgen(method, catch, js_name = "createProjectionLayer")]
     pub fn create_projection_layer(
-        this: &XrGpuBinding,
+        this: &XRGPUBinding,
         init: &JsValue,
     ) -> Result<XrProjectionLayer, JsValue>;
 
     /// The sub-image for one view: the same colour texture both eyes get, and the part of it this eye is.
-    #[wasm_bindgen(method)]
+    #[wasm_bindgen(method, js_name = "getViewSubImage")]
     pub fn get_view_sub_image(
-        this: &XrGpuBinding,
+        this: &XRGPUBinding,
         layer: &XrProjectionLayer,
         view: &XrView,
     ) -> XrGpuSubImage;
 
-    #[wasm_bindgen(method)]
-    pub fn get_preferred_color_format(this: &XrGpuBinding) -> String;
+    #[wasm_bindgen(method, js_name = "getPreferredColorFormat")]
+    pub fn get_preferred_color_format(this: &XRGPUBinding) -> String;
 
     /// The depth buffer for a view, as `XRGPUDepthInformation` - the module's WebGPU form, which is on the
     /// binding rather than on the frame. Throws when the session was not configured for GPU depth, which is why
     /// it is caught: a session with depth it cannot read is a session without depth.
     #[wasm_bindgen(method, catch, js_name = "getDepthInformation")]
-    pub fn get_depth_information(this: &XrGpuBinding, view: &XrView) -> Result<JsValue, JsValue>;
+    pub fn get_depth_information(this: &XRGPUBinding, view: &XrView) -> Result<JsValue, JsValue>;
 }
 
 /// The layer a WebGPU-compatible session presents, which is what it has *instead* of a base layer.
@@ -74,7 +80,7 @@ extern "C" {
 
     /// The colour texture. Both eyes get the *same* one - the spec says so - which is why a session of this
     /// kind is one image with two views rather than two images, and why this backend reports `image_count` 1.
-    #[wasm_bindgen(method, getter)]
+    #[wasm_bindgen(method, getter, js_name = "colorTexture")]
     pub fn color_texture(this: &XrGpuSubImage) -> JsValue;
 
     /// Which part of the texture this view is, in pixels. Inherited from `XRSubImage`, which the browser's
@@ -85,11 +91,11 @@ extern "C" {
     /// The depth buffer for this view, if the layer was made with a depth format - which this session's is.
     /// It is nullable in the specification, so it is read as a value that may be null rather than as one that
     /// is there.
-    #[wasm_bindgen(method, getter)]
+    #[wasm_bindgen(method, getter, js_name = "depthStencilTexture")]
     pub fn depth_stencil_texture(this: &XrGpuSubImage) -> JsValue;
 
     /// The descriptor a texture view has to be made with to draw into this view's part of the texture.
-    #[wasm_bindgen(method)]
+    #[wasm_bindgen(method, js_name = "getViewDescriptor")]
     pub fn get_view_descriptor(this: &XrGpuSubImage) -> JsValue;
 }
 

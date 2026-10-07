@@ -42,6 +42,12 @@ struct Inner {
     session: Option<XrSession>,
     /// The frame the animation callback put here, and the time it was for, until `begin` takes it.
     frame: Option<(XrFrame, Duration)>,
+    /// Whether a frame has been asked for and has not arrived.
+    ///
+    /// It is what keeps `request_frame` from asking twice: the browser holds one callback at a time, and the
+    /// second ask would replace the first - so the callback it then calls is a closure this side has dropped,
+    /// which is an exception in the animation callback rather than a frame.
+    awaiting: bool,
 }
 
 /// A reference space, which the browser hands over as a promise rather than as an object.
@@ -81,7 +87,7 @@ pub struct FrameImage {
 
 /// The binding and the layer, which only exist together: a binding with no layer presents nothing.
 struct Gpu {
-    binding: gpu::XrGpuBinding,
+    binding: gpu::XRGPUBinding,
     layer: gpu::XrProjectionLayer,
 }
 
@@ -92,6 +98,10 @@ pub struct WebXrSession {
     /// The animation callback, kept alive for as long as the session is: a closure that is dropped is a
     /// closure the browser stops calling.
     callback: Option<Closure<dyn FnMut(f64, XrFrame)>>,
+    /// The frame `begin` took out of the slot, kept for the one call that needs it: `views` asks it for the
+    /// viewer pose. `begin` used to take it and drop it, and `views` looked in the slot it was taken from -
+    /// which is a session that locates no views, ever, and so draws nothing.
+    current: Option<XrFrame>,
     /// The `end` handler's flag, and the handler itself - same reason as the callback: a closure that is
     /// dropped is a closure the browser stops calling.
     ended: Rc<Cell<bool>>,
@@ -148,6 +158,7 @@ impl WebXrSession {
             inner: Rc::new(RefCell::new(Inner::default())),
             connect,
             callback: None,
+            current: None,
             ended: Rc::new(Cell::new(false)),
             on_end: None,
             lost: false,
@@ -199,7 +210,7 @@ impl WebXrSession {
             );
             return;
         };
-        let binding = match gpu::XrGpuBinding::new(session, js_device.as_ref()) {
+        let binding = match gpu::XRGPUBinding::new(session, js_device.as_ref()) {
             Ok(binding) => binding,
             Err(error) => {
                 log::warn!("wxr-webxr: no images: {error:?}");
@@ -256,9 +267,19 @@ impl WebXrSession {
             return;
         };
         let inner = self.inner.clone();
+        {
+            let mut borrow = inner.borrow_mut();
+            if borrow.awaiting {
+                return;
+            }
+            borrow.awaiting = true;
+        }
         let callback = Closure::wrap(Box::new(move |time: f64, frame: XrFrame| {
-            // Milliseconds from the page's origin, which is the only clock a browser has.
-            inner.borrow_mut().frame = Some((frame, Duration::from_secs_f64(time / 1000.0)));
+            // Milliseconds from the page's origin, which is the only clock a browser has. This one has arrived,
+            // so the next one can be asked for.
+            let mut inner = inner.borrow_mut();
+            inner.awaiting = false;
+            inner.frame = Some((frame, Duration::from_secs_f64(time / 1000.0)));
         }) as Box<dyn FnMut(f64, XrFrame)>);
         // The handle comes back as a number, and a browser that will not give one has a session that is over.
         let _ = session.request_animation_frame(callback.as_ref().unchecked_ref());
@@ -535,7 +556,7 @@ impl wxr::Session for WebXrSession {
             self.request_frame();
             return Ok(());
         };
-        let _ = frame;
+        self.current = Some(frame);
         out.predicted_display_time = time;
         out.state = wxr::FrameState::Render;
         out.views_mut().clear();
@@ -556,7 +577,7 @@ impl wxr::Session for WebXrSession {
             // that just started.
             return Ok(());
         };
-        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
+        let Some(frame) = self.current.clone() else {
             return Ok(());
         };
         let Some(pose) = frame.get_viewer_pose(&reference) else {
