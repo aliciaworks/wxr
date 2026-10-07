@@ -14,6 +14,18 @@ extern "C" {
     #[doc = "Change the `clearOnAccess` field of this object."]
     #[wasm_bindgen(method, setter = "clearOnAccess")]
     pub fn set_clear_on_access(this: &XrLayerInit, val: bool);
+    #[doc = "Get the `colorFormat` field of this object."]
+    #[wasm_bindgen(method, getter = "colorFormat")]
+    pub fn get_color_format(this: &XrLayerInit) -> Option<u32>;
+    #[doc = "Change the `colorFormat` field of this object."]
+    #[wasm_bindgen(method, setter = "colorFormat")]
+    pub fn set_color_format(this: &XrLayerInit, val: u32);
+    #[doc = "Get the `depthFormat` field of this object."]
+    #[wasm_bindgen(method, getter = "depthFormat")]
+    pub fn get_depth_format(this: &XrLayerInit) -> Option<u32>;
+    #[doc = "Change the `depthFormat` field of this object."]
+    #[wasm_bindgen(method, setter = "depthFormat")]
+    pub fn set_depth_format(this: &XrLayerInit, val: Option<u32>);
     #[doc = "Get the `isStatic` field of this object."]
     #[wasm_bindgen(method, getter = "isStatic")]
     pub fn get_is_static(this: &XrLayerInit) -> Option<bool>;
@@ -70,6 +82,16 @@ impl XrLayerInit {
     #[deprecated = "Use `set_clear_on_access()` instead."]
     pub fn clear_on_access(&mut self, val: bool) -> &mut Self {
         self.set_clear_on_access(val);
+        self
+    }
+    #[deprecated = "Use `set_color_format()` instead."]
+    pub fn color_format(&mut self, val: u32) -> &mut Self {
+        self.set_color_format(val);
+        self
+    }
+    #[deprecated = "Use `set_depth_format()` instead."]
+    pub fn depth_format(&mut self, val: Option<u32>) -> &mut Self {
+        self.set_depth_format(val);
         self
     }
     #[deprecated = "Use `set_is_static()` instead."]

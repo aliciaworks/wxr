@@ -107,6 +107,11 @@ extern "C" {
         this: &XrWebGlBinding,
         init: &XrQuadLayerInit,
     ) -> XrQuadLayer;
+    #[wasm_bindgen(method, js_class = "XRWebGLBinding", js_name = "foveateBoundTexture")]
+    #[doc = "The `foveateBoundTexture()` method."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRWebGLBinding/foveateBoundTexture)"]
+    pub fn foveate_bound_texture(this: &XrWebGlBinding, target: u32, fixed_foveation: f32);
     #[wasm_bindgen(method, js_class = "XRWebGLBinding", js_name = "getCameraImage")]
     #[doc = "The `getCameraImage()` method."]
     #[doc = ""]

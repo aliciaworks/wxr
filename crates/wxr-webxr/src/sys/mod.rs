@@ -38,6 +38,11 @@ mod gen_EventTarget;
 pub use gen_EventTarget::*;
 
 #[allow(non_snake_case)]
+mod gen_GpuRequestAdapterOptions;
+#[allow(unused_imports)]
+pub use gen_GpuRequestAdapterOptions::*;
+
+#[allow(non_snake_case)]
 mod gen_Navigator;
 #[allow(unused_imports)]
 pub use gen_Navigator::*;
@@ -56,6 +61,11 @@ pub use gen_PermissionState::*;
 mod gen_PermissionStatus;
 #[allow(unused_imports)]
 pub use gen_PermissionStatus::*;
+
+#[allow(non_snake_case)]
+mod gen_WebGlContextAttributes;
+#[allow(unused_imports)]
+pub use gen_WebGlContextAttributes::*;
 
 #[allow(non_snake_case)]
 mod gen_XrAnchor;

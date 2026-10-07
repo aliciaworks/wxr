@@ -29,6 +29,11 @@ extern "C" {
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRFrame/session)"]
     pub fn session(this: &XrFrame) -> XrSession;
+    #[wasm_bindgen(method, getter, js_class = "XRFrame", js_name = "predictedDisplayTime")]
+    #[doc = "Getter for the `predictedDisplayTime` field of this object."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRFrame/predictedDisplayTime)"]
+    pub fn predicted_display_time(this: &XrFrame) -> f64;
     #[wasm_bindgen(method, js_class = "XRFrame", js_name = "createAnchor")]
     #[doc = "The `createAnchor()` method."]
     #[doc = ""]

@@ -29,6 +29,11 @@ extern "C" {
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRPlane/orientation)"]
     pub fn orientation(this: &XrPlane) -> Option<XrPlaneOrientation>;
+    #[wasm_bindgen(method, getter, js_class = "XRPlane", js_name = "lastChangedTime")]
+    #[doc = "Getter for the `lastChangedTime` field of this object."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRPlane/lastChangedTime)"]
+    pub fn last_changed_time(this: &XrPlane) -> f64;
     #[wasm_bindgen(method, getter, js_class = "XRPlane", js_name = "semanticLabel")]
     #[doc = "Getter for the `semanticLabel` field of this object."]
     #[doc = ""]

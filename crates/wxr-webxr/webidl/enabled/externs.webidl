@@ -87,3 +87,18 @@ interface DOMPointReadOnly {
   readonly attribute unrestricted double z;
   readonly attribute unrestricted double w;
 };
+
+// The last of what WebXR names and does not own. Each of these was a *silent* omission until `Tools/check_webxr_sys.py`
+// said so: a declaration the generator cannot resolve is a declaration it leaves out, and an attribute whose type
+// is unknown is an attribute it leaves out with it - `DOMHighResTimeStamp` was how `XRFrame.predictedDisplayTime`
+// went missing, which is the frame's own clock.
+typedef double DOMHighResTimeStamp;
+typedef unsigned long GLenum;
+typedef any HTMLVideoElement;
+// A dictionary and not a typedef: `webxr.webidl` declares a `partial dictionary` of this name, and a
+// partial needs a base to add to.
+dictionary WebGLContextAttributes {};
+
+// The base of a `partial dictionary` in the WebGPU binding: declared so that the partial has something to add to,
+// even though nothing here reads the adapter request.
+dictionary GPURequestAdapterOptions {};
