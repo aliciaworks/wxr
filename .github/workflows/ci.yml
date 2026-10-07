@@ -130,9 +130,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-linked-cargo-
 
-      # Which visionOS SDK is on the runner is not this workflow's business: it asks for the platform and
-      # the action answers with a path and a name.
-      - uses: aliciaworks/apple-toolchain@main
-        with:
-          platform: visionos
-          command: cargo build -p wxr-apple --target aarch64-apple-visionos
+      # `xcrun` is the whole of it on a machine that has Xcode: which visionOS SDK is there is Xcode's
+      # answer, and `SDKROOT` is how a build for that platform is told to use it. Nothing here needs to
+      # know a version.
+      - name: The visionOS SDK
+        run: |
+          set -euo pipefail
+          sdk="$(xcrun --sdk xros --show-sdk-path)"
+          echo "visionOS $(xcrun --sdk xros --show-sdk-version) at ${sdk}"
+          echo "SDKROOT=${sdk}" >> "$GITHUB_ENV"
+
+      - name: Link it
+        run: cargo build -p wxr-apple --target aarch64-apple-visionos
