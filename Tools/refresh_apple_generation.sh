@@ -12,8 +12,8 @@
 #     whole crate has to come across, not just its generated module;
 #   * `src/generated` is a symlink into a top-level `generated/` directory upstream, so it has to be
 #     dereferenced or the crate arrives with a `mod generated;` and no module;
-#   * cargo resolves a whole workspace before it builds a member of it, so *every* manifest of the run goes in,
-#     or the workspace stops resolving - which is a failure that looks like the crate being wrong.
+#   * and the tree is a *tree*: everything it writes is written together, so it comes across together. Taking a
+#     part of it means some source and some manifest come from different runs, and cargo meets the seam.
 #
 # Usage: Tools/refresh_apple_generation.sh [<run-id>] [<fork-checkout>]
 #
@@ -53,17 +53,14 @@ git fetch "${REPO_FORK}" "${BRANCH}" --quiet
 git checkout "${BRANCH}" --quiet
 git reset --hard FETCH_HEAD --quiet
 
-mkdir -p out
-for crate in objc2-ar-kit objc2-compositor-services; do
-  rm -rf "framework-crates/${crate}"
-  cp -a "${work}/crates/${crate}" "framework-crates/"
-done
-for manifest in "${work}"/manifests/*.toml; do
-  name="$(basename "${manifest}" .toml)"
-  [[ -f "framework-crates/${name}/Cargo.toml" ]] && cp "${manifest}" "framework-crates/${name}/Cargo.toml"
-done
+# The whole tree, not a chosen part of it. Everything a run writes was written together, and a tree with one
+# piece from this run and another from the last is one cargo meets at the seam - which is the failure this
+# script's file header lists three times.
+rm -rf framework-crates generated
+cp -a "${work}/framework-crates" .
+cp -a "${work}/generated" .
 
-git add -A framework-crates
+git add -A framework-crates generated
 if git diff --cached --quiet; then
   echo "nothing changed: the fork already holds this run's output"
 else
