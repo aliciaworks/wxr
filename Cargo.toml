@@ -29,14 +29,25 @@ glam = "0.30"
 # Metal's - and without it there is no way to wrap a compositor's image as a wgpu texture, which is the whole
 # of what an OpenXR or an Apple backend has to do with one.
 #
-# From a fork, and pinned to the commit rather than the branch: this is the one thing the WebXR backend needs
-# that upstream does not have - `RequestAdapterOptions::xr_compatible`, without which a wgpu device cannot be
-# an XR-compatible one and `XRGPUBinding` refuses it. Upstream's #9350 proposed it and was closed without
-# landing it, so the fork (branch `xr-compatible-adapter`) carries it. When a release grows the field, this
-# becomes `wgpu = "31"` or whatever that release is, and the fork has nothing left to carry.
-wgpu = { git = "https://github.com/yukarikaname/wgpu", rev = "8939f7ef5842aed37de461cfc9b7806829cbb8b6" }
+# **From the registry, and that is the point.** A WebXR *app* needs one field upstream does not have -
+# `RequestAdapterOptions::xr_compatible`, without which a wgpu device cannot be an XR-compatible one and
+# `XRGPUBinding` refuses it - and a fork carries it (upstream's #9350 proposed it and did not land it). But a
+# *library* that depends on a git wgpu is a library no wgpu renderer can be handed a device by: two sources are
+# two packages, so two `wgpu::Device`s that are different types. A game on bevy is exactly that case, and bevy
+# builds `RequestAdapterOptions` field by field, so it could not take the fork even if it wanted to.
+#
+# So the fork is a `[patch.crates-io]` below, which is this workspace's own builds and nobody else's: the smoke
+# page - the one crate here that *asks* for an XR-compatible adapter - gets the field, and a crate that depends
+# on wxr resolves `wgpu` from the registry and unifies with the renderer it already has. An app that wants a
+# WebXR session patches it in the same way; the README says so.
+wgpu = "30"
 thiserror = "2"
 log = "0.4"
+
+# The one thing a WebXR app needs that upstream wgpu does not have, and a patch rather than a dependency so
+# that it reaches this workspace's builds and stops at its edge.
+[patch.crates-io]
+wgpu = { git = "https://github.com/yukarikaname/wgpu", rev = "8939f7ef5842aed37de461cfc9b7806829cbb8b6" }
 
 [profile.dev]
 opt-level = 1
