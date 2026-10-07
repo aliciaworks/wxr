@@ -47,6 +47,15 @@
 
 #![cfg(target_family = "wasm")]
 
+// The generated bindings name `alloc::string::String` rather than `std`'s, because they are generated as if
+// for a crate that may not have `std` - which is how `web-sys` is built.
+extern crate alloc;
+
+// The whole WebXR API, generated from its IDL rather than taken from `web-sys` - which has the core, gates it
+// behind a build-wide cfg, and has none of the Layers module or the WebGPU binding at all. Generated and
+// committed, the way wgpu carries `webgpu_sys`; `Tools/refresh_webxr_idl.py` is how it is refreshed.
+pub mod sys;
+
 mod anchors;
 mod convert;
 mod depth;
