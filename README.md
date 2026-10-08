@@ -21,6 +21,11 @@ An XR core. One vocabulary for a session, and a backend per platform that fills 
 Nothing above the renderer names a graphics API, and the XR layer never makes a device: where the platform
 owns one, wgpu is made to adopt it.
 
+**Two numbers, and both are mechanical** - `python3 Tools/xr_coverage.py`:
+
+- **Native API reached**, of each backend's own spec: WebXR **30%**, OpenXR **1%**, visionOS **7%**.
+- **WebXR translated**, of the core's 36 `Session` methods: WebXR **94%**, OpenXR **61%**, visionOS **56%**.
+
 ## The core is small on purpose
 
 A session has a head pose, two eyes with a field of view each, an origin to measure them from - and spaces
@@ -256,31 +261,17 @@ the drivers' own extensions are counted, and ARKit's C surface is six hundred fu
 room tracking are in it. Neither is what this workspace offers an app - that is ten `Features`, one
 hand-written answer per backend, small enough to read in `crates/wxr/src/feature.rs`.
 
-The native counts above are about each backend's own API, which is why they differ so much: WebXR's IDL is
-138 members, OpenXR's registry is 551 commands once every vendor extension is counted, and ARKit's C surface
-is 618 functions once accessory and room tracking are in it. A native item with no counterpart in the core is
-one no backend will ever name, so none of these numbers can reach 100% by design.
+Two things are worth separating, and the numbers above are the first. They are about each backend's *own*
+API, which is why they differ so much: WebXR's IDL is 138 members, OpenXR's registry is 551 commands once
+every vendor extension is counted, and ARKit's C surface is 618 functions once accessory and room tracking
+are in it. A native item with no counterpart in the core is one no backend will ever name, so none of these
+can reach 100% by design.
 
-The number that says whether the *unification* is done is the core's own surface, and it is small enough to
-read:
-
-| Feature | `wxr-webxr` | `wxr-openxr` | `wxr-apple` |
-| --- | --- | --- | --- |
-| `DEPTH` | yes | | |
-| `PLANES` | yes | | yes |
-| `HIT_TEST` | yes | | |
-| `LIGHT_ESTIMATION` | yes | | |
-| `HAND_TRACKING` | yes | yes | |
-| `ANCHORS` | yes | | |
-| `LAYER_QUAD` | yes | yes | |
-| `LAYER_CYLINDER` | | | |
-| `LAYER_EQUIRECT` | | | |
-| `LAYER_CUBE` | | | |
-| | **7/10** | **2/10** | **1/10** |
-
-`wxr-webxr` has seven, which is all ten but the three layer shapes it does not ask the browser for yet.
-`wxr-apple` has one - ARKit's plane detection provider, folded into the core's `Plane` - and `wxr-openxr` has
-two. Each empty cell is a `Features` bit and a method, and filling one is what moves this.
+The second is the direction that says whether the *unification* is done: of the core's own `Session` surface,
+36 methods, the backends implement **94%**, **61%** and **56%** - `wxr-webxr` misses two, `wxr-openxr` and
+`wxr-apple` miss fourteen and sixteen, and every one of those is a method and a `Features` bit. And of the
+WebXR IDL itself the core names 39 of 138 members, **28%**, because the core is the vocabulary all three
+share rather than a mirror of any one spec.
 
 ## What is not decided yet
 

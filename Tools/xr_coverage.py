@@ -188,6 +188,32 @@ def core_coverage() -> None:
     )
 
 
+def webxr_to_core() -> tuple:
+    """Of the WebXR IDL, how much the core's own vocabulary names."""
+    items = webxr_items()
+    src = "\n".join(
+        p.read_text(errors="ignore") for p in (ROOT / "crates/wxr/src").rglob("*.rs")
+    )
+    hit = {n for n in items if re.search(rf"\b{re.escape(n)}\b", src)}
+    return len(hit), len(items)
+
+
+def core_to_native() -> None:
+    """Of the core's own surface, how much each backend implements - the WebXR-translation number.
+
+    The whole `Session` trait, not the ten `Features`: a capability bit is a label for a method, and what a
+    backend "translates" is the method. Same mechanical rule as everywhere else - the method's name appears in
+    that backend's own source.
+    """
+    text = (ROOT / "crates/wxr/src/session.rs").read_text()
+    methods = sorted(set(re.findall(r"^\s{4}fn (\w+)", text, re.M)))
+    print(f"\n## core -> native: the core's {len(methods)} Session methods, per backend")
+    for crate in ["wxr-webxr", "wxr-openxr", "wxr-apple"]:
+        src = source_of(crate)
+        hit = [m for m in methods if re.search(rf"\bfn {m}\b", src)]
+        print(f"- {crate}: **{100 * len(hit) / len(methods):.0f}%** ({len(hit)}/{len(methods)})")
+
+
 def report(title, total, source, aliases=None):
     hit = {n for n in total if re.search(rf"\b{re.escape(n)}\b", source)}
     if aliases:
@@ -230,7 +256,9 @@ def main() -> None:
     if totals:
         print(f"\n**total: {done} / {totals}  ({100.0 * done / totals:.0f}%)**")
 
-    core_coverage()
+    h, t = webxr_to_core()
+    print(f"\n## WebXR -> core: **{100 * h / t:.0f}%** ({h}/{t} IDL members named by the core)")
+    core_to_native()
 
 
 if __name__ == "__main__":
