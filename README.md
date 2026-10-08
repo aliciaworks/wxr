@@ -27,8 +27,8 @@ owns one, wgpu is made to adopt it.
 | --- | ---: | ---: | ---: |
 | **Native API reached** - of each backend's own spec | 42/138 | 7/551 | 46/618 |
 | *as a percentage* | 30% | 1% | 7% |
-| **WebXR API reached** - of the whole API | 211/452 | 144/452 | 155/452 |
-| *as a percentage* | 47% | 32% | 34% |
+| **WebXR API reached** - of the whole API | 215/452 | 144/452 | 155/452 |
+| *as a percentage* | 48% | 32% | 34% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
 Input, Depth Sensing, Hit Test, Lighting Estimation, Anchors, Plane Detection, the AR Module, DOM Overlays
