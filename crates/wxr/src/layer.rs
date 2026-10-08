@@ -155,6 +155,25 @@ pub enum TextureType {
     TextureArray,
 }
 
+/// One eye's worth of a layer's image, which is WebXR's `XRSubImage`.
+///
+/// A layer's texture is one image for both eyes, a packed pair, or an array with a slice per eye - the
+/// `LayerLayout` says which - and what tells those apart, and what a renderer needs to draw into the right
+/// part of it, is this: the size of the colour and depth textures, the viewport within them, and which slice
+/// of an array it is. WebXR hands back one of these per view from a binding, and every other platform has the
+/// same idea under its own name, which is why it is in the core while the binding that produces it is not.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct SubImage {
+    /// The size of the colour texture, in texels.
+    pub color_size: glam::UVec2,
+    /// The size of the depth-stencil texture, in texels, where the layer has one.
+    pub depth_size: Option<glam::UVec2>,
+    /// The part of the texture this eye draws into.
+    pub viewport: Viewport,
+    /// Which slice of a texture array this eye is, for a [`TextureType::TextureArray`] layer.
+    pub array_index: Option<u32>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
