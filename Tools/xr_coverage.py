@@ -286,7 +286,16 @@ def main() -> None:
         print(f"\n**total: {done} / {totals}  ({100.0 * done / totals:.0f}%)**")
 
     h, t = webxr_to_core()
-    print(f"\n## WebXR -> core: **{100 * h / t:.0f}%** ({h}/{t} IDL members named by the core)")
+    core_items = set()
+    for p in (ROOT / "crates/wxr/src").rglob("*.rs"):
+        core_items |= set(
+            re.findall(r"pub (?:struct|enum|trait|fn|const|type) ([A-Za-z_]\w*)", p.read_text(errors="ignore"))
+        )
+    methods = core_methods()
+    print(
+        f"\n## WebXR -> core: **{100 * h / t:.0f}%** ({h}/{t} IDL members named by the core;"
+        f" the core is {len(core_items)} public items plus {len(methods)} Session methods)"
+    )
     core_to_native()
 
 

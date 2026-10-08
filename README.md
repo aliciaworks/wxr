@@ -25,8 +25,9 @@ owns one, wgpu is made to adopt it.
 
 - **Native API reached**, of each backend's own spec: WebXR **30%**, OpenXR **1%**, visionOS **7%**.
 - **WebXR translated**, of the core's 36 `Session` methods: WebXR **92%**, OpenXR **58%**, visionOS **47%**.
-  Of the WebXR API itself the core speaks 39 of 138 members, **28%** - and that is the ceiling for all
-  three, because a backend cannot implement a word the core does not have.
+  The core itself is 99 public items plus those 36 methods, so it is not small - but of the WebXR API's
+  138 members only 39 share a name with it, **28%**, because the core gives WebXR's concepts its own
+  names (`requestReferenceSpace` is `space`). So 28% is a floor, not the ceiling it looks like.
 
 ## The core is small on purpose
 
