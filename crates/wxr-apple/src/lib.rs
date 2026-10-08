@@ -48,7 +48,8 @@
 //! behind them here, and three of those are not going to. `depth` and `hit_test_source` are not on the
 //! visionOS ARKit C surface at all - there is no depth provider and no hit-test provider in the framework -
 //! and CompositorServices has one projection layer rather than the composition layers `layer` would need, so
-//! quad, cylinder, equirect and cube have nowhere to go. `light_probe` is the fourth and a different kind of
+//! quad, cylinder, equirect and cube have nowhere to go - and `binding` is
+//! the same absence, because a layer whose picture the app supplies needs a layer to supply it to. `light_probe` is the fourth and a different kind of
 //! absence: the API does have an environment probe, but it hands back a *cubemap* rather than the spherical
 //! harmonics the core's `LightEstimate` is, so it maps to WebXR's reflection cubemap - which the core has no
 //! word for yet. Each answers `None`, an empty list or `Error::Unsupported`, which is exactly what
