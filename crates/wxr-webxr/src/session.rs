@@ -613,6 +613,49 @@ impl wxr::Session for WebXrSession {
         Ok(())
     }
 
+    fn binding(&mut self, _layer: wxr::Layer) -> Result<wxr::Binding, wxr::Error> {
+        // WebXR's binding is per GPU device, and a session has exactly one device and therefore one binding -
+        // the one `start_gpu` made. So this hands that back rather than making another: a second would be a
+        // second view of the same GPU device, which is not a thing the API has.
+        if self.gpu.is_some() {
+            Ok(wxr::Binding::new(0))
+        } else {
+            Err(wxr::Error::Unsupported(
+                "the session has no GPU device to bind from".into(),
+            ))
+        }
+    }
+
+    fn sub_image(&mut self, _binding: wxr::Binding, view: usize) -> Option<wxr::SubImage> {
+        // The browser's own `XRView` for that index, kept by `views` for exactly this - `getViewSubImage` is
+        // asked one of those, not an index into anything this core has.
+        let xr_view = self.frame_views.get(view)?.clone();
+        let gpu = self.gpu.as_ref()?;
+        // A view the browser will not give a sub-image for is no sub-image, which is the same answer as a
+        // session with no binding at all.
+        let sub = throws::get_view_sub_image(&gpu.binding, &gpu.layer, &xr_view).ok()?;
+
+        let color = image_meta(&sub.color_texture());
+        let depth = sub.depth_stencil_texture();
+        let depth = (!depth.is_null_or_undefined()).then(|| image_meta(&depth));
+        let viewport = sub.viewport();
+
+        Some(wxr::SubImage {
+            color_size: wxr::glam::UVec2::new(color.extent.width, color.extent.height),
+            depth_size: depth
+                .map(|meta| wxr::glam::UVec2::new(meta.extent.width, meta.extent.height)),
+            viewport: wxr::Viewport {
+                x: viewport.x().max(0) as u32,
+                y: viewport.y().max(0) as u32,
+                width: viewport.width().max(0) as u32,
+                height: viewport.height().max(0) as u32,
+            },
+            // Which slice of a texture array this eye is, for a stereo layer that carries two pictures in one
+            // texture - which is what the view descriptor says and what `views` already reads.
+            array_index: Some(base_array_layer(&sub.get_view_descriptor())),
+        })
+    }
+
     fn views(
         &mut self,
         space: wxr::ReferenceSpace,
