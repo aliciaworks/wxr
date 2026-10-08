@@ -243,6 +243,49 @@ def core_to_native() -> None:
         )
 
 
+def webxr_interfaces() -> set:
+    """Every interface, dictionary and enum the WebXR IDL declares."""
+    names = set()
+    idl = ROOT / "crates/wxr-webxr" / "webidl" / "enabled"
+    for path in sorted(idl.glob("*.webidl")):
+        text = re.sub(r"//.*", "", path.read_text(errors="ignore"))
+        names |= set(
+            re.findall(
+                r"^\s*(?:partial\s+)?(?:interface|dictionary|enum|typedef)\s+(?:mixin\s+)?(\w+)",
+                text,
+                re.M,
+            )
+        )
+    return names
+
+
+def webxr_gap() -> None:
+    """The WebXR interfaces the core has no word for.
+
+    The list "implement all of WebXR" is actually against: a member of an interface here cannot be translated
+    by any backend, because the core has nothing to translate it into. Name matching is crude - the core calls
+    `XRReferenceSpace` a `ReferenceSpace` - so this is a shortlist to read, not a verdict, and the entry that
+    is a rename is the one to strike off first.
+    """
+    text = "\n".join(
+        p.read_text(errors="ignore") for p in (ROOT / "crates/wxr/src").rglob("*.rs")
+    ).lower()
+    names = {n for n in webxr_interfaces() if n.startswith("XR")}
+    missing = sorted(
+        n for n in names if n.lower() not in text and n.lower().removeprefix("xr") not in text
+    )
+    # A `*Init` dictionary and a `*Set` are how the spec passes constructor arguments and collections; the
+    # core takes those as arguments and slices, so they are not missing words. What is left is either a rename
+    # - `XRRigidTransform` is `Pose` - or a concept the core does not have.
+    dictionaries = [n for n in missing if n.endswith("Init") or n.endswith("Set")]
+    rest = [n for n in missing if n not in dictionaries]
+    print(f"\n## WebXR XR-prefixed interfaces with no core name: {len(missing)} of {len(names)}")
+    print(f"\n### the real gaps ({len(rest)}) - a concept the core has no word for, or a rename to check")
+    print(", ".join(f"`{n}`" for n in rest))
+    print(f"\n### dictionaries and sets ({len(dictionaries)}) - how the spec passes arguments and collections")
+    print(", ".join(f"`{n}`" for n in dictionaries))
+
+
 def report(title, total, source, aliases=None):
     hit = {n for n in total if re.search(rf"\b{re.escape(n)}\b", source)}
     if aliases:
@@ -297,6 +340,7 @@ def main() -> None:
         f" the core is {len(core_items)} public items plus {len(methods)} Session methods)"
     )
     core_to_native()
+    webxr_gap()
 
 
 if __name__ == "__main__":
