@@ -188,16 +188,6 @@ def core_coverage() -> None:
     )
 
 
-def webxr_to_core() -> tuple:
-    """Of the WebXR IDL, how much the core's own vocabulary names."""
-    items = webxr_items()
-    src = "\n".join(
-        p.read_text(errors="ignore") for p in (ROOT / "crates/wxr/src").rglob("*.rs")
-    )
-    hit = {n for n in items if re.search(rf"\b{re.escape(n)}\b", src)}
-    return len(hit), len(items)
-
-
 def core_methods() -> list:
     """The methods the core's `Session` trait declares - the WebXR vocabulary, as Rust.
 
@@ -264,27 +254,6 @@ def core_to_native() -> None:
             f"- {crate}: **{100 * len(covered) / len(methods):.0f}%**"
             f" ({len(covered)}/{len(methods)})"
         )
-
-
-def webxr_api_coverage() -> None:
-    """Of the whole WebXR API, member by member, how much each source names.
-
-    The domain is every attribute, operation and constant the WebXR IDL declares - not the `Session` trait,
-    which is one interface's worth of them. A member is "reached" when its own name is in the source, so the
-    core and the two native backends read low wherever they give a concept their own name
-    (`requestReferenceSpace` is `space`), and that is a floor rather than the truth.
-    """
-    items = webxr_items()
-    sources = {
-        "wxr (core)": "\n".join(
-            p.read_text(errors="ignore") for p in (ROOT / "crates/wxr/src").rglob("*.rs")
-        ),
-        **{c: source_of(c) for c in ["wxr-webxr", "wxr-openxr", "wxr-apple"]},
-    }
-    print(f"\n## Of WebXR's {len(items)} API members (whole API), reached by:")
-    for label, src in sources.items():
-        hit = [n for n in items if re.search(rf"\b{re.escape(n)}\b", src)]
-        print(f"- {label}: **{100 * len(hit) / len(items):.0f}%** ({len(hit)}/{len(items)})")
 
 
 def webxr_interfaces() -> set:
@@ -369,14 +338,36 @@ def webxr_gap() -> None:
     print(", ".join(f"`{n}`" for n in collapsed))
 
 
+def spellings(name: str):
+    """One word, as the specification spells it and as Rust does.
+
+    A WebXR enum value is kebab-case and the Rust variant of the same word is CamelCase: `alpha-blend` is
+    `AlphaBlend` and `world-space` is `WorldSpace`. That is spelling and not meaning - the member is reached
+    when the core names the word, whichever way either side capitalises it - and matching verbatim is what made
+    this count say the core had no word for `additive` while `Blend::Additive` sat in it. The aliases are the
+    other matter and stay hand-written: a different *word* is a claim about meaning, and a claim needs a reader.
+    """
+    yield name
+    words = re.split(r"[-_]", name)
+    if len(words) > 1:
+        yield "".join(w[:1].upper() + w[1:] for w in words)
+        yield "_".join(words)
+    elif name[:1].islower():
+        yield name[:1].upper() + name[1:]
+    snake = re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+    if snake != name:
+        yield snake
+
+
+def reached(name: str, source: str, aliases=None) -> bool:
+    """Whether the source names this member, in any of the ways a word can be written."""
+    if any(re.search(rf"\b{re.escape(s)}\b", source) for s in spellings(name)):
+        return True
+    return bool(aliases) and name in aliases and re.search(rf"\b{re.escape(aliases[name])}\b", source)
+
+
 def report(title, total, source, aliases=None):
-    hit = {n for n in total if re.search(rf"\b{re.escape(n)}\b", source)}
-    if aliases:
-        hit |= {
-            n
-            for n in total - hit
-            if n in aliases and re.search(rf"\b{re.escape(aliases[n])}\b", source)
-        }
+    hit = {n for n in total if reached(n, source, aliases)}
     pct = (100.0 * len(hit) / len(total)) if total else 0.0
     print(f"\n## {title}: {len(hit)} / {len(total)}  ({pct:.0f}%)")
     missing = sorted(total - hit)
@@ -493,7 +484,7 @@ def webxr_items():
 def webxr_to_core():
     members = webxr_members()
     src = "\n".join(p.read_text(errors="ignore") for p in (ROOT / "crates/wxr/src").rglob("*.rs"))
-    hit = [m for m in members if re.search(r"\b" + re.escape(m.split(".", 1)[1]) + r"\b", src)]
+    hit = [m for m in members if reached(m.split(".", 1)[1], src, ALIASES)]
     return len(hit), len(members)
 
 
@@ -505,7 +496,7 @@ def webxr_api_coverage():
     }
     print("\n## Of WebXR's " + str(len(members)) + " members (every specification), reached by:")
     for label, src in sources.items():
-        hit = [m for m in members if re.search(r"\b" + re.escape(m.split(".", 1)[1]) + r"\b", src)]
+        hit = [m for m in members if reached(m.split(".", 1)[1], src, ALIASES)]
         print("- " + label + ": **" + str(round(100 * len(hit) / len(members))) + "%** (" + str(len(hit)) + "/" + str(len(members)) + ")")
 
 
@@ -553,34 +544,6 @@ ALIASES = {
     "depthStencilTextureHeight": "depth_size",
     "textureArrayIndex": "array_index",
 }
-
-
-def _reached(name, src):
-    alias = ALIASES.get(name)
-    for candidate in ([alias] if alias else []) + [name]:
-        if re.search(r"\b" + re.escape(candidate) + r"\b", src):
-            return True
-    return False
-
-
-def webxr_to_core():
-    members = webxr_members()
-    src = "\n".join(p.read_text(errors="ignore") for p in (ROOT / "crates/wxr/src").rglob("*.rs"))
-    hit = [m for m in members if _reached(m.split(".", 1)[1], src)]
-    return len(hit), len(members)
-
-
-def webxr_api_coverage():
-    members = webxr_members()
-    sources = {
-        "wxr (core)": "\n".join(p.read_text(errors="ignore") for p in (ROOT / "crates/wxr/src").rglob("*.rs")),
-        **{c: source_of(c) for c in ["wxr-webxr", "wxr-openxr", "wxr-apple"]},
-    }
-    print("\n## Of WebXR's " + str(len(members)) + " members (every specification), reached by:")
-    for label, src in sources.items():
-        hit = [m for m in members if _reached(m.split(".", 1)[1], src)]
-        pct = round(100 * len(hit) / len(members))
-        print("- " + label + ": **" + str(pct) + "%** (" + str(len(hit)) + "/" + str(len(members)) + ")")
 
 
 if __name__ == "__main__":
