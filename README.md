@@ -27,15 +27,15 @@ owns one, wgpu is made to adopt it.
 | --- | ---: | ---: | ---: |
 | **Native API reached** - of each backend's own spec | 150/290 | 7/551 | 47/618 |
 | *as a percentage* | 52% | 1% | 8% |
-| **WebXR API reached** - of the whole API | 283/452 | 176/452 | 177/452 |
-| *as a percentage* | 63% | 39% | 39% |
+| **WebXR API reached** - of the whole API | 294/452 | 176/452 | 177/452 |
+| *as a percentage* | 65% | 39% | 39% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
 Input, Depth Sensing, Hit Test, Lighting Estimation, Anchors, Plane Detection, the AR Module, DOM Overlays
 and the Gamepads module - counted member by member, with the community-group drafts left out. It is a
 *floor*: the core gives a concept its own name (`requestReferenceSpace` is `space`) and both native backends
 go through the core, so a member a backend serves can still share no name with anything in its source. The
-core itself names 264 of the 452.
+core itself names 276 of the 452.
 
 ## The core is small on purpose
 

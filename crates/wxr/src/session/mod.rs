@@ -6,7 +6,7 @@ use std::time::Duration;
 use glam::Vec2;
 
 use crate::anchor::Anchor;
-use crate::depth::DepthInfo;
+use crate::depth::{DepthInfo, DepthSensing};
 use crate::feature::Features;
 use crate::frame::Frame;
 use crate::hit::{Hit, HitTestSource};
@@ -127,6 +127,16 @@ pub trait Session: Any {
     /// what both ways of presenting into one do.
     fn blend(&self) -> Blend {
         Blend::Opaque
+    }
+
+    /// What this session's depth sensing is, when it asked for any - WebXR's `depthUsage`, `depthDataFormat`,
+    /// `depthType` and `depthActive`, which are four attributes of one thing and are one value here.
+    ///
+    /// `None` by default, and for two reasons a caller does not have to tell apart: a session that has no
+    /// depth sensing at all, and a platform whose depth is its compositor's rather than a measurement the app
+    /// asked for. Both are "there is nothing to read here", which is what this says.
+    fn depth_sensing(&self) -> Option<DepthSensing> {
+        None
     }
 
     /// How this session reads its input - WebXR's `interactionMode`.

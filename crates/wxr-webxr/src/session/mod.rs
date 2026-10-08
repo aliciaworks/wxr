@@ -21,10 +21,10 @@ use crate::convert::{
     visibility,
 };
 use crate::sys::{
-    DomPointReadOnly, Event, XrBoundedReferenceSpace, XrEnvironmentBlendMode, XrEye, XrFrame,
-    XrHandedness, XrInteractionMode, XrLayerLayout, XrProjectionLayer, XrReferenceSpace,
-    XrRenderStateInit, XrSession, XrView, XrgpuBinding, XrgpuProjectionLayerInit,
-    XrgpuQuadLayerInit,
+    DomPointReadOnly, Event, XrBoundedReferenceSpace, XrDepthDataFormat, XrDepthType, XrDepthUsage,
+    XrEnvironmentBlendMode, XrEye, XrFrame, XrHandedness, XrInteractionMode, XrLayerLayout,
+    XrProjectionLayer, XrReferenceSpace, XrRenderStateInit, XrSession, XrView, XrgpuBinding,
+    XrgpuProjectionLayerInit, XrgpuQuadLayerInit,
 };
 use crate::{depth, hit, input, planes, throws};
 
@@ -277,6 +277,31 @@ impl wxr::Session for WebXrSession {
     ///
     /// Opaque until there is a session to ask, which is the honest answer for a session that is not here: what a
     /// display does with the world behind it is a fact about the display, and there is none.
+    /// What the browser says the depth sensing is - the only backend where this is an app's request rather
+    /// than a compositor's buffer, and so the only one that answers with something.
+    fn depth_sensing(&self) -> Option<wxr::DepthSensing> {
+        let session = self.inner.borrow().session.clone()?;
+        Some(wxr::DepthSensing {
+            usage: match session.depth_usage() {
+                XrDepthUsage::CpuOptimized => wxr::DepthUsage::CpuOptimized,
+                XrDepthUsage::GpuOptimized => wxr::DepthUsage::GpuOptimized,
+                XrDepthUsage::__Invalid => wxr::DepthUsage::GpuOptimized,
+            },
+            format: match session.depth_data_format() {
+                XrDepthDataFormat::LuminanceAlpha => wxr::DepthFormat::LuminanceAlpha,
+                XrDepthDataFormat::Float32 => wxr::DepthFormat::Float32,
+                XrDepthDataFormat::UnsignedShort => wxr::DepthFormat::UnsignedShort,
+                XrDepthDataFormat::__Invalid => wxr::DepthFormat::Float32,
+            },
+            ty: session.depth_type().map(|ty| match ty {
+                XrDepthType::Raw => wxr::DepthType::Raw,
+                XrDepthType::Smooth => wxr::DepthType::Smooth,
+                XrDepthType::__Invalid => wxr::DepthType::Raw,
+            }),
+            active: session.depth_active(),
+        })
+    }
+
     /// What the browser says, which is the one place this can be `ScreenSpace`.
     fn interaction_mode(&self) -> wxr::InteractionMode {
         let Some(session) = self.inner.borrow().session.clone() else {

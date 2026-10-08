@@ -40,7 +40,7 @@ pub mod space;
 pub mod target;
 
 pub use anchor::Anchor;
-pub use depth::DepthInfo;
+pub use depth::{DepthFormat, DepthInfo, DepthSensing, DepthType, DepthUsage};
 pub use feature::Features;
 pub use frame::{Eye, FieldOfView, Frame, FrameState, View, Viewport};
 pub use hit::{Hit, HitTestSource};
