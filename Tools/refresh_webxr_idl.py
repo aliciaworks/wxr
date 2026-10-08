@@ -86,6 +86,18 @@ EXTRAS = [
         "5d4412e454d68f8f9dbb31b509e5ffe769ffa739",
     ),
     (
+        # Body tracking, which Meta has - `XR_FB_body_tracking` and its full-body sibling.
+        "webxr-body-tracking",
+        "immersive-web/body-tracking",
+        "9d44b6f3ba3b3d745a9ed2f566c7b0c6d9ca792d",
+    ),
+    (
+        # Tracking an image, a marker or a QR code, which Android XR has as its trackables.
+        "webxr-image-tracking",
+        "immersive-web/image-tracking",
+        "5c2eebf3e8b2be93ce8788c72206db9ee08d50a2",
+    ),
+    (
         # The Community Group's meshing draft, which is the same situation as the two above: webref does not
         # carry it, so it is pinned to a commit. There is no `XR` namespace of its own to pin it against -
         # the group is where it lives and `CG-DRAFT` is what its status line says.

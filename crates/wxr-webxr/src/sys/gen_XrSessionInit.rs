@@ -32,6 +32,12 @@ extern "C" {
     #[doc = "Change the `requiredFeatures` field of this object."]
     #[wasm_bindgen(method, setter = "requiredFeatures")]
     pub fn set_required_features(this: &XrSessionInit, val: &::wasm_bindgen::JsValue);
+    #[doc = "Get the `trackedImages` field of this object."]
+    #[wasm_bindgen(method, getter = "trackedImages")]
+    pub fn get_tracked_images(this: &XrSessionInit) -> Option<::js_sys::Array>;
+    #[doc = "Change the `trackedImages` field of this object."]
+    #[wasm_bindgen(method, setter = "trackedImages")]
+    pub fn set_tracked_images(this: &XrSessionInit, val: &::wasm_bindgen::JsValue);
 }
 impl XrSessionInit {
     #[doc = "Construct a new `XrSessionInit`."]
@@ -58,6 +64,11 @@ impl XrSessionInit {
     #[deprecated = "Use `set_required_features()` instead."]
     pub fn required_features(&mut self, val: &::wasm_bindgen::JsValue) -> &mut Self {
         self.set_required_features(val);
+        self
+    }
+    #[deprecated = "Use `set_tracked_images()` instead."]
+    pub fn tracked_images(&mut self, val: &::wasm_bindgen::JsValue) -> &mut Self {
+        self.set_tracked_images(val);
         self
     }
 }

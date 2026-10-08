@@ -19,6 +19,11 @@ extern "C" {
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRFrame/trackedAnchors)"]
     pub fn tracked_anchors(this: &XrFrame) -> XrAnchorSet;
+    #[wasm_bindgen(method, getter, js_class = "XRFrame", js_name = "body")]
+    #[doc = "Getter for the `body` field of this object."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRFrame/body)"]
+    pub fn body(this: &XrFrame) -> Option<XrBody>;
     #[wasm_bindgen(method, getter, js_class = "XRFrame", js_name = "expressions")]
     #[doc = "Getter for the `expressions` field of this object."]
     #[doc = ""]
@@ -116,6 +121,11 @@ extern "C" {
         this: &XrFrame,
         hit_test_source: &XrTransientInputHitTestSource,
     ) -> ::js_sys::Array;
+    #[wasm_bindgen(method, js_class = "XRFrame", js_name = "getImageTrackingResults")]
+    #[doc = "The `getImageTrackingResults()` method."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRFrame/getImageTrackingResults)"]
+    pub fn get_image_tracking_results(this: &XrFrame) -> ::js_sys::Array;
     #[wasm_bindgen(method, js_class = "XRFrame", js_name = "getJointPose")]
     #[doc = "The `getJointPose()` method."]
     #[doc = ""]

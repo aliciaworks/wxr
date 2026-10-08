@@ -78,6 +78,21 @@ mod gen_XrAnchorSet;
 pub use gen_XrAnchorSet::*;
 
 #[allow(non_snake_case)]
+mod gen_XrBody;
+#[allow(unused_imports)]
+pub use gen_XrBody::*;
+
+#[allow(non_snake_case)]
+mod gen_XrBodyJoint;
+#[allow(unused_imports)]
+pub use gen_XrBodyJoint::*;
+
+#[allow(non_snake_case)]
+mod gen_XrBodySpace;
+#[allow(unused_imports)]
+pub use gen_XrBodySpace::*;
+
+#[allow(non_snake_case)]
 mod gen_XrBoundedReferenceSpace;
 #[allow(unused_imports)]
 pub use gen_XrBoundedReferenceSpace::*;
@@ -206,6 +221,21 @@ pub use gen_XrHitTestSource::*;
 mod gen_XrHitTestTrackableType;
 #[allow(unused_imports)]
 pub use gen_XrHitTestTrackableType::*;
+
+#[allow(non_snake_case)]
+mod gen_XrImageTrackability;
+#[allow(unused_imports)]
+pub use gen_XrImageTrackability::*;
+
+#[allow(non_snake_case)]
+mod gen_XrImageTrackingResult;
+#[allow(unused_imports)]
+pub use gen_XrImageTrackingResult::*;
+
+#[allow(non_snake_case)]
+mod gen_XrImageTrackingState;
+#[allow(unused_imports)]
+pub use gen_XrImageTrackingState::*;
 
 #[allow(non_snake_case)]
 mod gen_XrInputSource;
@@ -486,6 +516,11 @@ pub use gen_XrTargetRayMode::*;
 mod gen_XrTextureType;
 #[allow(unused_imports)]
 pub use gen_XrTextureType::*;
+
+#[allow(non_snake_case)]
+mod gen_XrTrackedImageInit;
+#[allow(unused_imports)]
+pub use gen_XrTrackedImageInit::*;
 
 #[allow(non_snake_case)]
 mod gen_XrTransientInputHitTestOptionsInit;

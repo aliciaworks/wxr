@@ -490,7 +490,8 @@ def main() -> None:
 # whose shape can still move under a backend. They are fetched and bound - a draft is worth being able to
 # call - and not counted, because a number that moves with a draft is a number that means nothing.
 WEBXR_DRAFTS = {"externs.webidl", "webxr-raw-camera-access.webidl", "webxr-real-world-meshing.webidl",
-    "webxr-gamepad-haptics.webidl", "webxr-face-tracking.webidl"}
+    "webxr-gamepad-haptics.webidl", "webxr-face-tracking.webidl",
+    "webxr-body-tracking.webidl", "webxr-image-tracking.webidl"}
 
 
 def _balanced(text, i):

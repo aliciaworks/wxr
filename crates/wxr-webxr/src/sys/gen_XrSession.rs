@@ -250,6 +250,11 @@ extern "C" {
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/end)"]
     pub fn end(this: &XrSession) -> ::js_sys::Promise;
+    #[wasm_bindgen(method, js_class = "XRSession", js_name = "getImageTrackability")]
+    #[doc = "The `getImageTrackability()` method."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRSession/getImageTrackability)"]
+    pub fn get_image_trackability(this: &XrSession) -> ::js_sys::Promise;
     #[wasm_bindgen(method, js_class = "XRSession", js_name = "initiateRoomCapture")]
     #[doc = "The `initiateRoomCapture()` method."]
     #[doc = ""]

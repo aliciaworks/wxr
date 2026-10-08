@@ -31,6 +31,10 @@ interface mixin GlobalEventHandlers {};
 interface mixin WebGLRenderingContextBase {};
 interface Navigator {};
 
+// The bitmap the image-tracking draft is given to look for: HTML's, made by `createImageBitmap`, and a
+// `typedef any` for the reason above.
+typedef any ImageBitmap;
+
 // The Web Audio buffer the haptics draft plays: `web-sys`'s, like the gamepad, and a `typedef any` for the
 // same reason - this crate hands it to the browser rather than looking inside it.
 typedef any AudioBuffer;
