@@ -26,7 +26,7 @@ owns one, wgpu is made to adopt it.
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
 | **Native API reached**, of each backend's own spec | 30% | 1% | 7% |
-| **WebXR translated**, of the core's `Session` methods | 92% | 58% | 56% |
+| **WebXR translated**, of the core's `Session` methods | 94% | 60% | 57% |
 
 The core itself is 102 public items plus 36 `Session` methods, so it is not small - but of the WebXR API's
 138 members only 39 share a name with it, **28%**, because the core gives WebXR's concepts its own names
