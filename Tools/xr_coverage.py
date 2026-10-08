@@ -120,8 +120,47 @@ def visionos_items() -> set:
     return items
 
 
-def report(title: str, total: set, source: str) -> tuple:
+def generated_aliases() -> dict:
+    """C name -> the `Type::method` the generated crate names it by.
+
+    A backend on the generated bindings calls `ar_session_t::new`, not `ar_session_create`, so the C name
+    stops appearing the moment a backend switches over. The generated crate still carries it, as the
+    `#[doc(alias = ...)]` on the method - and the method is qualified by its type on purpose: a bare `new` or
+    `identifier` matches half a backend by accident, `ar_plane_anchor_t::identifier` matches the one call.
+    """
+    import glob
+
+    out = {}
+    pattern = str(
+        Path.home()
+        / ".cargo/git/checkouts/objc2-*/*/framework-crates/objc2-ar-kit/src/generated"
+    )
+    for d in glob.glob(pattern):
+        for path in Path(d).glob("*.rs"):
+            lines = path.read_text(errors="ignore").splitlines()
+            current = None
+            for i, line in enumerate(lines):
+                impl = re.match(r"impl\s+(\w+)\s*\{", line)
+                if impl:
+                    current = impl.group(1)
+                alias = re.match(r'\s*#\[doc\(alias = "((?:ar|cp)_\w+)"\)\]', line)
+                if alias and current:
+                    for after in lines[i + 1 : i + 60]:
+                        fn = re.search(r"\bfn\s+(\w+)\s*[\(<]", after)
+                        if fn:
+                            out[alias.group(1)] = f"{current}::{fn.group(1)}"
+                            break
+    return out
+
+
+def report(title, total, source, aliases=None):
     hit = {n for n in total if re.search(rf"\b{re.escape(n)}\b", source)}
+    if aliases:
+        hit |= {
+            n
+            for n in total - hit
+            if n in aliases and re.search(rf"\b{re.escape(aliases[n])}\b", source)
+        }
     pct = (100.0 * len(hit) / len(total)) if total else 0.0
     print(f"\n## {title}: {len(hit)} / {len(total)}  ({pct:.0f}%)")
     missing = sorted(total - hit)
@@ -138,6 +177,7 @@ def main() -> None:
 
     print("# Native API reached by each backend")
 
+    aliases = generated_aliases()
     totals = 0
     done = 0
     for title, items, crate in [
@@ -148,7 +188,7 @@ def main() -> None:
         if not items:
             print(f"\n## {title}: no spec found (fetch it, or point SDK at the headers)")
             continue
-        h, t = report(title, items, source_of(crate))
+        h, t = report(title, items, source_of(crate), aliases)
         done += h
         totals += t
 

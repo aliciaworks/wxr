@@ -227,6 +227,40 @@ runtime takes the swapchain, hands back its images and lets go of it on release.
 
 What none of it proves is that any of the three has drawn a frame on real hardware, because none of them has.
 
+## What each backend reaches
+
+Three backends, three native APIs, and a number for each that anybody can reproduce:
+
+```sh
+python3 Tools/xr_coverage.py
+```
+
+| Backend | Native API | Reached | Of | |
+| --- | --- | ---: | ---: | ---: |
+| `wxr-webxr` | WebXR - the IDL in `crates/wxr-webxr/webidl/` | 42 | 138 | 30% |
+| `wxr-openxr` | OpenXR - the registry | 7 | 551 | 1% |
+| `wxr-apple` | ARKit + CompositorServices - the visionOS SDK | 43 | 618 | 7% |
+| | | **92** | **1307** | **7%** |
+
+"Reached" is mechanical on purpose: the name the native API gives an item - a WebXR IDL member, an `xr*`
+command, an `ar_*`/`cp_*` C function - appears in that backend's own source, outside the generated bindings.
+The count is deliberately not a score. A backend that never names `XRHitTestSource` does not offer hit
+testing, and saying so is checkable by grepping; and the number is a *lower bound* wherever a backend sits on
+an ergonomic wrapper rather than the C names directly. `wxr-apple` calls ARKit through the generated crate
+(`ar_session_t::new`, not `ar_session_create`), so the tool follows each `#[doc(alias = ...)]` back to the C
+name - and OpenXR sits on the `openxr` crate, whose method names carry no such alias, which is most of why
+its row reads so low.
+
+The denominator is the whole API, extensions included: `xrCreateSession` is one of five hundred commands once
+the drivers' own extensions are counted, and ARKit's C surface is six hundred functions once accessory and
+room tracking are in it. Neither is what this workspace offers an app - that is ten `Features`, one
+hand-written answer per backend, small enough to read in `crates/wxr/src/feature.rs`.
+
+What is implemented today, capability by capability: `wxr-apple` offers `PLANES` and nothing else beyond the
+session itself - ARKit's plane detection provider, folded into the core's `Plane`. `wxr-webxr` offers the
+whole set, because the browser does. `wxr-openxr` offers `LAYER_QUAD`; the other shapes are the next thing
+there. Every gap in this section is a `Features` bit and a method, and each one moves this table.
+
 ## What is not decided yet
 
 - **WebXR's images.** The import path is already in wgpu - `Device::create_texture_from_webgpu_handle`, the
