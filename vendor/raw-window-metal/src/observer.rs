@@ -3,7 +3,7 @@ use core::ffi::c_void;
 use core::pin::Pin;
 use objc2::rc::{Retained, Weak};
 use objc2::runtime::{AnyClass, AnyObject};
-use objc2::{define_class, msg_send, AllocAnyThread, ClassType, DefinedClass, Ivars};
+use objc2::{define_class, msg_send, AllocAnyThread, ClassType, Ivars};
 use objc2_foundation::{
     ns_string, NSDictionary, NSKeyValueChangeKey, NSKeyValueChangeNewKey,
     NSKeyValueObservingOptions, NSNumber, NSObjectNSKeyValueObserverRegistration, NSString,

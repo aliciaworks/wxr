@@ -10,11 +10,11 @@
 //!
 //! **Nothing here is from memory.** [`Tools/check_apple_sys.py`](https://github.com/aliciaworks/wxr/blob/main/Tools/check_apple_sys.py) reads Apple's headers out of an SDK mirror
 //! - the same headers an extractor without extended-attribute support reads as empty, which is what made
-//! this file unverifiable for a while - and compares each name, its argument count and the shape of what it
-//! returns; where the mirror has no header for something, WebKit's soft-link headers and Apple's
-//! documentation do. It runs in CI, and that is the whole of what makes a file of `extern "C"` a thing to
-//! keep rather than a thing to fear: a wrong signature compiles here and fails on a device, and there is no
-//! device here.
+//!   this file unverifiable for a while - and compares each name, its argument count and the shape of what it
+//!   returns; where the mirror has no header for something, WebKit's soft-link headers and Apple's
+//!   documentation do. It runs in CI, and that is the whole of what makes a file of `extern "C"` a thing to
+//!   keep rather than a thing to fear: a wrong signature compiles here and fails on a device, and there is no
+//!   device here.
 //!
 //! One of the four is a call Apple has moved on from, and its header says so in words: `cp_view_get_tangents`
 //! is `API_DEPRECATED("Use cp_drawable_compute_projection instead", visionos(1.0, 2.0))` and unavailable on

@@ -222,7 +222,9 @@ impl ArKit {
             // SAFETY: both casts are the subtype ones above; the anchor is live and the transform is the
             // hand's place in the world.
             let transform = unsafe {
-                sys::ar_hand_anchor_get_origin_from_anchor_transform(Retained::as_ptr(anchor).cast())
+                sys::ar_hand_anchor_get_origin_from_anchor_transform(
+                    Retained::as_ptr(anchor).cast(),
+                )
             };
             let tracked = unsafe { ar_trackable_anchor_t::is_tracked(as_trackable_anchor(anchor)) };
             (handedness, Mat4::from_cols_array(&transform.0), tracked)
