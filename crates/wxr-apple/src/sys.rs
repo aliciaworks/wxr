@@ -52,6 +52,9 @@ pub struct Float2(pub [f32; 2]);
 /// out, with the object it points at left to the type that owns it.
 pub type ArDeviceAnchor = *mut c_void;
 
+/// A world anchor the same way, for the two calls that create one and place it.
+pub type ArWorldAnchor = *mut c_void;
+
 // SAFETY: every declaration below is transcribed from Apple's C header or from Apple's own C guide, and the
 // framework is linked rather than loaded by hand. What is *not* proven here is the ABI - a wrong signature
 // would still compile - which is why the types are `repr(C)` and aligned as the C ones are, and why the
@@ -100,4 +103,19 @@ unsafe extern "C-unwind" {
     /// content drawn at it lands over the physical object in passthrough - input wants where the hand
     /// *is*, so the plain call is the one this backend wanted all along.
     pub fn ar_hand_anchor_get_origin_from_anchor_transform(hand_anchor: *const c_void) -> Float4x4;
+
+    /// A world anchor the runtime will keep at this place - the `origin from anchor` transform of the
+    /// anchor's own space, which is the same shape every space in the core is.
+    ///
+    /// `simd_float4x4` by value, so it is here rather than in the generated crate, and the object it returns
+    /// is `+1` like every other `ar_*`.
+    pub fn ar_world_anchor_create_with_origin_from_anchor_transform(
+        origin_from_anchor_transform: Float4x4,
+    ) -> ArWorldAnchor;
+
+    /// Where a world anchor is now.
+    ///
+    /// The reason an anchor is a handle and not a pose: the runtime moves it as its understanding of the room
+    /// changes, and reading it is how an app finds out where its object ended up.
+    pub fn ar_world_anchor_get_origin_from_anchor_transform(anchor: *const c_void) -> Float4x4;
 }
