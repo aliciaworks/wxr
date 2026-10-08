@@ -199,9 +199,23 @@ def webxr_to_core() -> tuple:
 
 
 def core_methods() -> list:
-    """The methods the core's `Session` trait declares - the WebXR vocabulary, as Rust."""
+    """The methods the core's `Session` trait declares - the WebXR vocabulary, as Rust.
+
+    Only that trait: `session.rs` also holds `Backend`, whose `connect` is not something a session fills in,
+    and counting it is counting a method nobody is meant to implement.
+    """
     text = (ROOT / "crates/wxr/src/session.rs").read_text()
-    return sorted(set(re.findall(r"^\s{4}fn (\w+)", text, re.M)))
+    start = text.index("pub trait Session")
+    depth, block = 0, []
+    for ch in text[start:]:
+        block.append(ch)
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                break
+    return sorted(set(re.findall(r"^\s{4}fn (\w+)", "".join(block), re.M)))
 
 
 def session_impl(crate: str) -> set:
