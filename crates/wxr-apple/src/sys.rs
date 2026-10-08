@@ -70,7 +70,9 @@ unsafe extern "C-unwind" {
     pub fn cp_drawable_set_device_anchor(drawable: cp_drawable_t, device_anchor: ArDeviceAnchor);
 }
 
-// The shim, compiled and linked by `apps/visionos/build.sh`.
+// The shim, which is `crates/wxr-apple/wxr_compositor_shim.c` in this crate but compiled by whatever
+// links the app: it is C, and a `staticlib` does not carry an object a build script produced, so the
+// step belongs to the final link - `apps/visionos/build.sh` here, and the same one in a consumer.
 unsafe extern "C" {
     /// Writes the transform from a view's space to the device's into `out`.
     fn wxr_cp_view_get_transform(view: cp_view_t, out: *mut f32);

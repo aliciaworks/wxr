@@ -62,7 +62,7 @@ printf 'APPL????' > "$APP_DIR/PkgInfo"
 #    archive refers to `wxr_cp_*`, so this object is what resolves them at link time.
 echo "==> compiling the CompositorServices shim"
 SHIM_OBJ="$OUT_DIR/wxr_compositor_shim.o"
-xcrun clang -c "$SCRIPT_DIR/wxr_compositor_shim.c" \
+xcrun clang -c "$SCRIPT_DIR/../../crates/wxr-apple/wxr_compositor_shim.c" \
   -isysroot "$SIM_SDK" \
   -target "arm64-apple-xros27.0-simulator" \
   -O2 \
