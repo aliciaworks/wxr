@@ -257,6 +257,27 @@ def core_to_native() -> None:
         )
 
 
+def webxr_api_coverage() -> None:
+    """Of the whole WebXR API, member by member, how much each source names.
+
+    The domain is every attribute, operation and constant the WebXR IDL declares - not the `Session` trait,
+    which is one interface's worth of them. A member is "reached" when its own name is in the source, so the
+    core and the two native backends read low wherever they give a concept their own name
+    (`requestReferenceSpace` is `space`), and that is a floor rather than the truth.
+    """
+    items = webxr_items()
+    sources = {
+        "wxr (core)": "\n".join(
+            p.read_text(errors="ignore") for p in (ROOT / "crates/wxr/src").rglob("*.rs")
+        ),
+        **{c: source_of(c) for c in ["wxr-webxr", "wxr-openxr", "wxr-apple"]},
+    }
+    print(f"\n## Of WebXR's {len(items)} API members (whole API), reached by:")
+    for label, src in sources.items():
+        hit = [n for n in items if re.search(rf"\b{re.escape(n)}\b", src)]
+        print(f"- {label}: **{100 * len(hit) / len(items):.0f}%** ({len(hit)}/{len(items)})")
+
+
 def webxr_interfaces() -> set:
     """Every interface, dictionary and enum the WebXR IDL declares."""
     names = set()
@@ -354,6 +375,7 @@ def main() -> None:
         f" the core is {len(core_items)} public items plus {len(methods)} Session methods)"
     )
     core_to_native()
+    webxr_api_coverage()
     webxr_gap()
 
 
