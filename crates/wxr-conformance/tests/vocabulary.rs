@@ -125,3 +125,27 @@ fn the_environment_blend_modes_are_the_same_three() {
     ]);
     assert_eq!(ours, theirs);
 }
+
+/// `XRSessionVisibilityState` - <https://immersive-web.github.io/webxr/#enumdef-xrsessionvisibilitystate>
+///
+/// Three, and both readings have all three: `visible`, `visible-blurred` - on a display, with something else
+/// holding the person's attention - and `hidden`.
+///
+/// A note in an earlier commit here said this core was missing the middle rung. It was wrong, and the way it
+/// was wrong is worth keeping: the grep that produced it dropped comment lines and cut off before the variant,
+/// so the conclusion came from a reading of the output rather than from the output. This test is the check
+/// that claim should have been.
+#[test]
+fn the_visibility_states_are_the_same_three() {
+    let ours = names(&[
+        wxr::Visibility::Visible,
+        wxr::Visibility::VisibleBlurred,
+        wxr::Visibility::Hidden,
+    ]);
+    let theirs = names(&[
+        servo_webxr_api::Visibility::Visible,
+        servo_webxr_api::Visibility::VisibleBlurred,
+        servo_webxr_api::Visibility::Hidden,
+    ]);
+    assert_eq!(ours, theirs);
+}
