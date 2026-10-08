@@ -149,3 +149,75 @@ fn the_visibility_states_are_the_same_three() {
     ]);
     assert_eq!(ours, theirs);
 }
+
+/// The hand's joints - <https://immersive-web.github.io/webxr-hand-input/#skeleton-joints-section>
+///
+/// Twenty-five, and the specification names them exactly: a wrist, five thumb joints, and five on each of
+/// the four fingers. The list here is the specification's own, and it is written out rather than compared to
+/// the other implementation - which is the one place in this file where that is the right way round, because
+/// Servo builds its joints as `Index(FingerJoint)` and spells two of them differently (`ThumbPhalanxTip` and
+/// `Little` where the specification says `thumb-tip` and `pinky-finger-*`). A comparison against Servo here
+/// would be asking which of the two readings is right, and the answer is neither of them: it is the
+/// specification, so the test spells it.
+#[test]
+fn the_hand_has_the_twenty_five_joints_the_specification_names() {
+    let spec = [
+        "Wrist",
+        "ThumbMetacarpal",
+        "ThumbPhalanxProximal",
+        "ThumbPhalanxDistal",
+        "ThumbTip",
+        "IndexFingerMetacarpal",
+        "IndexFingerPhalanxProximal",
+        "IndexFingerPhalanxIntermediate",
+        "IndexFingerPhalanxDistal",
+        "IndexFingerTip",
+        "MiddleFingerMetacarpal",
+        "MiddleFingerPhalanxProximal",
+        "MiddleFingerPhalanxIntermediate",
+        "MiddleFingerPhalanxDistal",
+        "MiddleFingerTip",
+        "RingFingerMetacarpal",
+        "RingFingerPhalanxProximal",
+        "RingFingerPhalanxIntermediate",
+        "RingFingerPhalanxDistal",
+        "RingFingerTip",
+        "PinkyFingerMetacarpal",
+        "PinkyFingerPhalanxProximal",
+        "PinkyFingerPhalanxIntermediate",
+        "PinkyFingerPhalanxDistal",
+        "PinkyFingerTip",
+    ];
+
+    let ours = names(&[
+        wxr::HandJoint::Wrist,
+        wxr::HandJoint::ThumbMetacarpal,
+        wxr::HandJoint::ThumbPhalanxProximal,
+        wxr::HandJoint::ThumbPhalanxDistal,
+        wxr::HandJoint::ThumbTip,
+        wxr::HandJoint::IndexFingerMetacarpal,
+        wxr::HandJoint::IndexFingerPhalanxProximal,
+        wxr::HandJoint::IndexFingerPhalanxIntermediate,
+        wxr::HandJoint::IndexFingerPhalanxDistal,
+        wxr::HandJoint::IndexFingerTip,
+        wxr::HandJoint::MiddleFingerMetacarpal,
+        wxr::HandJoint::MiddleFingerPhalanxProximal,
+        wxr::HandJoint::MiddleFingerPhalanxIntermediate,
+        wxr::HandJoint::MiddleFingerPhalanxDistal,
+        wxr::HandJoint::MiddleFingerTip,
+        wxr::HandJoint::RingFingerMetacarpal,
+        wxr::HandJoint::RingFingerPhalanxProximal,
+        wxr::HandJoint::RingFingerPhalanxIntermediate,
+        wxr::HandJoint::RingFingerPhalanxDistal,
+        wxr::HandJoint::RingFingerTip,
+        wxr::HandJoint::PinkyFingerMetacarpal,
+        wxr::HandJoint::PinkyFingerPhalanxProximal,
+        wxr::HandJoint::PinkyFingerPhalanxIntermediate,
+        wxr::HandJoint::PinkyFingerPhalanxDistal,
+        wxr::HandJoint::PinkyFingerTip,
+    ]);
+    let mut theirs: Vec<String> = spec.iter().map(|name| name.to_string()).collect();
+    theirs.sort();
+    assert_eq!(ours.len(), 25, "a hand has twenty-five joints");
+    assert_eq!(ours, theirs);
+}
