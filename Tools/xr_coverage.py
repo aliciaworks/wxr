@@ -461,5 +461,77 @@ def webxr_api_coverage():
         print("- " + label + ": **" + str(round(100 * len(hit) / len(members))) + "%** (" + str(len(hit)) + "/" + str(len(members)) + ")")
 
 
+# --- WebXR's names and the core's, where they differ. ---
+#
+# This is the one hand-written thing in this file, and on purpose: it is the claim a reader checks - "the core
+# calls `requestReferenceSpace` a `space`" - and without it every count here is a floor, because the core
+# renames every concept it shares and shares no name with the specification. Each line says: this member, the
+# core serves it under this name.
+
+ALIASES = {
+    "requestReferenceSpace": "space",
+    "requestAnimationFrame": "begin",
+    "updateRenderState": "set_depth_range",
+    "depthNear": "set_depth_range",
+    "depthFar": "set_depth_range",
+    "renderState": "blend",
+    "environmentBlendMode": "blend",
+    "framerate": "set_foveation",
+    "fixationPoint": "set_foveation",
+    "inputSources": "inputs",
+    "visibilityState": "visibility",
+    "requestHitTestSource": "hit_test_source",
+    "requestHitTestSourceForTransientInput": "hit_test_source",
+    "getHitTestResults": "hits",
+    "getHitTestResultsForTransientInput": "hits",
+    "createAnchor": "anchor",
+    "delete": "release_anchor",
+    "detectedPlanes": "planes",
+    "planeSpace": "planes",
+    "getDepthInformation": "depth",
+    "createQuadLayer": "layer",
+    "createCylinderLayer": "layer",
+    "createEquirectLayer": "layer",
+    "createCubeLayer": "layer",
+    "createProjectionLayer": "layer",
+    "requestLightProbe": "light_probe",
+    "getLightEstimate": "light",
+    "requestJointPose": "hand",
+    "colorTextureWidth": "color_size",
+    "colorTextureHeight": "color_size",
+    "depthStencilTextureWidth": "depth_size",
+    "depthStencilTextureHeight": "depth_size",
+    "textureArrayIndex": "array_index",
+}
+
+
+def _reached(name, src):
+    alias = ALIASES.get(name)
+    for candidate in ([alias] if alias else []) + [name]:
+        if re.search(r"\b" + re.escape(candidate) + r"\b", src):
+            return True
+    return False
+
+
+def webxr_to_core():
+    members = webxr_members()
+    src = "\n".join(p.read_text(errors="ignore") for p in (ROOT / "crates/wxr/src").rglob("*.rs"))
+    hit = [m for m in members if _reached(m.split(".", 1)[1], src)]
+    return len(hit), len(members)
+
+
+def webxr_api_coverage():
+    members = webxr_members()
+    sources = {
+        "wxr (core)": "\n".join(p.read_text(errors="ignore") for p in (ROOT / "crates/wxr/src").rglob("*.rs")),
+        **{c: source_of(c) for c in ["wxr-webxr", "wxr-openxr", "wxr-apple"]},
+    }
+    print("\n## Of WebXR's " + str(len(members)) + " members (every specification), reached by:")
+    for label, src in sources.items():
+        hit = [m for m in members if _reached(m.split(".", 1)[1], src)]
+        pct = round(100 * len(hit) / len(members))
+        print("- " + label + ": **" + str(pct) + "%** (" + str(len(hit)) + "/" + str(len(members)) + ")")
+
+
 if __name__ == "__main__":
     main()
