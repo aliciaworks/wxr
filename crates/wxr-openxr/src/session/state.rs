@@ -3,6 +3,8 @@ use super::*;
 pub struct OpenXrSession {
     /// Which composition-layer extensions this instance was made with, and so which shapes it will take.
     pub(super) layers_enabled: LayerExtensions,
+    /// Whether the runtime will take a display refresh rate.
+    pub(super) refresh_rate: bool,
     /// The instance is kept for its event queue: OpenXR polls events from the instance, not the session.
     pub(super) instance: xr::Instance,
     pub(super) events: xr::EventDataBuffer,

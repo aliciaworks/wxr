@@ -37,6 +37,11 @@ impl Features {
     /// Six faces of a cube in one image: [`crate::LayerShape::Cube`].
     pub const LAYER_CUBE: Self = Self(1 << 9);
 
+    /// The display's refresh rate can be asked for - `XR_FB_display_refresh_rate` on a Quest, and its like
+    /// elsewhere. Not a WebXR member: the browser picks the rate and a page cannot, so this is one of the
+    /// places the core is wider than the specification it is named after, the way [`crate::Presentation`] is.
+    pub const REFRESH_RATE: Self = Self(1 << 10);
+
     /// Whether every bit of `other` is in this set.
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0

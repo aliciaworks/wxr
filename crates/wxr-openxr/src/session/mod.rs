@@ -159,6 +159,7 @@ impl OpenXrSession {
             foveation: None,
             format,
             layers_enabled: backend.layers,
+            refresh_rate: backend.refresh_rate,
             layers: Vec::new(),
         })
     }
@@ -187,6 +188,9 @@ impl wxr::Session for OpenXrSession {
         // The other three are `XR_KHR_composition_layer_*`, and the bits for them stay unset until those are
         // enabled and driven.
         let mut features = wxr::Features::LAYER_QUAD;
+        if self.refresh_rate {
+            features = features.union(wxr::Features::REFRESH_RATE);
+        }
         // One bit per extension the instance was made with. A bit set for one that is not enabled would be a
         // promise the session cannot keep - and the refusal in `layer` is what an app gets if it asks anyway.
         for (enabled, bit) in [
@@ -208,51 +212,24 @@ impl wxr::Session for OpenXrSession {
         features
     }
 
-    fn set_foveation(&mut self, amount: f32) {
-        // `XR_FB_foveation` has four levels rather than a fraction, so an amount becomes the nearest of them.
-        // A runtime that does not list the extension is a runtime that does not foveate, and a profile is
-        // where that is found out - which is a knob left alone rather than a frame to fail.
-        let level = match amount.clamp(0.0, 1.0) {
-            a if a <= 0.0 => xr::FoveationLevelFB::NONE,
-            a if a < 0.34 => xr::FoveationLevelFB::LOW,
-            a if a < 0.67 => xr::FoveationLevelFB::MEDIUM,
-            _ => xr::FoveationLevelFB::HIGH,
-        };
-        let profile = match self
-            .session
-            .create_foveation_profile(Some(xr::FoveationLevelProfile {
-                level,
-                vertical_offset: 0.0,
-                dynamic: xr::FoveationDynamicFB::DISABLED,
-            })) {
-            Ok(profile) => profile,
-            Err(error) => {
-                log::debug!("wxr-openxr: no foveation for {amount}: {error:?}");
-                return;
-            }
-        };
+    /// The rates the runtime offers, which is `xrEnumerateDisplayRefreshRatesFB`.
+    ///
+    /// A runtime without the extension offers none, and a caller that finds the list empty keeps the rate the
+    /// display is already at.
+    fn refresh_rates(&mut self, out: &mut Vec<f32>) {
+        self.refresh_rates_impl(out)
+    }
 
-        // The typed crate makes a profile and has no way to put one on a swapchain, so this is the one raw call
-        // in this backend: `xrUpdateSwapchainFB` from `XR_FB_swapchain_update_state`, which is what a profile is
-        // for.
-        let Some(update) = self.instance.exts().fb_swapchain_update_state.as_ref() else {
-            return;
-        };
-        // The typed crate makes a profile and keeps the swapchain state that carries it private, so this is the
-        // one raw structure in this backend. Zeroed is the whole of what it starts as: empty flags, no chain.
-        let mut state: openxr_sys::SwapchainStateFoveationFB = unsafe { std::mem::zeroed() };
-        state.ty = openxr_sys::StructureType::SWAPCHAIN_STATE_FOVEATION_FB;
-        state.profile = profile.as_raw();
-        // SAFETY: the swapchain is live for as long as this session is, and `state` and `profile` outlive the
-        // call - the profile by being kept below, which is what `foveation` is for.
-        let result = unsafe {
-            (update.update_swapchain)(self.swapchain.as_raw(), &state as *const _ as *const _)
-        };
-        if result != openxr_sys::Result::SUCCESS {
-            log::debug!("wxr-openxr: the swapchain would not take foveation {amount}: {result:?}");
-            return;
-        }
-        self.foveation = Some(profile);
+    /// Ask for one of them, which is `xrRequestDisplayRefreshRateFB`.
+    ///
+    /// A runtime that will not take this one keeps the rate it has, so a refusal is logged rather than
+    /// returned - the same shape `set_foveation` has, and for the same reason: it is a request.
+    fn set_refresh_rate(&mut self, rate: f32) {
+        self.set_refresh_rate_impl(rate)
+    }
+
+    fn set_foveation(&mut self, amount: f32) {
+        self.set_foveation_impl(amount)
     }
 
     fn poll(&mut self) -> Option<wxr::Event> {
@@ -494,6 +471,7 @@ impl OpenXrSession {
     }
 }
 
+mod display;
 mod frames;
 mod sources;
 mod spaces;

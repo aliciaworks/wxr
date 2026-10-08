@@ -169,6 +169,20 @@ pub trait Session: Any {
     /// runtime's own choice and a session that says nothing should keep it.
     fn set_foveation(&mut self, _amount: f32) {}
 
+    /// The refresh rates the display offers, in hertz, appended to `out` - `XR_FB_display_refresh_rate`'s
+    /// list and the like.
+    ///
+    /// Empty by default, and that is a fact rather than a placeholder: a session on a platform that does not
+    /// let an app choose draws at whatever its display does, and there is no list to read.
+    fn refresh_rates(&mut self, _out: &mut Vec<f32>) {}
+
+    /// Ask the display to run at `rate` hertz - the other half of [`refresh_rates`](Session::refresh_rates).
+    ///
+    /// A *request*, like [`set_foveation`](Session::set_foveation): a runtime that cannot change its rate, or
+    /// will not take this one, keeps the rate it has. Nothing is sent by default, because the default is the
+    /// display's own choice.
+    fn set_refresh_rate(&mut self, _rate: f32) {}
+
     /// Ask for a view to be rendered at `scale` of its full resolution - WebXR's `requestViewportScale`.
     ///
     /// This is the application's half of the trade the foveation above makes for the compositor: fewer pixels

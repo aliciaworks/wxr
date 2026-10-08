@@ -68,6 +68,9 @@ pub struct OpenXr {
     blend: xr::EnvironmentBlendMode,
     /// Whether to ask for an HDR swapchain when a runtime offers one. Off by default - see [`OpenXr::prefer_hdr`].
     prefer_hdr: bool,
+    /// Whether the runtime takes a display refresh rate. Fixed at `xrCreateInstance`, like the layer
+    /// extensions, and the capability bit and the two calls read from here.
+    refresh_rate: bool,
     /// Which composition-layer extensions the instance was made with. They are fixed at `xrCreateInstance`,
     /// so what a session can hand over was decided before the session existed - and both the capability bits
     /// and the per-shape refusal read from here rather than from the runtime.
@@ -115,6 +118,10 @@ impl OpenXr {
         extensions.khr_composition_layer_cylinder = supported.khr_composition_layer_cylinder;
         extensions.khr_composition_layer_equirect2 = supported.khr_composition_layer_equirect2;
         extensions.khr_composition_layer_cube = supported.khr_composition_layer_cube;
+        // The display's rate: Meta's extension, and asked for the same way - only from a runtime that lists
+        // it. A runtime without it is a runtime whose display runs at one rate, which is a fact and not a
+        // failure.
+        extensions.fb_display_refresh_rate = supported.fb_display_refresh_rate;
         let layers = LayerExtensions {
             cylinder: extensions.khr_composition_layer_cylinder,
             equirect: extensions.khr_composition_layer_equirect2,
@@ -162,6 +169,7 @@ impl OpenXr {
             blend,
             prefer_hdr: false,
             layers,
+            refresh_rate: extensions.fb_display_refresh_rate,
         })
     }
 
