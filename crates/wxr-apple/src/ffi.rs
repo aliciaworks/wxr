@@ -2,7 +2,9 @@
 //!
 //! On visionOS an app is Swift up to the point where the compositor hands it a layer renderer, and that
 //! handover is the one thing this file exists for: Swift holds a `LayerRenderer` - the `cp_layer_renderer_t`
-//! one of these bindings names - and Rust needs the same object as a [`Retained`]. A `@_cdecl` boundary
+//! one of these bindings names - and Rust needs the same object retained.
+//!
+//! A `@_cdecl` boundary
 //! carries a pointer and a number and nothing else, so that is what crosses: a pointer in, `0` or `1` out,
 //! and a failure is logged rather than thrown, because there is no Swift error on the other side to catch it.
 //!

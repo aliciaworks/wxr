@@ -211,11 +211,11 @@ The model, the seam, and a mock:
 
 ## Verifying it
 
-There is no headset here, so verification is what compiles and what is tested:
+There is no headset here, so verification is what compiles, what is tested, and what a simulator can run:
 
 ```sh
 cargo fmt --all --check
-cargo test                                                  # 53, on the host
+cargo test                                                  # the host half
 cargo clippy --workspace --all-targets -- -D warnings
 cargo clippy --workspace --all-targets --target wasm32-unknown-unknown -- -D warnings
 cargo clippy -p wxr-apple --target aarch64-apple-visionos --all-targets -- -D warnings
@@ -226,11 +226,13 @@ Each backend crate is empty outside its own target family - `wxr-openxr` off was
 other way, `wxr-apple` off Apple - so a host build tests the core and the renderer and leaves the platforms to
 a cross-compiler. `.github/workflows/ci.yml` runs exactly this list.
 
-Beyond the compiler, three things are checked, and each is checked by the one that can:
+Beyond the compiler, four things are checked, and each is checked by the one that can:
 
 ```sh
 python3 Tools/check_webxr_sys.py                            # the generated bindings, against their IDL
 cargo run -p wxr-openxr --example layers                    # a quad layer, against the runtime this machine has
+cargo test -p wxr-conformance                               # the vocabulary, against another reading of the same API
+bash apps/visionos/build.sh && bash apps/visionos/run.sh     # the app, in the visionOS simulator   (on a Mac)
 ```
 
 The first compares the generator's output with its input - every declaration in the snapshot has a file, every
@@ -239,9 +241,18 @@ compares against a captured browser's prototypes when one is beside the IDL, whi
 hand can be caught; `Tools/capture_webxr_prototypes.js` is what produces the dump. The second is the OpenXR
 half of the layer API against a real runtime: `xrWaitFrame` waits for a session that never becomes visible on a
 machine with no display, so a *frame* is not available - but a layer is made against an idle session, and the
-runtime takes the swapchain, hands back its images and lets go of it on release.
+runtime takes the swapchain, hands back its images and lets go of it on release. The third is the vocabulary
+against the other reading of the same specification: `servo-webxr-api`, a Rust implementation of the WebXR API,
+named as a dependency rather than copied, so that the names this core gives things - a session mode, an eye, a
+joint of a hand - are compared with a second reading of the sentences that define them. The fourth is the one
+that *draws*: the app runs in the visionOS simulator, the compositor creates a layer and presents what the
+frame loop draws into it, and the picture is there to be looked at.
 
-What none of it proves is that any of the three has drawn a frame on real hardware, because none of them has.
+What the simulator reports on that last one is a single **mono** view - asking the layer for the per-view
+layout does not change it - so the two-eye arithmetic is exercised on the mock rather than there, and the
+stereo question is the one still open.
+
+What none of it proves is that any of the three has drawn a frame on a **headset**, because none of them has.
 
 ## What each backend reaches
 
