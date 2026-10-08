@@ -56,5 +56,15 @@ log = "0.4"
 [patch.crates-io]
 wgpu = { git = "https://github.com/aliciaworks/wgpu", rev = "cd49dae62f799f455b8786a409abea6bd24c57bb" }
 
+# `objc2-ar-kit` is generated in a fork of `objc2`, and a generated crate carries the objc2 it was
+# built with - so the fork reaches the registry `objc2` too, as a patch, and one `objc2` is shared by
+# the registry crates and the generated ones instead of two that cannot pass a type between them.
+objc2 = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b" }
+# wgpu-hal reads its Metal layer through this crate, which is written against the objc2 the
+# registry has - so the ivars API it uses is the one the registry has. The fork's objc2 moved
+# that API, so the two call sites are adapted here, in a vendored copy, rather than giving up
+# the generated bindings over a layer wrapper.
+raw-window-metal = { path = "vendor/raw-window-metal" }
+
 [profile.dev]
 opt-level = 1
