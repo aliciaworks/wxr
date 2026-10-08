@@ -34,6 +34,11 @@ impl wxr::Session for AppleSession {
         if self.arkit.as_ref().is_some_and(ArKit::has_anchors) {
             features = features.union(wxr::Features::ANCHORS);
         }
+        // Haptics is the one bit here that does not come from ARKit: a controller is GameController's, and
+        // whether a connected one can be felt is that framework's answer rather than the platform's.
+        if self.controllers.has_haptics() {
+            features = features.union(wxr::Features::HAPTICS);
+        }
         features
     }
 
@@ -306,6 +311,12 @@ impl wxr::Session for AppleSession {
         space: wxr::ReferenceSpace,
         out: &mut Vec<wxr::InputSource>,
     ) -> Result<(), wxr::Error> {
+        // Controllers are GameController's and hands are ARKit's, so this comes first and on its own: a
+        // session whose ARKit never came up still has controllers, and the early return below is about one
+        // framework rather than about both.
+        if self.controllers.read(out) {
+            self.inputs_changed = true;
+        }
         let Some(arkit) = &self.arkit else {
             return Ok(());
         };
@@ -332,10 +343,8 @@ impl wxr::Session for AppleSession {
                 // are a palm pose, and the joints are in the Swift `HandAnchor.skeleton` this crate cannot see.
                 // So there is nothing to ask for and `Session::hand` would have nothing to answer with.
                 hand: false,
-                // And nothing to buzz, for now: visionOS has controllers - a PlayStation VR2 Sense pad is one,
-                // and `GCDeviceHaptics` is how its actuators are reached - but this backend reads only ARKit's
-                // hand anchors, so there is no controller here to attach an actuator to. The `features` bit is
-                // off for the same reason, and both turn on together the day the Game Controller path lands.
+                // And nothing to buzz, because a hand does not: the controllers that can are reported beside
+                // it, from GameController rather than ARKit - see `crate::gamecontroller`.
                 haptics: false,
                 // A hand here is a place and an orientation, and that is all the C API gives - the skeleton
                 // is the Swift API's, so there is no fingertip to aim from and no pinch to read. Grip and
@@ -352,6 +361,21 @@ impl wxr::Session for AppleSession {
             });
         }
         Ok(())
+    }
+
+    /// A buzz on a controller, which is a Core Haptics pattern played on an engine for it.
+    ///
+    /// A source with no actuator - every hand, and a pad GameController says has none - is `Unsupported`
+    /// rather than a quiet nothing, which is the answer `InputSource::haptics` lets a caller avoid asking
+    /// for. `play_pcm` is not implemented on this platform and never will be: Apple's haptics are patterns
+    /// rather than waveforms, so there is nothing for samples to become.
+    fn pulse(
+        &mut self,
+        source: wxr::InputId,
+        intensity: f32,
+        duration: Duration,
+    ) -> Result<(), wxr::Error> {
+        self.controllers.pulse(source, intensity, duration)
     }
 
     fn planes(

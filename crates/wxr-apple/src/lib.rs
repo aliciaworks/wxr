@@ -45,6 +45,7 @@
 //! CompositorServices (C) ──▶ frames, textures, viewports, per-eye transform and tangents ──▶ session
 //! ARKit (C)              ──▶ world tracking: where the head is ────────────────────────────▶ arkit
 //!                        └─▶ hand tracking: where the hands are ───────────────────────────▶ session::inputs
+//! GameController (ObjC)  ──▶ controllers: buttons and haptics ─────────────────────────────▶ gamecontroller
 //! Swift (the app)        ──▶ ImmersiveSpace's CompositorLayer closure + the wgpu device ───▶ entry::run
 //! ```
 
@@ -59,6 +60,12 @@
 //! word for yet. Each answers `None`, an empty list or `Error::Unsupported`, which is exactly what
 //! `wxr::Features` exists to say: the capability bits this backend sets are what the platform has, and the
 //! ones it does not set are what it does not.
+//!
+//! **Haptics are a split, and worth naming as one.** `pulse` is filled - a controller is a `GCController`,
+//! its act of buzzing is a Core Haptics pattern played on an engine, and `crate::gamecontroller` is where
+//! that is - and `play_pcm` is not: Apple's haptics are patterns rather than waveforms, so there is nothing
+//! for samples to become. A phone's Taptic Engine and a pad's handles are both asked in the same words, which
+//! is what makes one call fillable and the other a shape this platform simply does not have.
 
 #![cfg(target_vendor = "apple")]
 
@@ -70,6 +77,8 @@ pub mod import;
 pub mod metal;
 pub mod session;
 pub mod sys;
+
+mod gamecontroller;
 
 pub use arkit::ArKit;
 pub use compositor::Compositor;

@@ -27,8 +27,8 @@ owns one, wgpu is made to adopt it.
 | --- | ---: | ---: | ---: |
 | **Native API reached** - of each backend's own spec | 164/290 | 41/551 | 47/618 |
 | *as a percentage* | 57% | 7% | 8% |
-| **WebXR API reached** - of the whole API | 294/452 | 176/452 | 177/452 |
-| *as a percentage* | 65% | 39% | 39% |
+| **WebXR API reached** - of the whole API | 294/452 | 177/452 | 180/452 |
+| *as a percentage* | 65% | 39% | 40% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
 Input, Depth Sensing, Hit Test, Lighting Estimation, Anchors, Plane Detection, the AR Module, DOM Overlays
@@ -285,7 +285,7 @@ can reach 100% by design.
 The second is the direction that says whether the *unification* is done, and it has two factors. The core
 speaks 61% of WebXR's vocabulary - 276 of the 452 members across every specification - it is the vocabulary all
 three backends share rather than a mirror of the spec - and of its own `Session` methods the backends define
-**88%**, **63%** and **47%**. So a backend cannot reach the whole of WebXR by implementing
+**88%**, **63%** and **49%**. So a backend cannot reach the whole of WebXR by implementing
 methods: the word has to exist in the core first. Widening the core and filling the methods are the two things
 that move this, and both are work.
 

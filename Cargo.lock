@@ -615,7 +615,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 3.0.6",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -2189,6 +2189,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-app-kit"
+version = "0.3.2"
+source = "git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b#5830107141eb819d0df01c1ead2b43ee54637a0b"
+dependencies = [
+ "bitflags 2.13.2",
+ "objc2",
+ "objc2-foundation 0.3.2 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
+]
+
+[[package]]
 name = "objc2-ar-kit"
 version = "0.3.2"
 source = "git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b#5830107141eb819d0df01c1ead2b43ee54637a0b"
@@ -2203,6 +2213,15 @@ dependencies = [
  "objc2-game-controller",
  "objc2-image-io",
  "objc2-metal 0.3.2 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
+]
+
+[[package]]
+name = "objc2-avf-audio"
+version = "0.3.2"
+source = "git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b#5830107141eb819d0df01c1ead2b43ee54637a0b"
+dependencies = [
+ "objc2",
+ "objc2-foundation 0.3.2 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
 ]
 
 [[package]]
@@ -2263,6 +2282,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-core-haptics"
+version = "0.3.2"
+source = "git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b#5830107141eb819d0df01c1ead2b43ee54637a0b"
+dependencies = [
+ "block2 0.6.2 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
+ "objc2",
+ "objc2-avf-audio",
+ "objc2-foundation 0.3.2 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
+]
+
+[[package]]
 name = "objc2-core-video"
 version = "0.3.2"
 source = "git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b#5830107141eb819d0df01c1ead2b43ee54637a0b"
@@ -2298,7 +2328,10 @@ version = "0.3.2"
 source = "git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b#5830107141eb819d0df01c1ead2b43ee54637a0b"
 dependencies = [
  "bitflags 2.13.2",
+ "block2 0.6.2 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
+ "libc",
  "objc2",
+ "objc2-core-foundation 0.3.2 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
 ]
 
 [[package]]
@@ -2306,7 +2339,13 @@ name = "objc2-game-controller"
 version = "0.3.2"
 source = "git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b#5830107141eb819d0df01c1ead2b43ee54637a0b"
 dependencies = [
+ "bitflags 2.13.2",
+ "block2 0.6.2 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
+ "dispatch2 0.3.1 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
  "objc2",
+ "objc2-app-kit",
+ "objc2-core-foundation 0.3.2 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
+ "objc2-core-haptics",
  "objc2-foundation 0.3.2 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
 ]
 
@@ -5064,7 +5103,10 @@ dependencies = [
  "objc2",
  "objc2-ar-kit",
  "objc2-compositor-services",
+ "objc2-core-haptics",
  "objc2-foundation 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "objc2-foundation 0.3.2 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
+ "objc2-game-controller",
  "objc2-metal 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "pollster 1.0.1",
  "wgpu",

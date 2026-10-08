@@ -24,6 +24,14 @@ objc2-metal = "0.3"
 # headers as a generator read them rather than as this crate remembers them.
 objc2-compositor-services = "0.3"
 objc2-ar-kit = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b" }
+# Controllers, and the haptics they can be asked for. Both come from the same fork as ARKit, and the reason
+# the foundation above is a second entry rather than this one: a git dependency is a *different crate* from
+# the crates.io one with the same name, so the `NSArray` inside `GCController::controllers()` is the fork's
+# and not this crate's - and naming it needs a dependency that says which. Renamed so both can be named, and
+# only this module uses it.
+objc2-foundation-visionos = { package = "objc2-foundation", git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b", features = ["NSObject", "NSArray"] }
+objc2-game-controller = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b", features = ["objc2-core-haptics"] }
+objc2-core-haptics = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b" }
 log = { workspace = true }
 # Blocking the wgpu handshake for the device this crate makes for an app: `request_adapter` and
 # `request_device` are futures, and the C ABI entry has no executor to await them on.

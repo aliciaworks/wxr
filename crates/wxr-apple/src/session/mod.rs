@@ -35,6 +35,7 @@ use objc2_metal::{MTLCommandBuffer, MTLCommandQueue, MTLDevice, MTLPixelFormat, 
 use wxr::glam::Mat4;
 
 use crate::arkit::ArKit;
+use crate::gamecontroller::GameControllers;
 use crate::sys;
 
 /// The layer renderer, which is everything a session is made from.
@@ -122,6 +123,9 @@ pub struct AppleSession {
     /// ARKit, when it came up. `None` means every pose is relative to the wearer's head and there are no
     /// hands.
     arkit: Option<ArKit>,
+    /// The controllers GameController knows about. A different framework from ARKit and the only place this
+    /// platform's haptics are, which is why it is here rather than inside [`ArKit`].
+    controllers: GameControllers,
     /// The colour format the layer was configured with.
     ///
     /// Kept because it is answerable before there is a frame, which is what lets a caller make its renderer in
@@ -163,6 +167,7 @@ impl AppleSession {
             blend: wxr::Blend::Opaque,
             // Tracking that will not start is a head-locked scene, not a session that failed.
             arkit: ArKit::new(),
+            controllers: GameControllers::new(),
             configured,
             origin: None,
             predicted: Duration::ZERO,
