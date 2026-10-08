@@ -117,6 +117,44 @@ impl LayerImage {
     }
 }
 
+/// How a layer's picture is arranged for the eyes, which is WebXR's `XRLayerLayout`.
+///
+/// `Mono` is one picture for both eyes, `Stereo` has the two and lets the runtime find them, and the two named
+/// ones are the packings - side by side and over and under. `Default` is the runtime choosing, which is what a
+/// session answers when the app did not ask.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum LayerLayout {
+    #[default]
+    Default,
+    Mono,
+    Stereo,
+    StereoLeftRight,
+    StereoTopBottom,
+}
+
+/// What a layer's picture is optimized for, which is WebXR's `XRLayerQuality`.
+///
+/// Neither is a promise and both are hints about where the sampling should go: a text layer wants sharpness
+/// where the eye is, a graphics layer wants the whole field even. `Default` is the runtime choosing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum LayerQuality {
+    #[default]
+    Default,
+    TextOptimized,
+    GraphicsOptimized,
+}
+
+/// What a layer's image is, which is WebXR's `XRTextureType`.
+///
+/// `Texture` is a single image and `TextureArray` is an array with one slice per eye - which is how a stereo
+/// layer carries two pictures without packing them side by side.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum TextureType {
+    #[default]
+    Texture,
+    TextureArray,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
