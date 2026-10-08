@@ -60,6 +60,7 @@
 
 pub mod arkit;
 pub mod entry;
+pub mod ffi;
 pub mod import;
 pub mod metal;
 pub mod session;

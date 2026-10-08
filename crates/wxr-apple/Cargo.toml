@@ -4,6 +4,12 @@ description = "The Apple backend for wxr: CompositorServices to present, Metal t
 version.workspace = true
 edition.workspace = true
 
+# The app calls in through a C ABI (`ffi`), so this crate is a static library for it to link as well as the
+# rlib the workspace's own builds want. Not `cdylib`: what an app links is a static lib and a set of
+# frameworks, and a dylib would only add a load path to install.
+[lib]
+crate-type = ["rlib", "staticlib"]
+
 # Apple only, and empty everywhere else, for the same reason `wxr-openxr` is empty on the web: there is no
 # CompositorServices off an Apple platform, and a build machine should not have to know what one is.
 [target.'cfg(target_vendor = "apple")'.dependencies]
@@ -19,3 +25,6 @@ objc2-metal = "0.3"
 objc2-compositor-services = "0.3"
 objc2-ar-kit = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b" }
 log = { workspace = true }
+# Blocking the wgpu handshake for the device this crate makes for an app: `request_adapter` and
+# `request_device` are futures, and the C ABI entry has no executor to await them on.
+pollster = "1"
