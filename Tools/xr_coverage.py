@@ -153,6 +153,41 @@ def generated_aliases() -> dict:
     return out
 
 
+CORE_FEATURES = [
+    "DEPTH", "PLANES", "HIT_TEST", "LIGHT_ESTIMATION", "HAND_TRACKING", "ANCHORS",
+    "LAYER_QUAD", "LAYER_CYLINDER", "LAYER_EQUIRECT", "LAYER_CUBE",
+]
+
+
+def core_coverage() -> None:
+    """Which of the core's ten capabilities each backend implements.
+
+    The native counts above are about a backend's own API and answer "how much of that is wired". This is the
+    other direction, and it is the one that says whether the *unification* is done: the core is one vocabulary,
+    a backend fills in the `Features` bits it can, and a native item with no core counterpart is one no
+    backend will ever count - which is why the native percentage can never reach 100% by design.
+    """
+    crates = ["wxr-webxr", "wxr-openxr", "wxr-apple"]
+    sources = {c: source_of(c) for c in crates}
+    done = {c: 0 for c in crates}
+
+    print("\n## The core's capabilities, per backend")
+    print("| Feature | " + " | ".join(crates) + " |")
+    print("| --- |" + " --- |" * len(crates))
+    for feature in CORE_FEATURES:
+        cells = []
+        for c in crates:
+            hit = f"Features::{feature}" in sources[c]
+            done[c] += hit
+            cells.append("yes" if hit else "")
+        print(f"| `{feature}` | " + " | ".join(cells) + " |")
+    print(
+        "| **total** | "
+        + " | ".join(f"**{done[c]}/{len(CORE_FEATURES)}**" for c in crates)
+        + " |"
+    )
+
+
 def report(title, total, source, aliases=None):
     hit = {n for n in total if re.search(rf"\b{re.escape(n)}\b", source)}
     if aliases:
@@ -194,6 +229,8 @@ def main() -> None:
 
     if totals:
         print(f"\n**total: {done} / {totals}  ({100.0 * done / totals:.0f}%)**")
+
+    core_coverage()
 
 
 if __name__ == "__main__":

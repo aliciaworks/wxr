@@ -256,10 +256,31 @@ the drivers' own extensions are counted, and ARKit's C surface is six hundred fu
 room tracking are in it. Neither is what this workspace offers an app - that is ten `Features`, one
 hand-written answer per backend, small enough to read in `crates/wxr/src/feature.rs`.
 
-What is implemented today, capability by capability: `wxr-apple` offers `PLANES` and nothing else beyond the
-session itself - ARKit's plane detection provider, folded into the core's `Plane`. `wxr-webxr` offers the
-whole set, because the browser does. `wxr-openxr` offers `LAYER_QUAD`; the other shapes are the next thing
-there. Every gap in this section is a `Features` bit and a method, and each one moves this table.
+The native counts above are about each backend's own API, which is why they differ so much: WebXR's IDL is
+138 members, OpenXR's registry is 551 commands once every vendor extension is counted, and ARKit's C surface
+is 618 functions once accessory and room tracking are in it. A native item with no counterpart in the core is
+one no backend will ever name, so none of these numbers can reach 100% by design.
+
+The number that says whether the *unification* is done is the core's own surface, and it is small enough to
+read:
+
+| Feature | `wxr-webxr` | `wxr-openxr` | `wxr-apple` |
+| --- | --- | --- | --- |
+| `DEPTH` | yes | | |
+| `PLANES` | yes | | yes |
+| `HIT_TEST` | yes | | |
+| `LIGHT_ESTIMATION` | yes | | |
+| `HAND_TRACKING` | yes | yes | |
+| `ANCHORS` | yes | | |
+| `LAYER_QUAD` | yes | yes | |
+| `LAYER_CYLINDER` | | | |
+| `LAYER_EQUIRECT` | | | |
+| `LAYER_CUBE` | | | |
+| | **7/10** | **2/10** | **1/10** |
+
+`wxr-webxr` has seven, which is all ten but the three layer shapes it does not ask the browser for yet.
+`wxr-apple` has one - ARKit's plane detection provider, folded into the core's `Plane` - and `wxr-openxr` has
+two. Each empty cell is a `Features` bit and a method, and filling one is what moves this.
 
 ## What is not decided yet
 
