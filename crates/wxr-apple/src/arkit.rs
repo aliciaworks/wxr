@@ -48,8 +48,8 @@ use objc2_ar_kit::{
     ar_error_t, ar_hand_anchor_t, ar_hand_tracking_configuration_t, ar_hand_tracking_provider_t,
     ar_plane_alignment_t, ar_plane_anchor_t, ar_plane_anchors_t,
     ar_plane_detection_configuration_t, ar_plane_detection_provider_t, ar_plane_extent_t,
-    ar_plane_geometry_t, ar_session_t, ar_trackable_anchor_t, ar_world_tracking_configuration_t,
-    ar_world_anchor_t, ar_world_tracking_provider_t,
+    ar_plane_geometry_t, ar_session_t, ar_trackable_anchor_t, ar_world_anchor_t,
+    ar_world_tracking_configuration_t, ar_world_tracking_provider_t,
 };
 use wxr::glam::Mat4;
 

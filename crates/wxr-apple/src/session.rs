@@ -638,7 +638,11 @@ impl wxr::Session for AppleSession {
         let origin = self.space_origin(space);
         let (_, origin_orientation, origin_position) = origin.to_scale_rotation_translation();
         Ok(Some(
-            wxr::Pose { position, orientation }.relative_to(wxr::Pose {
+            wxr::Pose {
+                position,
+                orientation,
+            }
+            .relative_to(wxr::Pose {
                 position: origin_position,
                 orientation: origin_orientation,
             }),
