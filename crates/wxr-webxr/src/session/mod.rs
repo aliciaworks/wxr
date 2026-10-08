@@ -9,6 +9,13 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 
+mod state;
+mod util;
+
+use state::*;
+pub use state::{FrameImage, WebXrSession};
+use util::*;
+
 use crate::convert::{
     field_of_view, hand_joint, offset_reference_space, reference_space_type, rigid, transform,
     visibility,
@@ -38,128 +45,6 @@ pub(crate) enum Connect {
     Pending,
     Started(XrSession),
     Failed(String),
-}
-
-/// The session the browser handed over, once it arrives.
-#[derive(Default)]
-struct Inner {
-    session: Option<XrSession>,
-    /// The frame the animation callback put here, and the time it was for, until `begin` takes it.
-    frame: Option<(XrFrame, Duration)>,
-    /// Whether a frame has been asked for and has not arrived.
-    ///
-    /// It is what keeps `request_frame` from asking twice: the browser holds one callback at a time, and the
-    /// second ask would replace the first - so the callback it then calls is a closure this side has dropped,
-    /// which is an exception in the animation callback rather than a frame.
-    awaiting: bool,
-}
-
-/// A reference space, which the browser hands over as a promise rather than as an object.
-///
-/// The promise is kept while it is pending because an offset space is made *from* another one and has to wait
-/// for the same answer - which is the only reason this is not just an `Option`.
-#[derive(Default)]
-struct Space {
-    space: Option<XrReferenceSpace>,
-    promise: Option<js_sys::Promise>,
-    /// The `reset` handler, kept alive for as long as the space is: a closure the browser holds and this drops
-    /// is a closure that stops being called. Nothing reads it - holding it is the work.
-    #[allow(dead_code)]
-    on_reset: Option<Closure<dyn FnMut(Event)>>,
-}
-
-impl Space {
-    /// A space that is here.
-    fn resolved(space: XrReferenceSpace) -> Self {
-        Self {
-            space: Some(space),
-            promise: None,
-            on_reset: None,
-        }
-    }
-}
-
-/// One of the frame's images: the colour texture, and the depth buffer the layer gave with it.
-///
-/// They are one thing here because the compositor hands them over as one - both come from the same sub-image -
-/// and because that is what lets an importer answer for both. A layer made without a depth format has no depth
-/// texture, which is why this one is an `Option`: the specification says it is nullable.
-pub struct FrameImage {
-    pub color: JsValue,
-    pub depth: Option<JsValue>,
-}
-
-/// The binding and the layer, which only exist together: a binding with no layer presents nothing.
-struct Gpu {
-    binding: XrgpuBinding,
-    layer: XrProjectionLayer,
-}
-
-/// A live WebXR session.
-pub struct WebXrSession {
-    inner: Rc<RefCell<Inner>>,
-    connect: Rc<RefCell<Connect>>,
-    /// The animation callback, kept alive for as long as the session is: a closure that is dropped is a
-    /// closure the browser stops calling.
-    callback: Option<Closure<dyn FnMut(f64, XrFrame)>>,
-    /// The frame `begin` took out of the slot, kept for the one call that needs it: `views` asks it for the
-    /// viewer pose. `begin` used to take it and drop it, and `views` looked in the slot it was taken from -
-    /// which is a session that locates no views, ever, and so draws nothing.
-    current: Option<XrFrame>,
-    /// The `end` handler's flag, and the handler itself - same reason as the callback: a closure that is
-    /// dropped is a closure the browser stops calling.
-    ended: Rc<Cell<bool>>,
-    on_end: Option<Closure<dyn FnMut()>>,
-    /// Whether `Lost` has been said, so that the end of a session is news once.
-    lost: bool,
-    /// Spaces, each a slot: the request is a promise, so a space exists a frame or two after it is asked for.
-    spaces: Vec<Rc<RefCell<Space>>>,
-    state: wxr::State,
-    /// Whether the session is being shown, which is the browser's own `visibilityState`.
-    visibility: wxr::Visibility,
-    /// The sources this session has seen, so an id from a frame and an id from an event are the same answer.
-    sources: input::Sources,
-    /// The subscription to the session's six input events, once there is a session to subscribe to.
-    input: Option<input::Events>,
-    /// The surfaces this session has seen, for the same reason as the sources: WebXR names one by the object it
-    /// is, and a core plane carries a number.
-    planes: planes::Ids,
-    /// The hit-test sources this session has asked for, each empty until the browser answers.
-    hit_sources: Vec<Rc<RefCell<hit::Slot>>>,
-    /// The light probes this session has asked for, each empty until the browser answers.
-    light_probes: Vec<Rc<RefCell<light::Slot>>>,
-    /// This frame's depth buffer, kept for as long as the reference into it is handed out.
-    depth_image: Option<JsValue>,
-    /// How much foveation the app asked for, if it asked: `None` leaves the layer's own default alone.
-    foveation: Option<f32>,
-    /// The anchors this session has asked for, each empty until the browser answers.
-    anchors: Vec<Rc<RefCell<anchors::Slot>>>,
-    /// This frame's views, kept because depth is asked for one of them by object and not by index.
-    frame_views: Vec<XrView>,
-    /// Reference-space `reset` events, which arrive on a space rather than on the session and are passed on
-    /// from here.
-    reset: Rc<RefCell<VecDeque<wxr::Event>>>,
-    /// The views the frame located, for the layer the compositor would be given.
-    located: usize,
-    /// The device the app made, kept because a WebXR/WebGPU session needs it: the binding that hands out the
-    /// textures is built from it, once, when the session arrives.
-    device: Option<wgpu::Device>,
-    /// The binding and the layer, when the browser gave both. `None` is a session with a head, two eyes and a
-    /// clock and no picture - which is what this backend has always been able to be, and says so.
-    gpu: Option<Gpu>,
-    /// This frame's image, which both eyes share: one colour texture, and the depth that came with it.
-    image: Option<FrameImage>,
-    /// What that texture said about itself, so `images` does not have to ask it twice.
-    meta: wxr::ImageMeta,
-    /// The near and far planes the app asked for, kept because a session that has not arrived has no render
-    /// state to put them on yet.
-    depth_range: Option<(f32, f32)>,
-    /// The layers the app has made, each `None` once released. The index *is* the handle's id, which is why a
-    /// release leaves a hole rather than shifting the ones after it.
-    layers: Vec<Option<layers::Slot>>,
-    /// This frame's picture of each layer, kept for as long as the reference into it is handed out - the same
-    /// reason `depth_image` is kept, and the same reason it is dropped at the start of a frame.
-    layer_images: Vec<Option<FrameImage>>,
 }
 
 impl WebXrSession {
@@ -1239,71 +1124,5 @@ impl wxr::Session for WebXrSession {
         // which is what keeps the session running.
         self.request_frame();
         Ok(())
-    }
-}
-
-/// The WebGPU name of the depth format this workspace draws with.
-///
-/// Named here because this is where it is asked for: a projection layer made without a depth format has no depth
-/// texture at all, and one made with another would hand over depth the renderer's pipeline cannot be attached to.
-const DEPTH_FORMAT_NAME: &str = "depth32float";
-
-/// Whether a session was granted a feature, which is what `enabledFeatures` answers.
-///
-/// That attribute is generated now, so this is a translation rather than a read by name: a feature is the same
-/// string in the request and in the answer, which is WebXR's own spelling of it.
-fn has_feature(session: &XrSession, feature: &str) -> bool {
-    session
-        .enabled_features()
-        .iter()
-        .any(|granted| granted.as_string().as_deref() == Some(feature))
-}
-
-/// The array layer a sub-image's descriptor starts at: how a stereo projection layer says which eye a view is.
-fn base_array_layer(descriptor: &JsValue) -> u32 {
-    js_sys::Reflect::get(descriptor, &JsValue::from_str("baseArrayLayer"))
-        .ok()
-        .and_then(|value| value.as_f64())
-        .map(|value| value.max(0.0) as u32)
-        .unwrap_or(0)
-}
-
-/// What a browser `GPUTexture` says about itself, in the core's terms.
-///
-/// Read from the texture rather than from the layer's configuration, for the same reason the Apple backend reads
-/// it from the texture it is handed: it is what will actually be drawn into. A `GPUTexture` is deliberately not
-/// a generated type - it belongs to wgpu and to the browser - so this is the one place the two meet.
-fn image_meta(texture: &JsValue) -> wxr::ImageMeta {
-    let field = |name: &str| {
-        js_sys::Reflect::get(texture, &JsValue::from_str(name))
-            .ok()
-            .and_then(|value| value.as_f64())
-    };
-    let format = js_sys::Reflect::get(texture, &JsValue::from_str("format"))
-        .ok()
-        .and_then(|value| value.as_string())
-        .map(|name| color_format(&name))
-        .unwrap_or_default();
-    wxr::ImageMeta {
-        format,
-        extent: wxr::Extent2d::new(
-            field("width").unwrap_or(0.0).max(0.0) as u32,
-            field("height").unwrap_or(0.0).max(0.0) as u32,
-        ),
-        layers: field("depthOrArrayLayers").unwrap_or(1.0).max(1.0) as u32,
-    }
-}
-
-/// A `GPUTextureFormat` in the core's terms. `Unknown` for one this core has not learned, which the renderer
-/// turns into a frame it does not draw rather than one drawn in the wrong colour space.
-fn color_format(name: &str) -> wxr::ColorFormat {
-    match name {
-        "bgra8unorm-srgb" => wxr::ColorFormat::Bgra8Srgb,
-        "bgra8unorm" => wxr::ColorFormat::Bgra8Unorm,
-        "rgba8unorm-srgb" => wxr::ColorFormat::Rgba8Srgb,
-        "rgba8unorm" => wxr::ColorFormat::Rgba8Unorm,
-        "rgba16float" => wxr::ColorFormat::Rgba16Float,
-        "rgb10a2unorm" => wxr::ColorFormat::Rgb10a2Unorm,
-        _ => wxr::ColorFormat::Unknown,
     }
 }
