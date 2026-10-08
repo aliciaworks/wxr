@@ -106,3 +106,22 @@ fn the_layer_layouts_agree_where_both_name_them() {
     ]);
     assert_eq!(ours, theirs);
 }
+
+/// `XREnvironmentBlendMode` - <https://immersive-web.github.io/webxr/#enumdef-xrenvironmentblendmode>
+///
+/// Three: an opaque session's picture replaces the world, an additive one adds light to it, and an
+/// alpha-blending one mixes the two. Both readings name all three, in different orders.
+#[test]
+fn the_environment_blend_modes_are_the_same_three() {
+    let ours = names(&[
+        wxr::Blend::Opaque,
+        wxr::Blend::Additive,
+        wxr::Blend::AlphaBlend,
+    ]);
+    let theirs = names(&[
+        servo_webxr_api::EnvironmentBlendMode::Opaque,
+        servo_webxr_api::EnvironmentBlendMode::AlphaBlend,
+        servo_webxr_api::EnvironmentBlendMode::Additive,
+    ]);
+    assert_eq!(ours, theirs);
+}
