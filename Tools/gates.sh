@@ -13,6 +13,9 @@ cd "$(dirname "$0")/.."
 
 step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 
+step "size (temporary rule: nothing over 500 lines)"
+python3 Tools/check_file_sizes.py
+
 step "fmt"
 cargo fmt --all --check
 
