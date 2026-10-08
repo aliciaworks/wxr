@@ -339,52 +339,58 @@ def webxr_gap() -> None:
 
 
 
-# The OpenXR commands, as this backend calls them. The safe wrapper names its methods in Rust - `xrWaitFrame`
-# is `wait`, `xrCreateSwapchain` is `create_swapchain` - so a command-by-command count of this backend's source
-# finds almost nothing while the backend waits for frames and makes swapchains all day. This is the other half
-# of that count: the commands, and the method each one is reached through. Written by hand for the reason the
-# aliases above are - a claim a reader checks - and only for what is called: a command that is not here is one
-# this backend does not reach.
-OPENXR_CALLS = {
-    "xrCreateInstance": "create_instance",
-    "xrDestroyInstance": "create_instance",
-    "xrEnumerateInstanceExtensionProperties": "enumerate_extensions",
-    "xrGetSystem": "system",
-    "xrCreateSession": "create_session",
-    "xrDestroySession": "destroy_session",
-    "xrRequestExitSession": "request_exit_session",
-    "xrPollEvent": "poll_event",
-    "xrCreateReferenceSpace": "create_reference_space",
-    "xrCreateActionSpace": "create_space",
-    "xrLocateSpace": "locate",
-    "xrLocateViews": "locate_views",
-    "xrEnumerateViewConfigurationViews": "enumerate_view_configuration_views",
-    "xrEnumerateEnvironmentBlendModes": "enumerate_environment_blend_modes",
-    "xrCreateSwapchain": "create_swapchain",
-    "xrDestroySwapchain": "create_swapchain",
-    "xrEnumerateSwapchainFormats": "enumerate_swapchain_formats",
-    "xrEnumerateSwapchainImages": "enumerate_images",
-    "xrAcquireSwapchainImage": "acquire_image",
-    "xrWaitSwapchainImage": "wait_image",
-    "xrReleaseSwapchainImage": "release_image",
+# The `openxr` crate's names for the commands, which is a rule and not a table.
+#
+# The crate is generated from the same registry this file reads, and it names a command by stripping `xr` and
+# the vendor suffix and snake-casing what is left - `xrAcquireSwapchainImage` is `acquire_swapchain_image`,
+# `xrLocateHandJointsEXT` is `locate_hand_joints`. So the name can be derived instead of written down, and a
+# rule is what the count should use: forty commands copied by hand is forty that go stale the next time the
+# crate is bumped. What is left over is where the crate disagrees with its own generator - the frame calls,
+# which are split across the waiter and the stream, and the few that drop a word - and that is small enough to
+# read.
+OPENXR_RENAMES = {
+    # The frame calls, split across the waiter and the stream, so neither is named after the command.
     "xrWaitFrame": "wait",
     "xrBeginFrame": "begin",
     "xrEndFrame": "end",
-    "xrCreateActionSet": "create_action_set",
+    # The destroys: the crate hangs them off the type's `Drop`, so what reaches one is the value existing -
+    # and the value existing is the create that made it.
+    "xrDestroyInstance": "create_instance",
+    "xrDestroySession": "create_session",
+    "xrDestroySwapchain": "create_swapchain",
     "xrDestroyActionSet": "create_action_set",
+    "xrDestroyHandTrackerEXT": "create_hand_tracker",
+    # And the ones that drop a word of their own.
+    "xrGetSystem": "system",
+    "xrEnumerateInstanceExtensionProperties": "enumerate_extensions",
+    "xrAcquireSwapchainImage": "acquire_image",
+    "xrWaitSwapchainImage": "wait_image",
+    "xrReleaseSwapchainImage": "release_image",
+    "xrEnumerateSwapchainImages": "enumerate_images",
+    "xrCreateActionSpace": "create_space",
+    "xrLocateSpace": "locate",
     "xrAttachSessionActionSets": "attach_action_sets",
-    "xrSuggestInteractionProfileBindings": "suggest_interaction_profile_bindings",
-    "xrSyncActions": "sync_actions",
     "xrGetVulkanGraphicsRequirementsKHR": "requirements",
     "xrGetVulkanGraphicsDeviceKHR": "vulkan_graphics_device",
-    "xrCreateHandTrackerEXT": "create_hand_tracker",
-    "xrDestroyHandTrackerEXT": "create_hand_tracker",
-    "xrLocateHandJointsEXT": "locate_hand_joints",
-    "xrCreateFoveationProfileFB": "create_foveation_profile",
-    "xrUpdateSwapchainFB": "update_swapchain",
-    "xrEnumerateDisplayRefreshRatesFB": "enumerate_display_refresh_rates",
-    "xrRequestDisplayRefreshRateFB": "request_display_refresh_rate",
 }
+
+
+def openxr_calls(commands) -> dict:
+    """Every command, and the crate method its own name derives - the aliases this count uses.
+
+    The crate is generated from the same registry this file reads, and it names a command by stripping `xr`,
+    stripping the vendor suffix, and snake-casing what is left: `xrAcquireSwapchainImage` is
+    `acquire_swapchain_image`, `xrLocateHandJointsEXT` is `locate_hand_joints`. The suffix is a run of capitals
+    at the end and has to go *before* the snake casing - `EXT` snake-cased is `e_x_t`, which is how a rule that
+    looked right matched nothing. So the name is derived rather than written down, and forty commands copied
+    by hand are forty that go stale the next time the crate is bumped; `OPENXR_RENAMES` is only where the crate
+    disagrees with its own generator.
+    """
+    out = {}
+    for command in commands:
+        name = re.sub(r"[A-Z]{2,}$", "", command.removeprefix("xr"))
+        out[command] = OPENXR_RENAMES.get(command, re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower())
+    return out
 
 
 def spellings(name: str):
@@ -438,7 +444,7 @@ def main() -> None:
     # against a wrapper never spells the command it calls.
     aliases = {
         "wxr-webxr": generated_aliases(),
-        "wxr-openxr": OPENXR_CALLS,
+        "wxr-openxr": openxr_calls(openxr_items(not args.no_network)),
         "wxr-apple": generated_aliases(),
     }
     totals = 0
