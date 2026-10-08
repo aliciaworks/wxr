@@ -231,3 +231,8 @@ impl ArKit {
         Mat4::from_cols_array(&transform.0)
     }
 }
+
+/// Whether the platform reports that plane detection is supported.
+pub fn planes_are_supported() -> bool {
+    unsafe { objc2_ar_kit::ar_plane_detection_provider_t::is_supported() }
+}
