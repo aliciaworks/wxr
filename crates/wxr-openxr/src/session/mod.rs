@@ -5,90 +5,15 @@ use std::time::Duration;
 
 use openxr as xr;
 
+mod state;
+
+pub use state::OpenXrSession;
+use state::*;
+
 use crate::convert::{color_format, field_of_view, pose, posef, reference_space};
 use crate::{Device, Error, OpenXr, hal, input};
 
 /// A live session, with a stereo swapchain the compositor presents.
-pub struct OpenXrSession {
-    /// The instance is kept for its event queue: OpenXR polls events from the instance, not the session.
-    instance: xr::Instance,
-    events: xr::EventDataBuffer,
-    session: xr::Session<xr::Vulkan>,
-    /// Waiting and submitting are two handles, and the wait is where the frame's timing comes from.
-    waiter: xr::FrameWaiter,
-    stream: xr::FrameStream<xr::Vulkan>,
-    swapchain: xr::Swapchain<xr::Vulkan>,
-    /// The compositor's images, as the runtime names them - a `VkImage`, which on this platform is an
-    /// integer. The renderer wraps these; the core carries them.
-    images: Vec<u64>,
-    extent: wxr::Extent2d,
-    /// What the swapchain's images are. This backend chooses it from what the runtime offers, so it is the one
-    /// that has to report it - and the renderer builds its pipeline from the answer.
-    color: wxr::ColorFormat,
-    blend: xr::EnvironmentBlendMode,
-    spaces: Vec<xr::Space>,
-    /// Where each of `spaces` sits inside its kind, because an offset space is the kind's origin moved - and an
-    /// offset of an offset has to add up.
-    offsets: Vec<wxr::Pose>,
-    /// The viewer's own space, whose one job is the head pose: OpenXR reports where the eyes are and not where
-    /// the wearer is, and `VIEW` is the single reference space that is the wearer.
-    view: xr::Space,
-    /// The hands, which are declared once and read once a frame. `None` when the runtime would not take
-    /// the action set - a runtime with no controllers is a session with no inputs rather than no session.
-    hands: Option<input::Hands>,
-    /// The views the runtime located for the frame in progress. Kept because the composition layer is
-    /// built from them, and they cannot be recovered from the core's view type without a round trip that
-    /// would have to be exact to be honest.
-    located: Vec<xr::View>,
-    /// The lifecycle and the visibility the core speaks, derived from OpenXR's own ladder below.
-    state: wxr::State,
-    visibility: wxr::Visibility,
-    /// OpenXR's own state, kept because it carries more than the core's two axes do - and a program that
-    /// needs the rest needs the platform.
-    openxr_state: xr::SessionState,
-    predicted: xr::Time,
-    /// Which image the frame took, until it is given back.
-    held: Option<u32>,
-    /// Whether this session has been begun, which is a thing OpenXR makes the app do once.
-    begun: bool,
-    /// Whether `Lost` has been said, so the end of a session is news once.
-    lost: bool,
-    /// The foveation profile the app last asked for, kept because the swapchain points at it - dropping it
-    /// would leave the swapchain with a dangling one.
-    foveation: Option<xr::FoveationProfileFB>,
-    /// The swapchain format as the runtime names it, kept because a layer's swapchain has to be made in a
-    /// format the runtime offered too - and the same one is the honest choice: the renderer's pipeline is
-    /// built once.
-    format: u32,
-    /// The layers the app made, each `None` once released. The index is the handle's id, so a release leaves a
-    /// hole rather than shifting the ones after it.
-    layers: Vec<Option<Layer>>,
-}
-
-/// A layer the app made, and the swapchain it draws into.
-///
-/// One swapchain per layer, which is what a composition layer *is* on OpenXR: the runtime reads the image the
-/// layer names at `xrEndFrame`, and a swapchain is how an app hands one over without the compositor and the
-/// renderer sharing a fence. The projection layer is the same machinery and is not one of these, because a
-/// session has it whether an app asked for one or not.
-struct Layer {
-    swapchain: xr::Swapchain<xr::Vulkan>,
-    /// Its images, as the runtime names them - a `VkImage`, which on this platform is an integer - for the
-    /// renderer to wrap, the same shape the eyes' images arrive in.
-    images: Vec<u64>,
-    /// The space it was made in, by the session's own index, and where in it. Both are needed at submission,
-    /// because a layer's pose is read then and not when it is placed.
-    space: usize,
-    pose: xr::Posef,
-    /// The shape in the terms `xrEndFrame` wants: the size in metres for a quad.
-    size: xr::Extent2Df,
-    /// And the image's size in pixels, which is the resolution the app asked to draw at - a different fact, and
-    /// the one a renderer makes its target from.
-    extent: wxr::Extent2d,
-    /// Which image this frame took, until it is given back.
-    held: Option<u32>,
-}
-
 impl OpenXrSession {
     pub(crate) fn new(backend: &OpenXr, device: &Device) -> Result<Self, Error> {
         let native = unsafe { hal::vulkan(&device.instance, &device.device) }.ok_or_else(|| {
