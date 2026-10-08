@@ -185,48 +185,99 @@ impl OpenXrSession {
             .space(&self.spaces[0])
             .views(&views);
 
-        // The app's layers, in the order they were made: a quad is a rectangle at a pose, and the whole of its
-        // swapchain image is the picture. They are built here and not kept, because a sub-image borrows the
-        // swapchain and this is the one place a frame is submitted.
-        let quads: Vec<xr::CompositionLayerQuad<'_, xr::Vulkan>> = self
+        // The app's layers, in the order they were made. Which struct one becomes is the extension it came
+        // from: a quad is a rectangle at a pose, a cylinder is wrapped around one, an equirect is a sphere, and
+        // a cube is a picture the app drew onto six faces. They are all built here and not kept, because a
+        // sub-image borrows the swapchain and this is the one place a frame is submitted.
+        let built: Vec<Built<'_>> = self
             .layers
             .iter()
             .flatten()
             .filter_map(|layer| {
-                Some(
-                    xr::CompositionLayerQuad::new()
-                        // A layer is a picture *over* what is already there, so its alpha is part of the
-                        // picture: without this bit the compositor ignores the channel and a panel with a
-                        // transparent background is a black rectangle. Opaque content says the same thing with
-                        // every alpha at one.
-                        .layer_flags(xr::CompositionLayerFlags::BLEND_TEXTURE_SOURCE_ALPHA)
-                        .space(self.spaces.get(layer.space)?)
-                        .eye_visibility(xr::EyeVisibility::BOTH)
-                        .pose(layer.pose)
-                        .size(layer.size)
-                        .sub_image(
-                            xr::SwapchainSubImage::new()
-                                .swapchain(&layer.swapchain)
-                                .image_array_index(0)
-                                .image_rect(xr::Rect2Di {
-                                    offset: xr::Offset2Di { x: 0, y: 0 },
-                                    extent: xr::Extent2Di {
-                                        width: layer.extent.width as i32,
-                                        height: layer.extent.height as i32,
-                                    },
-                                }),
-                        ),
-                )
+                let space = self.spaces.get(layer.space)?;
+                let flags = xr::CompositionLayerFlags::BLEND_TEXTURE_SOURCE_ALPHA;
+                let rect = xr::Rect2Di {
+                    offset: xr::Offset2Di { x: 0, y: 0 },
+                    extent: xr::Extent2Di {
+                        width: layer.extent.width as i32,
+                        height: layer.extent.height as i32,
+                    },
+                };
+                let sub_image = || {
+                    xr::SwapchainSubImage::new()
+                        .swapchain(&layer.swapchain)
+                        .image_array_index(0)
+                        .image_rect(rect)
+                };
+                Some(match layer.shape {
+                    wxr::LayerShape::Quad { width, height } => Built::Quad(
+                        xr::CompositionLayerQuad::new()
+                            .layer_flags(flags)
+                            .space(space)
+                            .eye_visibility(xr::EyeVisibility::BOTH)
+                            .pose(layer.pose)
+                            .size(xr::Extent2Df { width, height })
+                            .sub_image(sub_image()),
+                    ),
+                    wxr::LayerShape::Cylinder {
+                        radius,
+                        central_angle,
+                        aspect,
+                    } => Built::Cylinder(
+                        xr::CompositionLayerCylinderKHR::new()
+                            .layer_flags(flags)
+                            .space(space)
+                            .eye_visibility(xr::EyeVisibility::BOTH)
+                            .pose(layer.pose)
+                            .radius(radius)
+                            .central_angle(central_angle)
+                            .aspect_ratio(aspect)
+                            .sub_image(sub_image()),
+                    ),
+                    wxr::LayerShape::Equirect {
+                        radius,
+                        central_horizontal,
+                        upper_vertical,
+                        lower_vertical,
+                    } => Built::Equirect(
+                        xr::CompositionLayerEquirect2KHR::new()
+                            .layer_flags(flags)
+                            .space(space)
+                            .eye_visibility(xr::EyeVisibility::BOTH)
+                            .pose(layer.pose)
+                            .radius(radius)
+                            .central_horizontal_angle(central_horizontal)
+                            .upper_vertical_angle(upper_vertical)
+                            .lower_vertical_angle(lower_vertical)
+                            .sub_image(sub_image()),
+                    ),
+                    // A cube has no sub-image: the whole swapchain is the six faces, and which way it is
+                    // turned is the only thing left to say.
+                    wxr::LayerShape::Cube => Built::Cube(
+                        xr::CompositionLayerCubeKHR::new()
+                            .layer_flags(flags)
+                            .space(space)
+                            .eye_visibility(xr::EyeVisibility::BOTH)
+                            .orientation(xr::Quaternionf {
+                                x: 0.0,
+                                y: 0.0,
+                                z: 0.0,
+                                w: 1.0,
+                            })
+                            .swapchain(&layer.swapchain)
+                            .image_array_index(0),
+                    ),
+                })
             })
             .collect();
 
         // The world first and the app's pictures over it: the projection layer is what a scene is drawn into,
         // and a panel that arrived behind it would be a panel nobody sees.
         let mut present: Vec<&xr::CompositionLayerBase<'_, xr::Vulkan>> =
-            Vec::with_capacity(1 + quads.len());
+            Vec::with_capacity(1 + built.len());
         present.push(&layer);
-        for quad in &quads {
-            present.push(quad);
+        for layer in &built {
+            present.push(layer.base());
         }
 
         self.stream
@@ -328,6 +379,29 @@ impl OpenXrSession {
                     return Some(wxr::Event::Lost);
                 }
             }
+        }
+    }
+}
+
+/// One of the app's layers, before it is handed to the runtime.
+///
+/// They are four different structs because they are four different extensions, and the compositor is told
+/// which one it is getting by the type in the header - so the shape has to survive to this point, which is
+/// what [`wxr::LayerShape`] is for. `base` is the header and the chain, which is the part every layer has.
+enum Built<'a> {
+    Quad(xr::CompositionLayerQuad<'a, xr::Vulkan>),
+    Cylinder(xr::CompositionLayerCylinderKHR<'a, xr::Vulkan>),
+    Equirect(xr::CompositionLayerEquirect2KHR<'a, xr::Vulkan>),
+    Cube(xr::CompositionLayerCubeKHR<'a, xr::Vulkan>),
+}
+
+impl Built<'_> {
+    fn base(&self) -> &xr::CompositionLayerBase<'_, xr::Vulkan> {
+        match self {
+            Built::Quad(layer) => layer,
+            Built::Cylinder(layer) => layer,
+            Built::Equirect(layer) => layer,
+            Built::Cube(layer) => layer,
         }
     }
 }

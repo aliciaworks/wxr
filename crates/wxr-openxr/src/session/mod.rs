@@ -7,6 +7,8 @@ use openxr as xr;
 
 mod state;
 
+pub(crate) use state::LayerExtensions;
+
 pub use state::OpenXrSession;
 use state::*;
 
@@ -156,6 +158,7 @@ impl OpenXrSession {
             lost: false,
             foveation: None,
             format,
+            layers_enabled: backend.layers,
             layers: Vec::new(),
         })
     }
@@ -184,6 +187,17 @@ impl wxr::Session for OpenXrSession {
         // The other three are `XR_KHR_composition_layer_*`, and the bits for them stay unset until those are
         // enabled and driven.
         let mut features = wxr::Features::LAYER_QUAD;
+        // One bit per extension the instance was made with. A bit set for one that is not enabled would be a
+        // promise the session cannot keep - and the refusal in `layer` is what an app gets if it asks anyway.
+        for (enabled, bit) in [
+            (self.layers_enabled.cylinder, wxr::Features::LAYER_CYLINDER),
+            (self.layers_enabled.equirect, wxr::Features::LAYER_EQUIRECT),
+            (self.layers_enabled.cube, wxr::Features::LAYER_CUBE),
+        ] {
+            if enabled {
+                features = features.union(bit);
+            }
+        }
         // A hand tracker is the skeleton, so a session that was given one has hand tracking. Everything else
         // this backend asks for - the depth layer, surfaces - it does not get.
         if let Some(hands) = &self.hands
@@ -293,13 +307,21 @@ impl wxr::Session for OpenXrSession {
         shape: wxr::LayerShape,
         pixels: wxr::Extent2d,
     ) -> Result<wxr::Layer, wxr::Error> {
-        // A quad is in the core specification; the other three are `XR_KHR_composition_layer_*`, which this
-        // instance does not enable - so the refusal is per shape, which is how the platforms state it and what
-        // the capability bits are for.
-        let size = match shape {
-            wxr::LayerShape::Quad { width, height } => xr::Extent2Df { width, height },
-            other => return Err(wxr::Error::Unsupported(format!("{} layers", other.name()))),
+        // A quad is in the core specification; the other three are `XR_KHR_composition_layer_*`, one extension
+        // each, and an extension is enabled when the instance is made or not at all. So the refusal is per
+        // shape and reads the instance's own answer, which is what the capability bits report.
+        let enabled = match shape {
+            wxr::LayerShape::Quad { .. } => true,
+            wxr::LayerShape::Cylinder { .. } => self.layers_enabled.cylinder,
+            wxr::LayerShape::Equirect { .. } => self.layers_enabled.equirect,
+            wxr::LayerShape::Cube => self.layers_enabled.cube,
         };
+        if !enabled {
+            return Err(wxr::Error::Unsupported(format!(
+                "{} layers: this runtime does not have the extension",
+                shape.name()
+            )));
+        }
         if self.spaces.get(space.id() as usize).is_none() {
             return Err(wxr::Error::NoSpace(space.kind));
         }
@@ -315,9 +337,13 @@ impl wxr::Session for OpenXrSession {
                 sample_count: 1,
                 width: pixels.width,
                 height: pixels.height,
-                face_count: 1,
-                // One: a quad is one picture for both eyes, which is the whole reason to hand it to a
-                // compositor instead of drawing it twice.
+                // A cube is six faces of one image and every other shape here is one. The array is one
+                // for all of them: a layer is one picture per eye, which is the reason to hand it to a
+                // compositor rather than draw it twice.
+                face_count: match shape {
+                    wxr::LayerShape::Cube => 6,
+                    _ => 1,
+                },
                 array_size: 1,
                 mip_count: 1,
             })
@@ -331,14 +357,13 @@ impl wxr::Session for OpenXrSession {
             images,
             space: space.id() as usize,
             pose: xr::Posef::IDENTITY,
-            size,
+            shape,
             extent: pixels,
             held: None,
         }));
         log::info!(
-            "wxr-openxr: a quad layer, {}x{} m at {}x{} px",
-            size.width,
-            size.height,
+            "wxr-openxr: a {} layer at {}x{} px",
+            shape.name(),
             pixels.width,
             pixels.height
         );

@@ -73,12 +73,42 @@ mod native {
         )?;
         println!("placed it");
 
-        // A shape this backend does not make is refused rather than quietly made into a quad.
-        let refused = session.layer(space, wxr::LayerShape::Cube, wxr::Extent2d::new(512, 512));
-        println!("a cube layer: {refused:?}");
-
         session.release_layer(layer);
         println!("released it");
+
+        // The other three shapes, whichever of them this runtime can take - the quad was made above. The three beyond the quad are
+        // one `XR_KHR_composition_layer_*` extension each, enabled when the instance is made or not at all -
+        // so the answer is the instance's, and a shape that is not there is refused rather than quietly made
+        // into a quad. Which is what this prints: the capability bits say the same thing before the asking.
+        let shapes = [
+            (
+                wxr::LayerShape::Cylinder {
+                    radius: 1.0,
+                    central_angle: 1.0,
+                    aspect: 0.5,
+                },
+                wxr::Extent2d::new(1024, 512),
+            ),
+            (
+                wxr::LayerShape::Equirect {
+                    radius: 1.0,
+                    central_horizontal: 1.0,
+                    upper_vertical: 0.5,
+                    lower_vertical: 0.5,
+                },
+                wxr::Extent2d::new(2048, 1024),
+            ),
+            (wxr::LayerShape::Cube, wxr::Extent2d::new(512, 512)),
+        ];
+        for (shape, pixels) in shapes {
+            match session.layer(space, shape, pixels) {
+                Ok(made) => {
+                    println!("made a {} layer: {made:?}", shape.name());
+                    session.release_layer(made);
+                }
+                Err(error) => println!("a {} layer: {error}", shape.name()),
+            }
+        }
 
         // A frame would be the proof of the rest, and there is none to be had here.
         let _ = Duration::ZERO;

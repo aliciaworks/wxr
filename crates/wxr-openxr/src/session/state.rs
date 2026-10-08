@@ -1,6 +1,8 @@
 use super::*;
 
 pub struct OpenXrSession {
+    /// Which composition-layer extensions this instance was made with, and so which shapes it will take.
+    pub(super) layers_enabled: LayerExtensions,
     /// The instance is kept for its event queue: OpenXR polls events from the instance, not the session.
     pub(super) instance: xr::Instance,
     pub(super) events: xr::EventDataBuffer,
@@ -71,11 +73,24 @@ pub(super) struct Layer {
     /// because a layer's pose is read then and not when it is placed.
     pub(super) space: usize,
     pub(super) pose: xr::Posef,
-    /// The shape in the terms `xrEndFrame` wants: the size in metres for a quad.
-    pub(super) size: xr::Extent2Df,
+    /// The shape, which is what `xrEndFrame` is told about it - and the reason a layer is not just a size:
+    /// `XR_KHR_composition_layer_*` is one extension per shape and each has its own struct.
+    pub(super) shape: wxr::LayerShape,
     /// And the image's size in pixels, which is the resolution the app asked to draw at - a different fact, and
     /// the one a renderer makes its target from.
     pub(super) extent: wxr::Extent2d,
     /// Which image this frame took, until it is given back.
     pub(super) held: Option<u32>,
+}
+
+/// Which composition-layer extensions the instance was made with.
+///
+/// The quad is in the core specification; the other three are one extension each, and an extension is asked
+/// for when the instance is made and not afterwards. So this is a fact about the instance that both the
+/// capability bits and the per-shape refusal need, kept in one place rather than asked twice.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct LayerExtensions {
+    pub(crate) cylinder: bool,
+    pub(crate) equirect: bool,
+    pub(crate) cube: bool,
 }

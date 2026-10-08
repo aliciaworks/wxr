@@ -45,6 +45,7 @@ mod input;
 mod session;
 
 pub use import::Images;
+pub(crate) use session::LayerExtensions;
 pub use session::OpenXrSession;
 
 /// The pose conversion `input` reaches by name, kept at the root so a module can say `crate::pose`.
@@ -67,6 +68,10 @@ pub struct OpenXr {
     blend: xr::EnvironmentBlendMode,
     /// Whether to ask for an HDR swapchain when a runtime offers one. Off by default - see [`OpenXr::prefer_hdr`].
     prefer_hdr: bool,
+    /// Which composition-layer extensions the instance was made with. They are fixed at `xrCreateInstance`,
+    /// so what a session can hand over was decided before the session existed - and both the capability bits
+    /// and the per-shape refusal read from here rather than from the runtime.
+    layers: LayerExtensions,
 }
 
 impl OpenXr {
@@ -103,6 +108,18 @@ impl OpenXr {
         // the compositor samples. Both only from a runtime that lists them, like the two above.
         extensions.fb_foveation = supported.fb_foveation;
         extensions.fb_swapchain_update_state = supported.fb_swapchain_update_state;
+
+        // The three composition-layer shapes beyond the core quad, asked for the same way: each only from a
+        // runtime that lists it. What the instance was made with is what a session can hand over, so it is
+        // remembered rather than asked again - `xrCreateInstance` is the one place the answer exists.
+        extensions.khr_composition_layer_cylinder = supported.khr_composition_layer_cylinder;
+        extensions.khr_composition_layer_equirect2 = supported.khr_composition_layer_equirect2;
+        extensions.khr_composition_layer_cube = supported.khr_composition_layer_cube;
+        let layers = LayerExtensions {
+            cylinder: extensions.khr_composition_layer_cylinder,
+            equirect: extensions.khr_composition_layer_equirect2,
+            cube: extensions.khr_composition_layer_cube,
+        };
 
         // The loader validates this: an application with no name is not an application it will make an
         // instance for, and that is a real check rather than a formality - a runtime's logs are read by
@@ -144,6 +161,7 @@ impl OpenXr {
             views,
             blend,
             prefer_hdr: false,
+            layers,
         })
     }
 
