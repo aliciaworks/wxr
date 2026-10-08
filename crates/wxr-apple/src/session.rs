@@ -291,6 +291,9 @@ impl wxr::Session for AppleSession {
         if self.arkit.as_ref().is_some_and(ArKit::has_planes) {
             features = features.union(wxr::Features::PLANES);
         }
+        if self.arkit.as_ref().is_some_and(ArKit::has_anchors) {
+            features = features.union(wxr::Features::ANCHORS);
+        }
         features
     }
 
@@ -604,6 +607,48 @@ impl wxr::Session for AppleSession {
             plane
         }));
         Ok(())
+    }
+
+    fn anchor(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        pose: wxr::Pose,
+    ) -> Result<wxr::Anchor, wxr::Error> {
+        // The anchor's place is asked for in `space`; ARKit takes one in the session's origin, which this
+        // backend's `Local` is - so the space's origin is composed in front, the way a view is.
+        let world_from_anchor = self.space_origin(space) * Mat4::from(pose.transform());
+        self.arkit
+            .as_mut()
+            .and_then(|arkit| arkit.add_anchor(world_from_anchor))
+            .ok_or_else(|| wxr::Error::Unsupported("anchors".into()))
+    }
+
+    fn anchor_pose(
+        &mut self,
+        anchor: wxr::Anchor,
+        space: wxr::ReferenceSpace,
+    ) -> Result<Option<wxr::Pose>, wxr::Error> {
+        let Some(arkit) = &self.arkit else {
+            return Ok(None);
+        };
+        let Some(world) = arkit.anchor_pose(anchor) else {
+            return Ok(None);
+        };
+        let (_, orientation, position) = world.to_scale_rotation_translation();
+        let origin = self.space_origin(space);
+        let (_, origin_orientation, origin_position) = origin.to_scale_rotation_translation();
+        Ok(Some(
+            wxr::Pose { position, orientation }.relative_to(wxr::Pose {
+                position: origin_position,
+                orientation: origin_orientation,
+            }),
+        ))
+    }
+
+    fn release_anchor(&mut self, anchor: wxr::Anchor) {
+        if let Some(arkit) = self.arkit.as_mut() {
+            arkit.release_anchor(anchor);
+        }
     }
 
     fn end(&mut self, _frame: &mut wxr::Frame) -> Result<(), wxr::Error> {

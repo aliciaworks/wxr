@@ -39,16 +39,17 @@
 //! leaves the scene head-locked and the hands absent, both of which still draw, so everything here comes
 //! back as an `Option` rather than as an error to stop a frame over.
 
+use std::collections::HashMap;
 use std::ffi::c_void;
 
 use objc2::rc::Retained;
 use objc2_ar_kit::{
     ar_data_provider_t, ar_data_providers_t, ar_device_anchor_query_status_t, ar_device_anchor_t,
-    ar_hand_anchor_t, ar_hand_tracking_configuration_t, ar_hand_tracking_provider_t,
+    ar_error_t, ar_hand_anchor_t, ar_hand_tracking_configuration_t, ar_hand_tracking_provider_t,
     ar_plane_alignment_t, ar_plane_anchor_t, ar_plane_anchors_t,
     ar_plane_detection_configuration_t, ar_plane_detection_provider_t, ar_plane_extent_t,
     ar_plane_geometry_t, ar_session_t, ar_trackable_anchor_t, ar_world_tracking_configuration_t,
-    ar_world_tracking_provider_t,
+    ar_world_anchor_t, ar_world_tracking_provider_t,
 };
 use wxr::glam::Mat4;
 
@@ -106,6 +107,10 @@ pub struct ArKit {
     world: Option<World>,
     hands: Option<Hands>,
     planes: Option<Planes>,
+    /// The world anchors this session made, by the name the core carries: an anchor is a handle, and
+    /// the handle has to be able to find the object again.
+    anchors: HashMap<u32, Retained<ar_world_anchor_t>>,
+    next_anchor: u32,
 }
 
 impl ArKit {
@@ -132,6 +137,8 @@ impl ArKit {
                 world,
                 hands,
                 planes,
+                anchors: HashMap::new(),
+                next_anchor: 0,
             })
         }
     }
@@ -289,6 +296,63 @@ impl ArKit {
             out
         }
     }
+
+    /// Whether world anchors can be made, which is the world-tracking provider being up.
+    pub fn has_anchors(&self) -> bool {
+        self.world.is_some()
+    }
+
+    /// A world anchor at `origin_from_anchor`, a transform in the session's own origin.
+    ///
+    /// ARKit adds an anchor to the world-tracking provider *asynchronously* - the completion says whether
+    /// it took - so the handle comes back now and the pose is read later, which is the shape the core asks
+    /// for anyway: an anchor is a name to ask by, not a pose to cache.
+    ///
+    /// `None` when there is no world-tracking provider, because an anchor without one is a place nobody
+    /// is keeping.
+    pub fn add_anchor(&mut self, origin_from_anchor: Mat4) -> Option<wxr::Anchor> {
+        let world = self.world.as_ref()?;
+        // SAFETY: the transform is ours, and a create returns a `+1` object that the `Retained` below
+        // takes ownership of.
+        let raw = unsafe {
+            sys::ar_world_anchor_create_with_origin_from_anchor_transform(sys::Float4x4(
+                origin_from_anchor.to_cols_array(),
+            ))
+        };
+        // SAFETY: a `+1` object from ARKit, which is exactly what `Retained` owns.
+        let world_anchor = unsafe { Retained::from_raw(raw.cast::<ar_world_anchor_t>()) }?;
+        // SAFETY: the provider and the anchor are both live, and the completion is a no-op because the
+        // anchor is already ours.
+        unsafe {
+            ar_world_tracking_provider_t::add_anchor_f(
+                &world.provider,
+                &world_anchor,
+                std::ptr::null_mut(),
+                anchor_added,
+            );
+        }
+        let name = self.next_anchor;
+        self.next_anchor += 1;
+        self.anchors.insert(name, world_anchor);
+        Some(wxr::Anchor::new(name))
+    }
+
+    /// Where an anchor is now, in the session's own origin.
+    pub fn anchor_pose(&self, anchor: wxr::Anchor) -> Option<Mat4> {
+        let world_anchor = self.anchors.get(&anchor.id())?;
+        // SAFETY: the anchor is live, and reading a transform from one does not consume it.
+        let transform = unsafe {
+            sys::ar_world_anchor_get_origin_from_anchor_transform(
+                std::ptr::from_ref(world_anchor).cast::<c_void>(),
+            )
+        };
+        Some(Mat4::from_cols_array(&transform.0))
+    }
+
+    /// Gives an anchor back, which drops it from the runtime as well.
+    pub fn release_anchor(&mut self, anchor: wxr::Anchor) {
+        self.anchors.remove(&anchor.id());
+    }
 }
 
 /// One plane anchor, as the core's [`wxr::Plane`].
@@ -348,6 +412,20 @@ unsafe extern "C-unwind" fn collect_plane(
         (*context.cast::<Vec<wxr::Plane>>()).push(plane_of(anchor));
     }
     true
+}
+
+/// The completion `anchor` hands ARKit: the add is asynchronous, and the anchor is already in the map, so
+/// there is nothing here but to not be surprised by the answer.
+///
+/// # Safety
+///
+/// Called by ARKit with the context the caller passed.
+unsafe extern "C-unwind" fn anchor_added(
+    _context: *mut c_void,
+    _anchor: &ar_world_anchor_t,
+    _success: bool,
+    _error: Option<&ar_error_t>,
+) {
 }
 
 /// Whether the platform reports that plane detection is supported.
