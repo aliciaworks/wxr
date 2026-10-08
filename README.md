@@ -25,10 +25,10 @@ owns one, wgpu is made to adopt it.
 
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
-| **Native API reached** - of each backend's own spec | 42/138 | 7/551 | 46/618 |
-| *as a percentage* | 30% | 1% | 7% |
-| **WebXR API reached** - of the whole API | 215/452 | 144/452 | 155/452 |
-| *as a percentage* | 48% | 32% | 34% |
+| **Native API reached** - of each backend's own spec | 90/290 | 7/551 | 47/618 |
+| *as a percentage* | 31% | 1% | 8% |
+| **WebXR API reached** - of the whole API | 215/452 | 152/452 | 155/452 |
+| *as a percentage* | 48% | 34% | 34% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
 Input, Depth Sensing, Hit Test, Lighting Estimation, Anchors, Plane Detection, the AR Module, DOM Overlays

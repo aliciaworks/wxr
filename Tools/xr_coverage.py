@@ -204,7 +204,12 @@ def core_methods() -> list:
     Only that trait: `session.rs` also holds `Backend`, whose `connect` is not something a session fills in,
     and counting it is counting a method nobody is meant to implement.
     """
-    text = (ROOT / "crates/wxr/src/session.rs").read_text()
+    # The whole directory, not one file: the trait and the vocabulary beside it are the same module, and a
+    # tool that named one file broke the first time that module was split - which is what it is for, so it
+    # reads whatever is there.
+    text = "\n".join(
+        p.read_text(errors="ignore") for p in sorted((ROOT / "crates/wxr/src/session").rglob("*.rs"))
+    )
     start = text.index("pub trait Session")
     depth, block = 0, []
     for ch in text[start:]:
@@ -225,10 +230,14 @@ def session_impl(crate: str) -> set:
     and there are several, `depth` and `planes` among them - is not the method, and counting it is how a
     backend that offers one capability reads as 94%.
     """
+    directory = ROOT / "crates" / crate / "src" / "session"
     path = ROOT / "crates" / crate / "src" / "session.rs"
-    if not path.exists():
+    if directory.is_dir():
+        text = "\n".join(p.read_text(errors="ignore") for p in sorted(directory.rglob("*.rs")))
+    elif path.exists():
+        text = path.read_text()
+    else:
         return set()
-    text = path.read_text()
     m = re.search(r"impl\s+(?:\w+::)?Session\s+for\s+\w+\s*\{", text)
     if not m:
         return set()
@@ -294,6 +303,35 @@ def webxr_interfaces() -> set:
     return names
 
 
+# The interfaces the core has under a word of its own, or folds into one of its own.
+#
+# A rename is not a gap: the concept is there and the specification's name for it is the specification's. A
+# collapse is not one either, and it is the more interesting of the two - the specification has four event
+# interfaces because a browser dispatches four kinds of event, and this core has one `Event` enum because a
+# frame loop drains one queue. Four names for one thing is the browser's shape, not a meaning the core is
+# missing; the same is true of an array where there is a slice, of the three bindings where there is one
+# import seam, and of the three depth-information subclasses where there is one `DepthInfo` and the
+# backend's own texture. What is left after both lists is the work.
+RENAMES = {
+    "XRRigidTransform": "Pose",
+    "XRReferenceSpaceType": "SpaceKind",
+    "XRJointSpace": "HandJoint",
+    "XRGPUSubImage": "SubImage",
+}
+COLLAPSED = (
+    "XRSessionEvent",
+    "XRInputSourceEvent",
+    "XRInputSourcesChangeEvent",
+    "XRReferenceSpaceEvent",
+    "XRVisibilityMaskChangeEvent",
+    "XRInputSourceArray",
+    "XRWebGLLayer",
+    "XRCPUDepthInformation",
+    "XRGPUDepthInformation",
+    "XRWebGLDepthInformation",
+)
+
+
 def webxr_gap() -> None:
     """The WebXR interfaces the core has no word for.
 
@@ -313,12 +351,22 @@ def webxr_gap() -> None:
     # core takes those as arguments and slices, so they are not missing words. What is left is either a rename
     # - `XRRigidTransform` is `Pose` - or a concept the core does not have.
     dictionaries = [n for n in missing if n.endswith("Init") or n.endswith("Set")]
-    rest = [n for n in missing if n not in dictionaries]
+    renames = [n for n in missing if n in RENAMES]
+    collapsed = [n for n in missing if n in COLLAPSED]
+    rest = [
+        n
+        for n in missing
+        if n not in dictionaries and n not in RENAMES and n not in COLLAPSED
+    ]
     print(f"\n## WebXR XR-prefixed interfaces with no core name: {len(missing)} of {len(names)}")
     print(f"\n### the real gaps ({len(rest)}) - a concept the core has no word for, or a rename to check")
     print(", ".join(f"`{n}`" for n in rest))
     print(f"\n### dictionaries and sets ({len(dictionaries)}) - how the spec passes arguments and collections")
     print(", ".join(f"`{n}`" for n in dictionaries))
+    print(f"\n### the same concept under a word of this core's own ({len(renames)})")
+    print(", ".join(f"`{n}` is `{RENAMES[n]}`" for n in renames))
+    print(f"\n### one thing the specification names many times ({len(collapsed)})")
+    print(", ".join(f"`{n}`" for n in collapsed))
 
 
 def report(title, total, source, aliases=None):
