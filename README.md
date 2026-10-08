@@ -23,11 +23,14 @@ owns one, wgpu is made to adopt it.
 
 **Two numbers, and both are mechanical** - `python3 Tools/xr_coverage.py`:
 
-- **Native API reached**, of each backend's own spec: WebXR **30%**, OpenXR **1%**, visionOS **7%**.
-- **WebXR translated**, of the core's 36 `Session` methods: WebXR **92%**, OpenXR **58%**, visionOS **47%**.
-  The core itself is 99 public items plus those 36 methods, so it is not small - but of the WebXR API's
-  138 members only 39 share a name with it, **28%**, because the core gives WebXR's concepts its own
-  names (`requestReferenceSpace` is `space`). So 28% is a floor, not the ceiling it looks like.
+| | WebXR | OpenXR | visionOS |
+| --- | ---: | ---: | ---: |
+| **Native API reached**, of each backend's own spec | 30% | 1% | 7% |
+| **WebXR translated**, of the core's `Session` methods | 92% | 58% | 47% |
+
+The core itself is 102 public items plus 36 `Session` methods, so it is not small - but of the WebXR API's
+138 members only 39 share a name with it, **28%**, because the core gives WebXR's concepts its own names
+(`requestReferenceSpace` is `space`). So 28% is a floor, not the ceiling it looks like.
 
 ## The core is small on purpose
 
@@ -243,13 +246,6 @@ Three backends, three native APIs, and a number for each that anybody can reprod
 python3 Tools/xr_coverage.py
 ```
 
-| Backend | Native API | Reached | Of | |
-| --- | --- | ---: | ---: | ---: |
-| `wxr-webxr` | WebXR - the IDL in `crates/wxr-webxr/webidl/` | 42 | 138 | 30% |
-| `wxr-openxr` | OpenXR - the registry | 7 | 551 | 1% |
-| `wxr-apple` | ARKit + CompositorServices - the visionOS SDK | 43 | 618 | 7% |
-| | | **92** | **1307** | **7%** |
-
 "Reached" is mechanical on purpose: the name the native API gives an item - a WebXR IDL member, an `xr*`
 command, an `ar_*`/`cp_*` C function - appears in that backend's own source, outside the generated bindings.
 The count is deliberately not a score. A backend that never names `XRHitTestSource` does not offer hit
@@ -264,7 +260,7 @@ the drivers' own extensions are counted, and ARKit's C surface is six hundred fu
 room tracking are in it. Neither is what this workspace offers an app - that is ten `Features`, one
 hand-written answer per backend, small enough to read in `crates/wxr/src/feature.rs`.
 
-Two things are worth separating, and the numbers above are the first. They are about each backend's *own*
+The first number is the one about each backend's *own*
 API, which is why they differ so much: WebXR's IDL is 138 members, OpenXR's registry is 551 commands once
 every vendor extension is counted, and ARKit's C surface is 618 functions once accessory and room tracking
 are in it. A native item with no counterpart in the core is one no backend will ever name, so none of these
