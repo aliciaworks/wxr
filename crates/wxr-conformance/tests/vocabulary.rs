@@ -221,3 +221,36 @@ fn the_hand_has_the_twenty_five_joints_the_specification_names() {
     assert_eq!(ours.len(), 25, "a hand has twenty-five joints");
     assert_eq!(ours, theirs);
 }
+
+/// `XRReferenceSpaceType` - <https://immersive-web.github.io/webxr/#enumdef-xrreferencespacetype>
+///
+/// Five: `viewer`, `local`, `local-floor`, `bounded-floor` and `unbounded`. This core has all five, and the
+/// comparison with the other reading is one-sided for a reason worth writing down: Servo keeps its reference
+/// spaces in the same enum as the spaces that belong to an input source (`TargetRay`, `Grip`, `Joint`), names
+/// `local-floor` `Floor`, and has no `unbounded` - so what can be checked is that each of the four it does
+/// have is one of the five here, which is the part a wrong name would break.
+#[test]
+fn the_reference_space_types_are_the_same_five() {
+    let ours = names(&[
+        wxr::SpaceKind::Viewer,
+        wxr::SpaceKind::Local,
+        wxr::SpaceKind::LocalFloor,
+        wxr::SpaceKind::BoundedFloor,
+        wxr::SpaceKind::Unbounded,
+    ]);
+    let mut spec: Vec<String> = ["BoundedFloor", "Local", "LocalFloor", "Unbounded", "Viewer"]
+        .iter()
+        .map(|name| name.to_string())
+        .collect();
+    spec.sort();
+    assert_eq!(ours, spec, "the specification's five, by name");
+
+    // Each of Servo's four, under the name this core gives the same space.
+    for name in ["Viewer", "Local", "Floor", "BoundedFloor"] {
+        let ours_name = if name == "Floor" { "LocalFloor" } else { name };
+        assert!(
+            ours.contains(&ours_name.to_string()),
+            "{name} has no counterpart here",
+        );
+    }
+}
