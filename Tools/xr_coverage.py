@@ -519,6 +519,7 @@ ALIASES = {
     "fixationPoint": "fn set_foveation",
     "inputSources": "fn inputs",
     "visibilityState": "fn visibility",
+    "interactionMode": "fn interaction_mode",
     "requestHitTestSource": "fn hit_test_source",
     "requestHitTestSourceForTransientInput": "fn hit_test_source",
     "getHitTestResults": "fn hits",

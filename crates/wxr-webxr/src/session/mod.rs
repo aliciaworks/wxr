@@ -22,8 +22,9 @@ use crate::convert::{
 };
 use crate::sys::{
     DomPointReadOnly, Event, XrBoundedReferenceSpace, XrEnvironmentBlendMode, XrEye, XrFrame,
-    XrHandedness, XrLayerLayout, XrProjectionLayer, XrReferenceSpace, XrRenderStateInit, XrSession,
-    XrView, XrgpuBinding, XrgpuProjectionLayerInit, XrgpuQuadLayerInit,
+    XrHandedness, XrInteractionMode, XrLayerLayout, XrProjectionLayer, XrReferenceSpace,
+    XrRenderStateInit, XrSession, XrView, XrgpuBinding, XrgpuProjectionLayerInit,
+    XrgpuQuadLayerInit,
 };
 use crate::{depth, hit, input, planes, throws};
 
@@ -276,6 +277,20 @@ impl wxr::Session for WebXrSession {
     ///
     /// Opaque until there is a session to ask, which is the honest answer for a session that is not here: what a
     /// display does with the world behind it is a fact about the display, and there is none.
+    /// What the browser says, which is the one place this can be `ScreenSpace`.
+    fn interaction_mode(&self) -> wxr::InteractionMode {
+        let Some(session) = self.inner.borrow().session.clone() else {
+            return wxr::InteractionMode::WorldSpace;
+        };
+        match session.interaction_mode() {
+            XrInteractionMode::WorldSpace => wxr::InteractionMode::WorldSpace,
+            XrInteractionMode::ScreenSpace => wxr::InteractionMode::ScreenSpace,
+            // A browser that says something this build has never heard of: the world is where the input of a
+            // session drawn into a display is, and it is the answer for every other backend too.
+            XrInteractionMode::__Invalid => wxr::InteractionMode::WorldSpace,
+        }
+    }
+
     fn blend(&self) -> wxr::Blend {
         let Some(session) = self.inner.borrow().session.clone() else {
             return wxr::Blend::Opaque;

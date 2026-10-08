@@ -46,6 +46,20 @@ impl State {
     }
 }
 
+/// How a session reads its input, which is WebXR's `interactionMode`.
+///
+/// `WorldSpace` is a session whose input has a place in the scene - a controller, a hand, a gaze ray - and it
+/// is what every session drawn into a display is. `ScreenSpace` is a session whose input is a finger or a
+/// mouse on a flat surface, which is what an inline session on a phone is. Which one it is belongs to the
+/// runtime: an app does not choose it, and the same session calling `inputs` means different things depending
+/// on the answer.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum InteractionMode {
+    #[default]
+    WorldSpace,
+    ScreenSpace,
+}
+
 /// Whether the session is being shown, which is WebXR's `visibilityState` and nothing more.
 ///
 /// A separate axis from [`State`] because it is one in the specification: a session exists and is either on a

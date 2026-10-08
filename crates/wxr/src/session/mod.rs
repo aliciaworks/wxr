@@ -129,6 +129,16 @@ pub trait Session: Any {
         Blend::Opaque
     }
 
+    /// How this session reads its input - WebXR's `interactionMode`.
+    ///
+    /// `WorldSpace` by default, because that is what a session drawn into a display is: every compositor this
+    /// core has makes a session whose input is tracked in the scene, and none of them can make another kind.
+    /// A browser's session can also be `ScreenSpace` - the same page on a phone, with a finger on it - so that
+    /// backend asks the browser rather than assuming, and this default is the answer everywhere else.
+    fn interaction_mode(&self) -> InteractionMode {
+        InteractionMode::WorldSpace
+    }
+
     /// The near and far planes the scene draws with, in metres.
     ///
     /// This is WebXR's `XRRenderState.depthNear` and `depthFar`, and it is in the core for the reason the core

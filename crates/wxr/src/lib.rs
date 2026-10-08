@@ -51,7 +51,8 @@ pub use layer::{Binding, Layer, LayerImage, LayerShape, SubImage};
 pub use light::{LightEstimate, LightProbe};
 pub use plane::{Plane, PlaneOrientation};
 pub use session::{
-    Backend, Blend, Error, Event, Presentation, Session, SessionMode, State, Visibility,
+    Backend, Blend, Error, Event, InteractionMode, Presentation, Session, SessionMode, State,
+    Visibility,
 };
 pub use space::{Pose, ReferenceSpace, SpaceKind};
 pub use target::{ColorFormat, Extent2d, ImageMeta};
