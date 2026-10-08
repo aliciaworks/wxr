@@ -13,6 +13,7 @@ use crate::hit::{Hit, HitTestSource};
 use crate::input::{Hand, InputId, InputSource};
 use crate::layer::{Binding, Layer, LayerImage, LayerShape, SubImage};
 use crate::light::{LightEstimate, LightProbe};
+use crate::mesh::Mesh;
 use crate::plane::Plane;
 use crate::space::{Pose, ReferenceSpace, SpaceKind};
 use crate::target::ImageMeta;
@@ -363,6 +364,24 @@ pub trait Session: Any {
     /// rather than a list to keep. Empty for a session that has found none and for a backend that has not been
     /// taught surfaces - which are the same thing to a caller only asking whether there is a table here.
     fn planes(&mut self, _space: ReferenceSpace, out: &mut Vec<Plane>) -> Result<(), Error> {
+        out.clear();
+        Ok(())
+    }
+
+    /// Fill in the room the runtime has traced, as triangles, in the space given - WebXR's meshing draft,
+    /// where a session has a set of `XRMesh`es and each has vertices, indices and a label.
+    ///
+    /// The same shape a frame's planes have, and for the same reason: what is traced *this* frame rather than
+    /// a list to keep, because a runtime re-traces a room as it learns more about it and a copy a caller keeps
+    /// is the copy that goes wrong in the one place it matters - a wall that moved. Empty for a session that
+    /// has traced nothing and for a backend that was never taught this, which are the same answer to a caller
+    /// asking whether there is a wall here.
+    ///
+    /// A mesh is per *geometry* and not per anchor: one anchor can carry a table and the wall behind it, and
+    /// what a caller does with triangles is per-patch. Whether a session has this at all is
+    /// [`Features::MESH`], which is not [`Features::PLANES`] - a runtime can trace meshes and have no planes
+    /// at all, and ARKit's are two providers.
+    fn meshes(&mut self, _space: ReferenceSpace, out: &mut Vec<Mesh>) -> Result<(), Error> {
         out.clear();
         Ok(())
     }

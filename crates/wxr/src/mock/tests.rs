@@ -122,6 +122,26 @@ fn a_pulse_names_the_source_it_reaches() {
 }
 
 #[test]
+fn the_mock_room_has_triangles_in_it() {
+    let mut session = running();
+    let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+    let mut meshes = Vec::new();
+    session.meshes(space, &mut meshes).unwrap();
+    assert!(session.features().contains(crate::Features::MESH));
+    assert_eq!(meshes.len(), 1);
+    let mesh = &meshes[0];
+    assert_eq!(mesh.kind, crate::MeshKind::Table);
+    // Three at a time, and every one of them names a corner: the shape a mesh has to have to be worth
+    // anything, which is also the shape a mock that fabricated one would get wrong.
+    assert_eq!(mesh.indices.len() % 3, 0);
+    assert!(
+        mesh.indices
+            .iter()
+            .all(|i| (*i as usize) < mesh.vertices.len())
+    );
+}
+
+#[test]
 fn a_recentered_space_is_stale_and_says_so() {
     let mut session = running();
     let space = session.space(SpaceKind::LocalFloor).expect("a floor");

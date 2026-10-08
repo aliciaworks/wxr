@@ -33,6 +33,7 @@ pub mod hit;
 pub mod input;
 pub mod layer;
 pub mod light;
+pub mod mesh;
 pub mod mock;
 pub mod plane;
 pub mod session;
@@ -49,6 +50,7 @@ pub use input::{
 };
 pub use layer::{Binding, Layer, LayerImage, LayerShape, SubImage};
 pub use light::{LightEstimate, LightProbe};
+pub use mesh::{Mesh, MeshKind};
 pub use plane::{Plane, PlaneOrientation};
 pub use session::{
     Backend, Blend, Error, Event, InteractionMode, Presentation, Session, SessionMode, State,

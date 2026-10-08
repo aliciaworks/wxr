@@ -25,17 +25,17 @@ owns one, wgpu is made to adopt it.
 
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
-| **Native API reached** - of each backend's own spec | 164/290 | 41/551 | 47/618 |
-| *as a percentage* | 57% | 7% | 8% |
-| **WebXR API reached** - of the whole API | 294/452 | 177/452 | 180/452 |
-| *as a percentage* | 65% | 39% | 40% |
+| **Native API reached** - of each backend's own spec | 164/290 | 41/551 | 66/618 |
+| *as a percentage* | 57% | 7% | 11% |
+| **WebXR API reached** - of the whole API | 294/452 | 177/452 | 187/452 |
+| *as a percentage* | 65% | 39% | 41% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
 Input, Depth Sensing, Hit Test, Lighting Estimation, Anchors, Plane Detection, the AR Module, DOM Overlays
 and the Gamepads module - counted member by member, with the community-group drafts left out. It is a
 *floor*: the core gives a concept its own name (`requestReferenceSpace` is `space`) and both native backends
 go through the core, so a member a backend serves can still share no name with anything in its source. The
-core itself names 276 of the 452.
+core itself names 282 of the 452.
 
 ## The core is small on purpose
 
@@ -285,7 +285,7 @@ can reach 100% by design.
 The second is the direction that says whether the *unification* is done, and it has two factors. The core
 speaks 61% of WebXR's vocabulary - 276 of the 452 members across every specification - it is the vocabulary all
 three backends share rather than a mirror of the spec - and of its own `Session` methods the backends define
-**88%**, **63%** and **49%**. So a backend cannot reach the whole of WebXR by implementing
+**86%**, **61%** and **50%**. So a backend cannot reach the whole of WebXR by implementing
 methods: the word has to exist in the core first. Widening the core and filling the methods are the two things
 that move this, and both are work.
 

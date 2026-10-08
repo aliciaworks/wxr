@@ -50,6 +50,13 @@ impl Features {
     /// which of the things in the list can be felt; this says there is a list at all.
     pub const HAPTICS: Self = Self(1 << 11);
 
+    /// The room traced as triangles: [`crate::Session::meshes`].
+    ///
+    /// Not a finer [`PLANES`](Features::PLANES): a runtime can have either without the other, and ARKit is
+    /// the case in point - scene reconstruction traces meshes, and its planes come from a provider of their
+    /// own that need not be on at all.
+    pub const MESH: Self = Self(1 << 12);
+
     /// Whether every bit of `other` is in this set.
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0

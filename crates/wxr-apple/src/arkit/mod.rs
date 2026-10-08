@@ -1,11 +1,13 @@
-//! ARKit's session, and the two providers this leg asks it for.
+//! ARKit's session, and the providers this leg asks it for.
 //!
 //! One session, because a session is what holds the authorization and the providers: world tracking for
-//! where the head is, and hand tracking for where the hands are. The declarations come from the generated
-//! `objc2-ar-kit` crate - ARKit read from the SDK that has its visionOS C module - and only the two
-//! functions whose signature *carries* a `simd` type stay hand-written in [`crate::sys`], because
-//! `objc2`'s translator cannot yet express `simd` in a function. Everything else here is ownership:
-//! `Retained` is the `+1` every `create` returns and the `ar_release` that used to be written out by hand.
+//! where the head is, hand tracking for where the hands are, and the two that describe the room - planes,
+//! which are the surfaces ARKit recognised, and scene reconstruction, which is the triangles. The
+//! declarations come from the generated `objc2-ar-kit` crate - ARKit read from the SDK that has its visionOS
+//! C module - and only the two functions whose signature *carries* a `simd` type stay hand-written in
+//! [`crate::sys`], because `objc2`'s translator cannot yet express `simd` in a function. Everything else here
+//! is ownership: `Retained` is the `+1` every `create` returns and the `ar_release` that used to be written
+//! out by hand.
 //!
 //! **World tracking** is what makes a pose mean somewhere. Without it every pose a compositor reports is
 //! relative to the device and the scene follows the wearer instead of staying where it was put; with it
@@ -20,11 +22,12 @@
 //! place and an orientation, and its `aim` is its `grip` - see `session`'s `inputs`. A game that needs a
 //! pinch wants the Swift `HandAnchor.Skeleton`, which means the app, which is where gestures belong anyway.
 //!
-//! **Surfaces are asked about rather than assumed.** The plane provider is on the C surface - [`planes_are_supported`]
-//! asks it - but this leg draws no surface yet, so [`wxr::Session::planes`] is the core's default here: a
-//! session with no surfaces. [`wxr::Session::anchor`] is the same story; the world-tracking provider this
-//! crate uses *queries* a device anchor, and whether the C surface can *add* one is a thing to read before
-//! it is written.
+//! **The room comes in two resolutions, and both are here.** The plane provider is the surfaces ARKit
+//! recognised - [`ArKit::planes`], with [`planes_are_supported`] as the question of whether the device can -
+//! and scene reconstruction is the same provider shape one level down: [`ArKit::meshes`] is the triangles
+//! themselves, each with what ARKit says it is. Two providers on the platform and two bits in the core, so a
+//! session can have either without the other. [`wxr::Session::anchor`] is the world rather than the room: a
+//! world anchor is made through the world-tracking provider, which is what [`ArKit::add_anchor`] does.
 //!
 //! **Foveation is the one thing this platform has that the core cannot reach, and the reason is `wgpu`.** The
 //! compositor does foveation -
@@ -46,14 +49,19 @@ use objc2::rc::Retained;
 use objc2_ar_kit::{
     ar_data_provider_t, ar_data_providers_t, ar_device_anchor_query_status_t, ar_device_anchor_t,
     ar_error_t, ar_hand_anchor_t, ar_hand_tracking_configuration_t, ar_hand_tracking_provider_t,
-    ar_plane_alignment_t, ar_plane_anchor_t, ar_plane_anchors_t,
+    ar_mesh_anchors_t, ar_plane_alignment_t, ar_plane_anchor_t, ar_plane_anchors_t,
     ar_plane_detection_configuration_t, ar_plane_detection_provider_t, ar_plane_extent_t,
-    ar_plane_geometry_t, ar_session_t, ar_trackable_anchor_t, ar_world_anchor_t,
+    ar_plane_geometry_t, ar_scene_reconstruction_configuration_t,
+    ar_scene_reconstruction_provider_t, ar_session_t, ar_trackable_anchor_t, ar_world_anchor_t,
     ar_world_tracking_configuration_t, ar_world_tracking_provider_t,
 };
 use wxr::glam::Mat4;
 
 use crate::sys;
+
+mod mesh;
+
+use mesh::collect_mesh;
 
 /// Reinterpret a concrete provider as the `ar_data_provider_t` a collection takes.
 ///
@@ -101,6 +109,15 @@ struct Planes {
     provider: Retained<ar_plane_detection_provider_t>,
 }
 
+/// Scene reconstruction: the provider whose anchors are the room's triangles.
+///
+/// The third provider, and the reason the core has [`wxr::Session::meshes`] as well as `planes`: a plane is a
+/// surface ARKit recognised and a mesh is the surface itself. The shape is the plane provider's exactly - ask
+/// for the anchors, read them - which is what makes this a leg rather than a rework.
+struct Meshes {
+    provider: Retained<ar_scene_reconstruction_provider_t>,
+}
+
 /// ARKit, with whichever providers came up.
 pub struct ArKit {
     /// Kept for its lifetime: stopping the session would stop the providers with it.
@@ -111,6 +128,7 @@ pub struct ArKit {
     world: Option<World>,
     hands: Option<Hands>,
     planes: Option<Planes>,
+    meshes: Option<Meshes>,
     /// The world anchors this session made, by the name the core carries: an anchor is a handle, and
     /// the handle has to be able to find the object again.
     anchors: HashMap<u32, Retained<ar_world_anchor_t>>,
@@ -129,6 +147,7 @@ impl ArKit {
             let world = Self::start_world(&providers);
             let hands = Self::start_hands(&providers);
             let planes = Self::start_planes(&providers);
+            let meshes = Self::start_meshes(&providers);
             if world.is_none() && hands.is_none() {
                 return None;
             }
@@ -141,6 +160,7 @@ impl ArKit {
                 world,
                 hands,
                 planes,
+                meshes,
                 anchors: HashMap::new(),
                 next_anchor: 0,
             })
@@ -199,6 +219,23 @@ impl ArKit {
             let provider = ar_plane_detection_provider_t::new(&configuration);
             ar_data_providers_t::add_data_provider(providers, as_data_provider(&provider));
             Some(Planes { provider })
+        }
+    }
+
+    /// # Safety
+    ///
+    /// `providers` must be a live collection.
+    unsafe fn start_meshes(providers: &ar_data_providers_t) -> Option<Meshes> {
+        // SAFETY: as above. Support is asked first, because a provider on a device that has none is a
+        // provider whose every query fails.
+        unsafe {
+            if !ar_scene_reconstruction_provider_t::is_supported() {
+                return None;
+            }
+            let configuration = ar_scene_reconstruction_configuration_t::new();
+            let provider = ar_scene_reconstruction_provider_t::new(&configuration);
+            ar_data_providers_t::add_data_provider(providers, as_data_provider(&provider));
+            Some(Meshes { provider })
         }
     }
 
@@ -297,6 +334,29 @@ impl ArKit {
             let mut out = Vec::new();
             let context = std::ptr::from_mut(&mut out).cast::<c_void>();
             ar_plane_anchors_t::enumerate_anchors_f(&anchors, context, collect_plane);
+            out
+        }
+    }
+
+    /// Whether scene reconstruction came up, which is what `features` asks and what `meshes` answers with.
+    pub fn has_meshes(&self) -> bool {
+        self.meshes.is_some()
+    }
+
+    /// The room's triangles, which is where `meshes` gets them.
+    ///
+    /// A copy and not a cache, for the same reason `planes` is one: ARKit re-traces a room as it learns more
+    /// about it, and a stale copy of a wall that moved is the one thing a mesh is meant not to be.
+    pub fn meshes(&self) -> Vec<wxr::Mesh> {
+        let Some(meshes) = &self.meshes else {
+            return Vec::new();
+        };
+        // SAFETY: the provider is live, and the enumerator only reads the anchors it is handed.
+        unsafe {
+            let anchors = ar_scene_reconstruction_provider_t::all_mesh_anchors(&meshes.provider);
+            let mut out = Vec::new();
+            let context = std::ptr::from_mut(&mut out).cast::<c_void>();
+            ar_mesh_anchors_t::enumerate_anchors_f(&anchors, context, collect_mesh);
             out
         }
     }

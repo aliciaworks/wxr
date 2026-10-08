@@ -30,6 +30,7 @@ objc2-ar-kit = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141
 # and not this crate's - and naming it needs a dependency that says which. Renamed so both can be named, and
 # only this module uses it.
 objc2-foundation-visionos = { package = "objc2-foundation", git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b", features = ["NSObject", "NSArray"] }
+objc2-metal-visionos = { package = "objc2-metal", git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b" }
 objc2-game-controller = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b", features = ["objc2-core-haptics"] }
 objc2-core-haptics = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b" }
 log = { workspace = true }

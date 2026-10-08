@@ -2400,7 +2400,11 @@ version = "0.3.2"
 source = "git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b#5830107141eb819d0df01c1ead2b43ee54637a0b"
 dependencies = [
  "bitflags 2.13.2",
+ "block2 0.6.2 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
+ "dispatch2 0.3.1 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
+ "libc",
  "objc2",
+ "objc2-core-foundation 0.3.2 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
  "objc2-foundation 0.3.2 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
 ]
 
@@ -5108,6 +5112,7 @@ dependencies = [
  "objc2-foundation 0.3.2 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
  "objc2-game-controller",
  "objc2-metal 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "objc2-metal 0.3.2 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
  "pollster 1.0.1",
  "wgpu",
  "wxr",

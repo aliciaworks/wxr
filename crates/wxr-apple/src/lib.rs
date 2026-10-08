@@ -44,7 +44,8 @@
 //! ```text
 //! CompositorServices (C) ──▶ frames, textures, viewports, per-eye transform and tangents ──▶ session
 //! ARKit (C)              ──▶ world tracking: where the head is ────────────────────────────▶ arkit
-//!                        └─▶ hand tracking: where the hands are ───────────────────────────▶ session::inputs
+//!                        ├─▶ hand tracking: where the hands are ───────────────────────────▶ session::inputs
+//!                        └─▶ planes and scene reconstruction: the room ───────────────────────────▶ session::planes and meshes
 //! GameController (ObjC)  ──▶ controllers: buttons and haptics ─────────────────────────────▶ gamecontroller
 //! Swift (the app)        ──▶ ImmersiveSpace's CompositorLayer closure + the wgpu device ───▶ entry::run
 //! ```

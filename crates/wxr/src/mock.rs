@@ -14,6 +14,7 @@ use crate::feature::Features;
 use crate::frame::{Eye, FieldOfView, Frame, FrameState, View, Viewport};
 use crate::input::{Axes, Buttons, Handedness, InputId, InputSource, TargetRayMode};
 use crate::layer::{Layer, LayerImage, LayerShape};
+use crate::mesh::{Mesh, MeshKind};
 use crate::session::{
     Backend, Error, Event, Presentation, Session, SessionMode, State, Visibility,
 };
@@ -154,14 +155,17 @@ impl Session for MockSession {
 
     fn features(&self) -> Features {
         // The floor is a session and nothing else; a mock told to have a quad layer says so, and that is the
-        // only capability it can have - which is what makes it a thing to test against. Haptics is the second,
-        // and it is always there because the mock's controllers are made with actuators: a caller that branches
-        // on the bit has something to branch into on this backend, which is what testing needs.
-        Features::HAPTICS.union(if self.quad_layers {
-            Features::LAYER_QUAD
-        } else {
-            Features::NONE
-        })
+        // only capability it can have - which is what makes it a thing to test against. Haptics and meshes are
+        // the other two, and they are always there because the mock's controllers have actuators and its room
+        // has a table: a caller that branches on a bit has something to branch into on the backend it develops
+        // against, which is what testing needs.
+        Features::HAPTICS
+            .union(Features::MESH)
+            .union(if self.quad_layers {
+                Features::LAYER_QUAD
+            } else {
+                Features::NONE
+            })
     }
 
     fn poll(&mut self) -> Option<Event> {
@@ -391,6 +395,31 @@ impl Session for MockSession {
         Ok(())
     }
 
+    fn meshes(&mut self, _space: ReferenceSpace, out: &mut Vec<Mesh>) -> Result<(), Error> {
+        // One flat square a metre across, a metre up: a mock's room is the smallest thing that has the shape
+        // of one - triangles, a place, and a label - so a caller that reads meshes has something to read on
+        // the backend it is developed against.
+        out.clear();
+        let half = 0.5;
+        out.push(Mesh {
+            id: 0,
+            pose: Pose {
+                position: Vec3::new(0.0, 1.0, 0.0),
+                orientation: Quat::IDENTITY,
+            },
+            vertices: vec![
+                Vec3::new(-half, 0.0, -half),
+                Vec3::new(half, 0.0, -half),
+                Vec3::new(half, 0.0, half),
+                Vec3::new(-half, 0.0, half),
+            ],
+            indices: vec![0, 1, 2, 0, 2, 3],
+            kind: MeshKind::Table,
+            last_changed: Duration::ZERO,
+        });
+        Ok(())
+    }
+
     fn pulse(&mut self, source: InputId, intensity: f32, duration: Duration) -> Result<(), Error> {
         // Clamped, not refused: the core's word is a request, and a mock that rejected an out-of-range
         // intensity would be a mock that behaves unlike every platform.
@@ -414,78 +443,7 @@ impl Session for MockSession {
     }
 }
 
-impl MockSession {
-    /// How many frames have been begun, so a test can tell the loop ran.
-    pub fn frames(&self) -> u64 {
-        self.frames
-    }
-
-    /// The mode the session was asked for, which a mock can hold even though nothing acts on it.
-    pub fn mode(&self) -> SessionMode {
-        self.mode
-    }
-
-    /// Pretend the primary action was pressed and released on `id`.
-    ///
-    /// A real runtime makes these events out of a controller; a test needs them without one, and they are the
-    /// whole shape a game reacts to - a start, an end, and the selection that completed.
-    pub fn press(&mut self, id: InputId) {
-        self.pending.push_back(Event::SelectStart(id));
-        self.pending.push_back(Event::SelectEnd(id));
-        self.pending.push_back(Event::Select(id));
-    }
-
-    /// Pretend something was picked up or put down, which is the set of inputs changing.
-    pub fn inputs_changed(&mut self) {
-        self.pending.push_back(Event::InputsChanged);
-    }
-
-    /// Every vibration asked for, oldest first, as the source, the intensity and the length.
-    pub fn pulses(&self) -> &[(InputId, f32, Duration)] {
-        &self.pulses
-    }
-
-    /// Every waveform asked for, oldest first, as the source, how many samples, and the rate.
-    pub fn waveforms(&self) -> &[(InputId, usize, f32)] {
-        &self.waveforms
-    }
-
-    /// Pretend a space's origin was recentered, which is the one thing a backend that cannot recenter still
-    /// has to be able to pass on.
-    pub fn reset(&mut self, space: ReferenceSpace) {
-        self.pending.push_back(Event::Reset(space));
-    }
-
-    /// How many layers are live, so a test can tell a release from a leak.
-    pub fn layer_count(&self) -> usize {
-        self.layers.iter().filter(|layer| layer.is_some()).count()
-    }
-
-    /// Where a layer was last placed, which is how a test sees that placing it did something.
-    pub fn layer_pose(&self, layer: Layer) -> Option<Pose> {
-        self.layers
-            .get(layer.id() as usize)
-            .and_then(Option::as_ref)
-            .map(|slot| slot.pose)
-    }
-
-    /// The shape and the resolution a layer was made with, which the core deliberately does not hand back: a
-    /// caller that asked knows, and a test that asks is checking that it was kept.
-    pub fn layer_shape(&self, layer: Layer) -> Option<(LayerShape, Extent2d)> {
-        self.layers
-            .get(layer.id() as usize)
-            .and_then(Option::as_ref)
-            .map(|slot| (slot.shape, slot.pixels))
-    }
-
-    /// The space a layer was made in.
-    pub fn layer_space(&self, layer: Layer) -> Option<ReferenceSpace> {
-        self.layers
-            .get(layer.id() as usize)
-            .and_then(Option::as_ref)
-            .map(|slot| slot.space)
-    }
-}
-
 #[cfg(test)]
 mod tests;
+
+mod accessors;

@@ -34,6 +34,11 @@ impl wxr::Session for AppleSession {
         if self.arkit.as_ref().is_some_and(ArKit::has_anchors) {
             features = features.union(wxr::Features::ANCHORS);
         }
+        // Meshes, and the bit is not the planes one: ARKit's scene reconstruction is its own provider, and a
+        // session can trace the room as triangles without the plane provider being up at all.
+        if self.arkit.as_ref().is_some_and(ArKit::has_meshes) {
+            features = features.union(wxr::Features::MESH);
+        }
         // Haptics is the one bit here that does not come from ARKit: a controller is GameController's, and
         // whether a connected one can be felt is that framework's answer rather than the platform's.
         if self.controllers.has_haptics() {
@@ -397,6 +402,30 @@ impl wxr::Session for AppleSession {
         out.extend(arkit.planes().into_iter().map(|mut plane| {
             plane.pose = plane.pose.relative_to(origin);
             plane
+        }));
+        Ok(())
+    }
+
+    fn meshes(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        out: &mut Vec<wxr::Mesh>,
+    ) -> Result<(), wxr::Error> {
+        let Some(arkit) = &self.arkit else {
+            return Ok(());
+        };
+        // The same space the planes are brought to, and for the same reason: ARKit traces in the session's
+        // own origin, which is this backend's `Local`, so a caller asking for another space gets the meshes
+        // brought over rather than a refusal.
+        let origin = self.space_origin(space);
+        let (_, orientation, position) = origin.to_scale_rotation_translation();
+        let origin = wxr::Pose {
+            position,
+            orientation,
+        };
+        out.extend(arkit.meshes().into_iter().map(|mut mesh| {
+            mesh.pose = mesh.pose.relative_to(origin);
+            mesh
         }));
         Ok(())
     }
