@@ -26,11 +26,12 @@ owns one, wgpu is made to adopt it.
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
 | **Native API reached**, of each backend's own spec | 30% | 1% | 7% |
-| **WebXR translated**, of the core's `Session` methods | 94% | 60% | 57% |
+| **WebXR API reached**, of the whole 138-member API | 30% | 20% | 18% |
 
-The core itself is 102 public items plus 36 `Session` methods, so it is not small - but of the WebXR API's
-138 members only 39 share a name with it, **28%**, because the core gives WebXR's concepts its own names
-(`requestReferenceSpace` is `space`). So 28% is a floor, not the ceiling it looks like.
+The second row is the whole WebXR API - every attribute, operation and constant its IDL declares, not just
+the `Session` interface - counted member by member, and it is a *floor*. The core gives a concept its own
+name (`requestReferenceSpace` is `space`) and both native backends go through the core, so a member that a
+backend serves can still share no name with anything in its source. The core itself names 39 of the 138.
 
 ## The core is small on purpose
 
@@ -268,7 +269,7 @@ can reach 100% by design.
 
 The second is the direction that says whether the *unification* is done, and it has two factors. The core
 speaks 39 of WebXR's 138 IDL members - it is the vocabulary all three backends share rather than a mirror
-of the spec - and of its own 36 `Session` methods the backends define **92%**, **58%** and **47%**. So a
+of the spec - and of its own `Session` methods the backends define **94%**, **60%** and **57%**. So a
 backend cannot reach the whole of WebXR by implementing methods: the word has to exist in the core first.
 Widening the core and filling the methods are the two things that move this, and both are work.
 
