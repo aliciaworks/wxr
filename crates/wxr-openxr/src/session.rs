@@ -653,6 +653,39 @@ impl wxr::Session for OpenXrSession {
         Ok(())
     }
 
+    fn binding(&mut self, layer: wxr::Layer) -> Result<wxr::Binding, wxr::Error> {
+        // On OpenXR a composition layer *is* its swapchain - the runtime reads the image the layer names at
+        // `xrEndFrame` - so there is nothing to make here: the binding is the layer's own, named by the handle
+        // the layer already has.
+        Ok(wxr::Binding::new(layer.id()))
+    }
+
+    fn sub_image(&mut self, binding: wxr::Binding, view: usize) -> Option<wxr::SubImage> {
+        // The swapchain the layer draws into: the session's own for the projection layer, the layer's own
+        // otherwise. Either way the extent is the whole image.
+        let extent = self
+            .layers
+            .get(binding.id() as usize)
+            .and_then(|slot| slot.as_ref())
+            .map(|layer| layer.extent)
+            .unwrap_or(self.extent);
+        Some(wxr::SubImage {
+            color_size: wxr::glam::UVec2::new(extent.width, extent.height),
+            // The session's swapchain is a colour attachment and sampled with no depth image of its own, so
+            // there is no depth size to report rather than a zero one.
+            depth_size: None,
+            // A stereo swapchain carries the eyes as its array slices, not as two viewports of one image -
+            // which is why `ImageMeta::layers` is two - so each eye owns the whole of its slice.
+            viewport: wxr::Viewport {
+                x: 0,
+                y: 0,
+                width: extent.width,
+                height: extent.height,
+            },
+            array_index: Some(view as u32),
+        })
+    }
+
     fn views(
         &mut self,
         space: wxr::ReferenceSpace,
