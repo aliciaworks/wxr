@@ -11,7 +11,7 @@ use crate::feature::Features;
 use crate::frame::Frame;
 use crate::hit::{Hit, HitTestSource};
 use crate::input::{Hand, InputId, InputSource};
-use crate::layer::{Layer, LayerImage, LayerShape};
+use crate::layer::{Binding, Layer, LayerImage, LayerShape, SubImage};
 use crate::light::{LightEstimate, LightProbe};
 use crate::plane::Plane;
 use crate::space::{Pose, ReferenceSpace, SpaceKind};
@@ -364,6 +364,21 @@ pub trait Session: Any {
     /// has them, and a layer's image is the compositor's for one frame and not the app's to keep - and `None`
     /// for a backend that was never taught layers at all, which is the same answer to a caller that only draws
     /// when it has something to draw into.
+    /// A binding for a layer whose picture the app supplies, which is WebXR's `XRWebGLBinding` and its
+    /// WebGPU and media siblings collapsed into one - see [`Binding`]. Not a [`Features`] bit: a binding is
+    /// a layer the app draws into itself rather than one the compositor makes, and a backend that cannot
+    /// take an app's resource answers [`Error::Unsupported`], which is the same answer every optional
+    /// method gives.
+    fn binding(&mut self, _layer: Layer) -> Result<Binding, Error> {
+        Err(Error::Unsupported("bindings".into()))
+    }
+
+    /// The part of a bound layer's image one eye draws into, which is WebXR's `getSubImage` - the sizes,
+    /// the viewport and the array slice. `None` when the binding is not one this session made.
+    fn sub_image(&mut self, _binding: Binding, _view: usize) -> Option<SubImage> {
+        None
+    }
+
     fn layer_image(&mut self, _layer: Layer) -> Option<(&Self::Image, LayerImage)> {
         None
     }

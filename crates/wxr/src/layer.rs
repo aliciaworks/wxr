@@ -155,6 +155,33 @@ pub enum TextureType {
     TextureArray,
 }
 
+/// A way for an app to lend a layer its own GPU resource, which is WebXR's three bindings in one word.
+///
+/// WebXR has `XRWebGLBinding`, `XRGPUBinding` and `XRMediaBinding` because it has three APIs to bind from -
+/// WebGL, WebGPU and a media element - and they are the same thing said three ways: a layer whose image is not
+/// the session's but the app's, handed over *at the binding*. This core draws with `wgpu` on all three
+/// platforms, so it has one word for it; a backend that cannot take an app's resource answers
+/// [`crate::Error::Unsupported`] where it would hand one back.
+///
+/// A handle and not the resource, like every other name in the core: what a caller holds is the binding, and
+/// the sub-images [`SubImage`] come back from it per view.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub struct Binding {
+    id: u32,
+}
+
+impl Binding {
+    /// A binding a backend has handed out, named by whatever it uses to tell them apart.
+    pub fn new(id: u32) -> Self {
+        Self { id }
+    }
+
+    /// The backend's own name for it.
+    pub fn id(self) -> u32 {
+        self.id
+    }
+}
+
 /// One eye's worth of a layer's image, which is WebXR's `XRSubImage`.
 ///
 /// A layer's texture is one image for both eyes, a packed pair, or an array with a slice per eye - the

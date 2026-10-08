@@ -497,6 +497,8 @@ ALIASES = {
     "requestLightProbe": "light_probe",
     "getLightEstimate": "light",
     "requestJointPose": "hand",
+    "getSubImage": "sub_image",
+    "getViewSubImage": "sub_image",
     "colorTextureWidth": "color_size",
     "colorTextureHeight": "color_size",
     "depthStencilTextureWidth": "depth_size",
