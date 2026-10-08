@@ -338,6 +338,55 @@ def webxr_gap() -> None:
     print(", ".join(f"`{n}`" for n in collapsed))
 
 
+
+# The OpenXR commands, as this backend calls them. The safe wrapper names its methods in Rust - `xrWaitFrame`
+# is `wait`, `xrCreateSwapchain` is `create_swapchain` - so a command-by-command count of this backend's source
+# finds almost nothing while the backend waits for frames and makes swapchains all day. This is the other half
+# of that count: the commands, and the method each one is reached through. Written by hand for the reason the
+# aliases above are - a claim a reader checks - and only for what is called: a command that is not here is one
+# this backend does not reach.
+OPENXR_CALLS = {
+    "xrCreateInstance": "create_instance",
+    "xrDestroyInstance": "create_instance",
+    "xrEnumerateInstanceExtensionProperties": "enumerate_extensions",
+    "xrGetSystem": "system",
+    "xrCreateSession": "create_session",
+    "xrDestroySession": "destroy_session",
+    "xrRequestExitSession": "request_exit_session",
+    "xrPollEvent": "poll_event",
+    "xrCreateReferenceSpace": "create_reference_space",
+    "xrCreateActionSpace": "create_space",
+    "xrLocateSpace": "locate",
+    "xrLocateViews": "locate_views",
+    "xrEnumerateViewConfigurationViews": "enumerate_view_configuration_views",
+    "xrEnumerateEnvironmentBlendModes": "enumerate_environment_blend_modes",
+    "xrCreateSwapchain": "create_swapchain",
+    "xrDestroySwapchain": "create_swapchain",
+    "xrEnumerateSwapchainFormats": "enumerate_swapchain_formats",
+    "xrEnumerateSwapchainImages": "enumerate_images",
+    "xrAcquireSwapchainImage": "acquire_image",
+    "xrWaitSwapchainImage": "wait_image",
+    "xrReleaseSwapchainImage": "release_image",
+    "xrWaitFrame": "wait",
+    "xrBeginFrame": "begin",
+    "xrEndFrame": "end",
+    "xrCreateActionSet": "create_action_set",
+    "xrDestroyActionSet": "create_action_set",
+    "xrAttachSessionActionSets": "attach_action_sets",
+    "xrSuggestInteractionProfileBindings": "suggest_interaction_profile_bindings",
+    "xrSyncActions": "sync_actions",
+    "xrGetVulkanGraphicsRequirementsKHR": "requirements",
+    "xrGetVulkanGraphicsDeviceKHR": "vulkan_graphics_device",
+    "xrCreateHandTrackerEXT": "create_hand_tracker",
+    "xrDestroyHandTrackerEXT": "create_hand_tracker",
+    "xrLocateHandJointsEXT": "locate_hand_joints",
+    "xrCreateFoveationProfileFB": "create_foveation_profile",
+    "xrUpdateSwapchainFB": "update_swapchain",
+    "xrEnumerateDisplayRefreshRatesFB": "enumerate_display_refresh_rates",
+    "xrRequestDisplayRefreshRateFB": "request_display_refresh_rate",
+}
+
+
 def spellings(name: str):
     """One word, as the specification spells it and as Rust does.
 
@@ -384,7 +433,14 @@ def main() -> None:
 
     print("# Native API reached by each backend")
 
-    aliases = generated_aliases()
+    # Each backend is reached through whatever names it has for its own spec: the browser's through the
+    # generated aliases above, and OpenXR's through the safe wrapper's method names - a backend written
+    # against a wrapper never spells the command it calls.
+    aliases = {
+        "wxr-webxr": generated_aliases(),
+        "wxr-openxr": OPENXR_CALLS,
+        "wxr-apple": generated_aliases(),
+    }
     totals = 0
     done = 0
     for title, items, crate in [
@@ -395,7 +451,7 @@ def main() -> None:
         if not items:
             print(f"\n## {title}: no spec found (fetch it, or point SDK at the headers)")
             continue
-        h, t = report(title, items, source_of(crate), aliases)
+        h, t = report(title, items, source_of(crate), aliases.get(crate))
         done += h
         totals += t
 
