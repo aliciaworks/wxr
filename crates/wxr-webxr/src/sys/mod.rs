@@ -38,6 +38,11 @@ mod gen_EventTarget;
 pub use gen_EventTarget::*;
 
 #[allow(non_snake_case)]
+mod gen_GamepadHapticActuator;
+#[allow(unused_imports)]
+pub use gen_GamepadHapticActuator::*;
+
+#[allow(non_snake_case)]
 mod gen_GpuRequestAdapterOptions;
 #[allow(unused_imports)]
 pub use gen_GpuRequestAdapterOptions::*;
@@ -146,6 +151,16 @@ pub use gen_XrEquirectLayer::*;
 mod gen_XrEquirectLayerInit;
 #[allow(unused_imports)]
 pub use gen_XrEquirectLayerInit::*;
+
+#[allow(non_snake_case)]
+mod gen_XrExpression;
+#[allow(unused_imports)]
+pub use gen_XrExpression::*;
+
+#[allow(non_snake_case)]
+mod gen_XrExpressions;
+#[allow(unused_imports)]
+pub use gen_XrExpressions::*;
 
 #[allow(non_snake_case)]
 mod gen_XrEye;
@@ -306,6 +321,16 @@ pub use gen_XrMediaLayerInit::*;
 mod gen_XrMediaQuadLayerInit;
 #[allow(unused_imports)]
 pub use gen_XrMediaQuadLayerInit::*;
+
+#[allow(non_snake_case)]
+mod gen_XrMesh;
+#[allow(unused_imports)]
+pub use gen_XrMesh::*;
+
+#[allow(non_snake_case)]
+mod gen_XrMeshSet;
+#[allow(unused_imports)]
+pub use gen_XrMeshSet::*;
 
 #[allow(non_snake_case)]
 mod gen_XrPermissionDescriptor;

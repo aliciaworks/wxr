@@ -486,7 +486,11 @@ def main() -> None:
 # big as the core - a member of `XRLayer` or `XRHand` is as much WebXR as a member of `XRSession`. These
 # redefine the three functions above so every specification is in the denominator; a later definition wins.
 
-WEBXR_DRAFTS = {"externs.webidl", "webxr-raw-camera-access.webidl"}
+# What the domain leaves out: the externs, which are ours and not WebXR's, and the Community Group drafts,
+# whose shape can still move under a backend. They are fetched and bound - a draft is worth being able to
+# call - and not counted, because a number that moves with a draft is a number that means nothing.
+WEBXR_DRAFTS = {"externs.webidl", "webxr-raw-camera-access.webidl", "webxr-real-world-meshing.webidl",
+    "webxr-gamepad-haptics.webidl", "webxr-face-tracking.webidl"}
 
 
 def _balanced(text, i):

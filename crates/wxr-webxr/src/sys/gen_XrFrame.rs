@@ -19,11 +19,21 @@ extern "C" {
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRFrame/trackedAnchors)"]
     pub fn tracked_anchors(this: &XrFrame) -> XrAnchorSet;
+    #[wasm_bindgen(method, getter, js_class = "XRFrame", js_name = "expressions")]
+    #[doc = "Getter for the `expressions` field of this object."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRFrame/expressions)"]
+    pub fn expressions(this: &XrFrame) -> Option<XrExpressions>;
     #[wasm_bindgen(method, getter, js_class = "XRFrame", js_name = "detectedPlanes")]
     #[doc = "Getter for the `detectedPlanes` field of this object."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRFrame/detectedPlanes)"]
     pub fn detected_planes(this: &XrFrame) -> XrPlaneSet;
+    #[wasm_bindgen(method, getter, js_class = "XRFrame", js_name = "detectedMeshes")]
+    #[doc = "Getter for the `detectedMeshes` field of this object."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/XRFrame/detectedMeshes)"]
+    pub fn detected_meshes(this: &XrFrame) -> XrMeshSet;
     #[wasm_bindgen(method, getter, js_class = "XRFrame", js_name = "session")]
     #[doc = "Getter for the `session` field of this object."]
     #[doc = ""]

@@ -28,6 +28,7 @@ and then point this script at the binary it built, by `--webidl-bin` or by `WASM
 """
 
 import argparse
+import html
 import os
 import re
 import subprocess
@@ -69,10 +70,37 @@ EXTRAS = [
         "immersive-web/raw-camera-access",
         "52d2f29b8a42f935646170143905b0117998db4b",
     ),
+    (
+        # The haptic output a gamepad can play - a joint Community Group and WebApps draft. It is the one of
+        # these that the safe OpenXR crate can also reach: `XR_FB_haptic_pcm` is in its extension set, so a
+        # core word for it has a backend on this side and a member of the WebXR API on that one.
+        "webxr-gamepad-haptics",
+        "immersive-web/gamepad-haptics",
+        "944e1b12683653f1d6b5fe639cab0a0590ab5493",
+    ),
+    (
+        # Face tracking, which two of the platforms have: Meta's `XR_FB_face_tracking2` and Android XR's
+        # `XR_ANDROID_face_tracking`. Written in `<pre class="idl">`, which is why the extractor reads both.
+        "webxr-face-tracking",
+        "immersive-web/webxr-face-tracking-1",
+        "5d4412e454d68f8f9dbb31b509e5ffe769ffa739",
+    ),
+    (
+        # The Community Group's meshing draft, which is the same situation as the two above: webref does not
+        # carry it, so it is pinned to a commit. There is no `XR` namespace of its own to pin it against -
+        # the group is where it lives and `CG-DRAFT` is what its status line says.
+        "webxr-real-world-meshing",
+        "immersive-web/real-world-meshing",
+        "539768590eb39cdff665d8e7a63f37b85eb6440b",
+    ),
 ]
 
-# `<script type="idl">` and `<script type=idl>` are both in use across these repositories.
+# `<script type="idl">` and `<script type=idl>` are both in use across these repositories - and one of them
+# writes its IDL in `<pre class="idl">` instead, which is the other way a Bikeshed specification carries it.
+# Both are read, and the blocks are unescaped, because a specification's IDL is as likely to have been written
+# with `&lt;` in it as with a `<`.
 IDL_BLOCK = re.compile(r'<script\s+type="?idl"?\s*>(.*?)</script>', re.S)
+IDL_PRE = re.compile(r'<pre\s+class="?idl"?\s*>(.*?)</pre>', re.S)
 
 
 BANNER = """\
@@ -116,10 +144,10 @@ def fetch() -> None:
         url = f"https://raw.githubusercontent.com/{repository}/{commit}/index.bs"
         with urllib.request.urlopen(url) as response:
             source = response.read().decode("utf-8")
-        blocks = IDL_BLOCK.findall(source)
+        blocks = IDL_BLOCK.findall(source) + IDL_PRE.findall(source)
         if not blocks:
-            sys.exit(f"{url} has no <script type=idl> blocks, so the extraction below is wrong for it")
-        body = "\n\n".join(block.strip() for block in blocks) + "\n"
+            sys.exit(f"{url} has no IDL blocks, so the extraction below is wrong for it")
+        body = "\n\n".join(html.unescape(block).strip() for block in blocks) + "\n"
         path = enabled / f"{name}.webidl"
         path.write_text(body)
         print(f"fetched {url} -> {path.relative_to(repo_root())} ({len(blocks)} blocks)")

@@ -31,6 +31,10 @@ interface mixin GlobalEventHandlers {};
 interface mixin WebGLRenderingContextBase {};
 interface Navigator {};
 
+// The Web Audio buffer the haptics draft plays: `web-sys`'s, like the gamepad, and a `typedef any` for the
+// same reason - this crate hands it to the browser rather than looking inside it.
+typedef any AudioBuffer;
+
 // The DOM's gamepad is `web-sys`'s - it is a stable interface with a stable shape, and mirroring it here
 // would be a second Rust type for one object. What WebXR names is the *type* of the attribute.
 typedef any Gamepad;
