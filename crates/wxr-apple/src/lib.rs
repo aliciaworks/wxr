@@ -63,6 +63,7 @@
 #![cfg(target_vendor = "apple")]
 
 pub mod arkit;
+pub mod compositor;
 pub mod entry;
 pub mod ffi;
 pub mod import;
@@ -71,6 +72,7 @@ pub mod session;
 pub mod sys;
 
 pub use arkit::ArKit;
+pub use compositor::Compositor;
 pub use entry::run;
 pub use import::Images;
 pub use session::{AppleBackend, AppleSession};
