@@ -94,6 +94,7 @@ xcrun swiftc \
   -framework CoreMedia \
   -framework ImageIO \
   -framework GameController \
+  -framework CoreHaptics \
   -framework ARKit \
   -framework UIKit \
   -framework CompositorServices \
