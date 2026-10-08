@@ -267,3 +267,19 @@ impl AppleSession {
 }
 
 mod dispatch;
+
+/// A Metal pixel format in the core's terms.
+///
+/// `Unknown` for a format this core has not learned, which the renderer turns into a frame it does not draw
+/// - better than one drawn through the wrong answer about what the bits mean.
+fn color_format(format: MTLPixelFormat) -> wxr::ColorFormat {
+    match format {
+        MTLPixelFormat::BGRA8Unorm_sRGB => wxr::ColorFormat::Bgra8Srgb,
+        MTLPixelFormat::BGRA8Unorm => wxr::ColorFormat::Bgra8Unorm,
+        MTLPixelFormat::RGBA8Unorm_sRGB => wxr::ColorFormat::Rgba8Srgb,
+        MTLPixelFormat::RGBA8Unorm => wxr::ColorFormat::Rgba8Unorm,
+        MTLPixelFormat::RGBA16Float => wxr::ColorFormat::Rgba16Float,
+        MTLPixelFormat::RGB10A2Unorm => wxr::ColorFormat::Rgb10a2Unorm,
+        _ => wxr::ColorFormat::Unknown,
+    }
+}
