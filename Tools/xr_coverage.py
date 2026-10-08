@@ -379,5 +379,87 @@ def main() -> None:
     webxr_gap()
 
 
+# --- The whole WebXR API, not one specification of it. ---
+#
+# `webxr.webidl` is the WebXR Device API; the dozen files beside it are the modules, and Layers alone is as
+# big as the core - a member of `XRLayer` or `XRHand` is as much WebXR as a member of `XRSession`. These
+# redefine the three functions above so every specification is in the denominator; a later definition wins.
+
+WEBXR_DRAFTS = {"externs.webidl", "webxr-raw-camera-access.webidl"}
+
+
+def _balanced(text, i):
+    depth = 0
+    for j in range(i, len(text)):
+        if text[j] == "{":
+            depth += 1
+        elif text[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[i + 1 : j]
+    return text[i + 1 :]
+
+
+def _idl_members(path):
+    raw = path.read_text(errors="ignore")
+    text = re.sub(r"/\*.*?\*/", "", re.sub(r"//.*", "", raw), flags=re.S)
+    out = []
+    for m in re.finditer(r"\b(interface|dictionary|enum|namespace|mixin)\s+(?:mixin\s+)?(\w+)[^{;]*\{", text):
+        kind, name = m.group(1), m.group(2)
+        body = _balanced(text, m.end() - 1)
+        if kind == "enum":
+            out += [name + "." + v for v in re.findall(r'"([^"]+)"', body)]
+            continue
+        for chunk in re.split(r";\s*", body):
+            c = " ".join(chunk.split())
+            if not c:
+                continue
+            if "attribute" in c:
+                out.append(name + "." + re.findall(r"(\w+)$", c)[0])
+            elif c.startswith("const"):
+                out.append(name + "." + (re.findall(r"(\w+)\s*=", c) or ["?"])[0])
+            elif "(" in c:
+                ops = re.findall(r"(\w+)\s*\(", c)
+                out.append(name + "." + (ops[-1] if ops else "?"))
+            else:
+                words = re.findall(r"\w+", c)
+                if words:
+                    out.append(name + "." + words[-1])
+    return out
+
+
+def webxr_members():
+    out = []
+    idl = ROOT / "crates/wxr-webxr" / "webidl" / "enabled"
+    for path in sorted(idl.glob("*.webidl")):
+        if path.name in WEBXR_DRAFTS:
+            continue
+        out += _idl_members(path)
+    return out
+
+
+def webxr_items():
+    return {q.split(".", 1)[-1] for q in webxr_members()}
+
+
+def webxr_to_core():
+    members = webxr_members()
+    src = "\n".join(p.read_text(errors="ignore") for p in (ROOT / "crates/wxr/src").rglob("*.rs"))
+    hit = [m for m in members if re.search(r"\b" + re.escape(m.split(".", 1)[1]) + r"\b", src)]
+    return len(hit), len(members)
+
+
+def webxr_api_coverage():
+    members = webxr_members()
+    sources = {
+        "wxr (core)": "\n".join(p.read_text(errors="ignore") for p in (ROOT / "crates/wxr/src").rglob("*.rs")),
+        **{c: source_of(c) for c in ["wxr-webxr", "wxr-openxr", "wxr-apple"]},
+    }
+    print("\n## Of WebXR's " + str(len(members)) + " members (every specification), reached by:")
+    for label, src in sources.items():
+        hit = [m for m in members if re.search(r"\b" + re.escape(m.split(".", 1)[1]) + r"\b", src)]
+        print("- " + label + ": **" + str(round(100 * len(hit) / len(members))) + "%** (" + str(len(hit)) + "/" + str(len(members)) + ")")
+
+
 if __name__ == "__main__":
     main()
