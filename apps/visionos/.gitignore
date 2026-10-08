@@ -1,0 +1,2 @@
+# The built bundle and the compiled shim object are outputs of build.sh, not sources.
+build/

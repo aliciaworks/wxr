@@ -64,9 +64,12 @@ use crate::sys;
 /// # Safety
 ///
 /// `provider` must be one of ARKit's provider objects, all of which begin with an `ar_data_provider_t`.
-unsafe fn as_data_provider<T>(provider: &T) -> &ar_data_provider_t {
+unsafe fn as_data_provider<T>(provider: &Retained<T>) -> &ar_data_provider_t {
+    // The pointer to hand over is the object the `Retained` holds, not the address of the `Retained`
+    // variable that holds it - ARKit retains the object, so a handle's address is not its object. The
+    // deref goes through `Retained` to the object, and the address of that is the object pointer.
     // SAFETY: the caller guarantees the object begins with an `ar_data_provider_t`.
-    unsafe { &*std::ptr::from_ref(provider).cast::<ar_data_provider_t>() }
+    unsafe { &*std::ptr::from_ref(&**provider).cast::<ar_data_provider_t>() }
 }
 
 /// Reinterpret an anchor as the `ar_trackable_anchor_t` the tracked query takes, by the same rule.
@@ -74,9 +77,10 @@ unsafe fn as_data_provider<T>(provider: &T) -> &ar_data_provider_t {
 /// # Safety
 ///
 /// `anchor` must be an ARKit anchor that conforms to `OS_ar_trackable_anchor`.
-unsafe fn as_trackable_anchor<T>(anchor: &T) -> &ar_trackable_anchor_t {
+unsafe fn as_trackable_anchor<T>(anchor: &Retained<T>) -> &ar_trackable_anchor_t {
+    // As above: the object the `Retained` holds, not the address of the handle.
     // SAFETY: the caller guarantees the object begins with an `ar_trackable_anchor_t`.
-    unsafe { &*std::ptr::from_ref(anchor).cast::<ar_trackable_anchor_t>() }
+    unsafe { &*std::ptr::from_ref(&**anchor).cast::<ar_trackable_anchor_t>() }
 }
 
 /// World tracking: the provider and the one anchor its queries refill.

@@ -31,17 +31,12 @@
 
 use std::ffi::c_void;
 
-use objc2_compositor_services::{cp_drawable_t, cp_view_t};
+use objc2_compositor_services::{cp_axis_direction_convention, cp_drawable_t, cp_view_t};
 
 /// `simd_float4x4`: four columns of four floats, sixteen-byte aligned, column-major as `simd` stores them.
 #[repr(C, align(16))]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Float4x4(pub [f32; 16]);
-
-/// `simd_float4`: four floats, sixteen-byte aligned.
-#[repr(C, align(16))]
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Float4(pub [f32; 4]);
 
 /// `simd_float2`: two floats, eight-byte aligned.
 #[repr(C, align(8))]
@@ -55,67 +50,178 @@ pub type ArDeviceAnchor = *mut c_void;
 /// A world anchor the same way, for the two calls that create one and place it.
 pub type ArWorldAnchor = *mut c_void;
 
-// SAFETY: every declaration below is transcribed from Apple's C header or from Apple's own C guide, and the
-// framework is linked rather than loaded by hand. What is *not* proven here is the ABI - a wrong signature
-// would still compile - which is why the types are `repr(C)` and aligned as the C ones are, and why the
-// calls are made only with pointers that came from the framework itself.
+// SAFETY: every `simd`-typed call below is made through `apps/visionos/wxr_compositor_shim.c`, which clang
+// compiles against the real headers, and the wrappers here are its plain-float side: a `simd` vector is
+// passed and returned in SIMD registers and a stable Rust `extern` cannot say that, so no `simd` type is
+// declared in this file at all. What is declared as C here is the set of pointer-and-scalar calls the
+// wrapper does not need a shim for - `cp_drawable_set_device_anchor` - and the shim functions themselves.
+//
+// The wrappers are `pub unsafe fn` with bodies, not `pub fn ... ;` declarations, so
+// `Tools/check_apple_sys.py` - which looks `pub fn` up in Apple's headers - reads only
+// `cp_drawable_set_device_anchor` from this file. The Apple calls behind the shim are checked where the shim
+// is compiled, by clang, against the same headers.
+
 #[link(name = "CompositorServices", kind = "framework")]
 unsafe extern "C-unwind" {
-    /// The transform from the view's space to the device's: the eye's own place in device space.
-    ///
-    /// Apple's guide calls this `deviceFromView` and composes it as `originFromDevice * deviceFromView` for
-    /// the world-from-eye transform - so it is a pose, not a view matrix, and it is *not* inverted here.
-    pub fn cp_view_get_transform(view: cp_view_t) -> Float4x4;
-
-    /// The four half-angle tangents of a view's opening, in the order left, right, up, down.
-    pub fn cp_view_get_tangents(view: cp_view_t) -> Float4;
-
     /// The head position and orientation to apply to the frame, which the compositor uses to reproject it
     /// if the prediction the app made turns out to be off.
-    pub fn cp_drawable_set_device_anchor(drawable: cp_drawable_t, device_anchor: ArDeviceAnchor);
-
-    /// The near and far planes the app drew with, so that the compositor can use the drawable's own depth
-    /// buffer to reproject the frame.
     ///
-    /// The pair is a `simd_float2` whose *first* component is the far plane and whose second is the near -
-    /// which reads like a mistake and is not: the depth a `CompositorServices` drawable wants is reverse-Z,
-    /// where nearer is the larger value. Apple's own guide reads the getter's pair the same way round
-    /// (`depth_range[0]` far, `depth_range[1]` near), and a setter that disagreed with its own getter would be
-    /// a trap.
-    pub fn cp_drawable_set_depth_range(drawable: cp_drawable_t, depth_range: Float2);
+    /// A pointer argument and a pointer return, so it needs no shim.
+    pub fn cp_drawable_set_device_anchor(drawable: cp_drawable_t, device_anchor: ArDeviceAnchor);
 }
 
-#[link(name = "ARKit", kind = "framework")]
-unsafe extern "C-unwind" {
-    /// The transform from the anchor's space to the origin's - for a device anchor, where the head is in the
-    /// world ARKit tracks.
-    ///
-    /// The anchor is a pointer to one of the generated crate's anchors; it is `*const c_void` here because
-    /// the return type is the reason the call is hand-written, not the argument.
-    pub fn ar_anchor_get_origin_from_anchor_transform(anchor: *const c_void) -> Float4x4;
+// The shim, compiled and linked by `apps/visionos/build.sh`.
+unsafe extern "C" {
+    /// Writes the transform from a view's space to the device's into `out`.
+    fn wxr_cp_view_get_transform(view: cp_view_t, out: *mut f32);
+    /// Writes the projection matrix for one of a drawable's views into `out`.
+    fn wxr_cp_drawable_compute_projection(
+        drawable: cp_drawable_t,
+        normalized_device_coordinates_convension: cp_axis_direction_convention,
+        view_index: usize,
+        out: *mut f32,
+    );
+    /// Sets a drawable's reverse-Z depth range, the far plane first.
+    fn wxr_cp_drawable_set_depth_range(drawable: cp_drawable_t, far: f32, near: f32);
 
-    /// Where the hand is.
-    ///
-    /// Apple's documentation has a page for
-    /// `ar_hand_anchor_get_origin_from_anchor_transform_with_correction`, and visionOS 26.5's ARKit has
-    /// no such symbol: the headers carry this one and nothing with "correction" in it, and a link against
-    /// the SDK says `symbol(s) not found`. What the correction was for is a transform moved so that
-    /// content drawn at it lands over the physical object in passthrough - input wants where the hand
-    /// *is*, so the plain call is the one this backend wanted all along.
-    pub fn ar_hand_anchor_get_origin_from_anchor_transform(hand_anchor: *const c_void) -> Float4x4;
-
-    /// A world anchor the runtime will keep at this place - the `origin from anchor` transform of the
-    /// anchor's own space, which is the same shape every space in the core is.
-    ///
-    /// `simd_float4x4` by value, so it is here rather than in the generated crate, and the object it returns
-    /// is `+1` like every other `ar_*`.
-    pub fn ar_world_anchor_create_with_origin_from_anchor_transform(
-        origin_from_anchor_transform: Float4x4,
+    /// Writes the transform from an anchor's space to the origin's into `out`.
+    fn wxr_ar_anchor_get_origin_from_anchor_transform(anchor: *const c_void, out: *mut f32);
+    /// Writes where a hand anchor is into `out`.
+    fn wxr_ar_hand_anchor_get_origin_from_anchor_transform(
+        hand_anchor: *const c_void,
+        out: *mut f32,
+    );
+    /// Returns a world anchor the runtime will keep at the transform passed in `transform`.
+    fn wxr_ar_world_anchor_create_with_origin_from_anchor_transform(
+        transform: *const f32,
     ) -> ArWorldAnchor;
+    /// Writes where a world anchor is now into `out`.
+    fn wxr_ar_world_anchor_get_origin_from_anchor_transform(anchor: *const c_void, out: *mut f32);
+}
 
-    /// Where a world anchor is now.
-    ///
-    /// The reason an anchor is a handle and not a pose: the runtime moves it as its understanding of the room
-    /// changes, and reading it is how an app finds out where its object ended up.
-    pub fn ar_world_anchor_get_origin_from_anchor_transform(anchor: *const c_void) -> Float4x4;
+/// The transform from the view's space to the device's: the eye's own place in device space.
+///
+/// Apple's guide calls this `deviceFromView` and composes it as `originFromDevice * deviceFromView` for
+/// the world-from-eye transform - so it is a pose, not a view matrix, and it is *not* inverted here.
+///
+/// # Safety
+///
+/// `view` must be a live `cp_view_t`.
+pub unsafe fn cp_view_get_transform(view: cp_view_t) -> Float4x4 {
+    let mut out = [0.0f32; 16];
+    // SAFETY: the caller's contract is the shim's, and `out` is sixteen contiguous `f32`s.
+    unsafe { wxr_cp_view_get_transform(view, out.as_mut_ptr()) };
+    Float4x4(out)
+}
+
+/// The projection matrix for one of a drawable's views.
+///
+/// This is what a mixed-reality layer wants instead of `cp_view_get_tangents`, which the compositor refuses
+/// there outright ("For mixed reality experiences please use cp_drawable_compute_projection"). The matrix is
+/// read back into the four openings by `wxr_render::angles`. `right_up_back` is the convention this renderer
+/// draws with - right-handed, looking down -Z.
+///
+/// # Safety
+///
+/// `drawable` must be a live `cp_drawable_t` for the current frame.
+pub unsafe fn cp_drawable_compute_projection(
+    drawable: cp_drawable_t,
+    normalized_device_coordinates_convension: cp_axis_direction_convention,
+    view_index: usize,
+) -> Float4x4 {
+    let mut out = [0.0f32; 16];
+    // SAFETY: the caller's contract is the shim's, and `out` is sixteen contiguous `f32`s.
+    unsafe {
+        wxr_cp_drawable_compute_projection(
+            drawable,
+            normalized_device_coordinates_convension,
+            view_index,
+            out.as_mut_ptr(),
+        )
+    };
+    Float4x4(out)
+}
+
+/// The near and far planes the app drew with, so that the compositor can use the drawable's own depth
+/// buffer to reproject the frame.
+///
+/// The pair is passed far first and near second, which reads like a mistake and is not: the depth a
+/// `CompositorServices` drawable wants is reverse-Z, where nearer is the larger value. Apple's own guide
+/// reads the getter's pair the same way round (`depth_range[0]` far, `depth_range[1]` near), and a setter
+/// that disagreed with its own getter would be a trap. The near plane also has a floor: the compositor
+/// refuses anything closer than 0.1 m.
+///
+/// # Safety
+///
+/// `drawable` must be a live `cp_drawable_t` for the current frame.
+pub unsafe fn cp_drawable_set_depth_range(drawable: cp_drawable_t, depth_range: Float2) {
+    // SAFETY: the caller's contract is the shim's.
+    unsafe { wxr_cp_drawable_set_depth_range(drawable, depth_range.0[0], depth_range.0[1]) };
+}
+
+/// The transform from an anchor's space to the origin's - for a device anchor, where the head is in the
+/// world ARKit tracks.
+///
+/// # Safety
+///
+/// `anchor` must be a live anchor object from the generated crate.
+pub unsafe fn ar_anchor_get_origin_from_anchor_transform(anchor: *const c_void) -> Float4x4 {
+    let mut out = [0.0f32; 16];
+    // SAFETY: the caller's contract is the shim's, and `out` is sixteen contiguous `f32`s.
+    unsafe { wxr_ar_anchor_get_origin_from_anchor_transform(anchor, out.as_mut_ptr()) };
+    Float4x4(out)
+}
+
+/// Where the hand is.
+///
+/// Apple's documentation has a page for
+/// `ar_hand_anchor_get_origin_from_anchor_transform_with_correction`, and visionOS 26.5's ARKit has no
+/// such symbol: the headers carry this one and nothing with "correction" in it, and a link against the SDK
+/// says `symbol(s) not found`. What the correction was for is a transform moved so that content drawn at it
+/// lands over the physical object in passthrough - input wants where the hand *is*, so the plain call is the
+/// one this backend wanted all along.
+///
+/// # Safety
+///
+/// `hand_anchor` must be a live hand anchor object from the generated crate.
+pub unsafe fn ar_hand_anchor_get_origin_from_anchor_transform(
+    hand_anchor: *const c_void,
+) -> Float4x4 {
+    let mut out = [0.0f32; 16];
+    // SAFETY: the caller's contract is the shim's, and `out` is sixteen contiguous `f32`s.
+    unsafe { wxr_ar_hand_anchor_get_origin_from_anchor_transform(hand_anchor, out.as_mut_ptr()) };
+    Float4x4(out)
+}
+
+/// A world anchor the runtime will keep at this place - the `origin from anchor` transform of the anchor's
+/// own space, which is the same shape every space in the core is.
+///
+/// # Safety
+///
+/// `origin_from_anchor_transform` is used only for its sixteen floats, and the object it returns is `+1`
+/// like every other `ar_*`.
+pub unsafe fn ar_world_anchor_create_with_origin_from_anchor_transform(
+    origin_from_anchor_transform: Float4x4,
+) -> ArWorldAnchor {
+    // SAFETY: the caller's contract is the shim's, and the array is sixteen contiguous `f32`s.
+    unsafe {
+        wxr_ar_world_anchor_create_with_origin_from_anchor_transform(
+            origin_from_anchor_transform.0.as_ptr(),
+        )
+    }
+}
+
+/// Where a world anchor is now.
+///
+/// The reason an anchor is a handle and not a pose: the runtime moves it as its understanding of the room
+/// changes, and reading it is how an app finds out where its object ended up.
+///
+/// # Safety
+///
+/// `anchor` must be a live world anchor object from the generated crate.
+pub unsafe fn ar_world_anchor_get_origin_from_anchor_transform(anchor: *const c_void) -> Float4x4 {
+    let mut out = [0.0f32; 16];
+    // SAFETY: the caller's contract is the shim's, and `out` is sixteen contiguous `f32`s.
+    unsafe { wxr_ar_world_anchor_get_origin_from_anchor_transform(anchor, out.as_mut_ptr()) };
+    Float4x4(out)
 }

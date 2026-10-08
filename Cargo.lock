@@ -1377,6 +1377,7 @@ dependencies = [
  "objc2-compositor-services",
  "objc2-foundation 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "objc2-metal 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pollster 1.0.1",
  "wgpu",
  "wxr",
  "wxr-render",

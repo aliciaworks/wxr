@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The bundle identity a simulator install keys on. -->
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>WxrApp</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.aliciaworks.wxr</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Wxr</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>MinimumOSVersion</key>
+	<string>1.0</string>
+	<!-- 7 is the visionOS device family; without it installd refuses the bundle as not
+	     natively targeting the platform. -->
+	<key>UIDeviceFamily</key>
+	<array>
+		<integer>7</integer>
+	</array>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+	</array>
+	<!-- A SwiftUI app on visionOS still needs a scene manifest; multiple scenes is what
+	     lets the immersive space exist alongside the window. -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<true/>
+	</dict>
+	<!-- World sensing is what lets ARKit tracking run and the immersive space be
+	     accepted; a space whose usage description is missing is refused. -->
+	<key>NSWorldSensingUsageDescription</key>
+	<string>wxr uses world sensing to place the immersive scene in your surroundings.</string>
+	<key>NSHandsTrackingUsageDescription</key>
+	<string>wxr uses hand tracking to drive the immersive scene.</string>
+</dict>
+</plist>

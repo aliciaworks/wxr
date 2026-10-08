@@ -24,11 +24,11 @@ use std::time::Duration;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_compositor_services::{
-    cp_drawable, cp_drawable_array, cp_drawable_t, cp_drawable_target, cp_frame, cp_frame_t,
-    cp_frame_timing, cp_layer_renderer_configuration_get_color_format,
-    cp_layer_renderer_get_configuration, cp_layer_renderer_get_state,
-    cp_layer_renderer_query_next_frame, cp_layer_renderer_state, cp_layer_renderer_t, cp_time,
-    cp_view, cp_view_texture_map,
+    cp_axis_direction_convention, cp_drawable, cp_drawable_array, cp_drawable_t,
+    cp_drawable_target, cp_frame, cp_frame_t, cp_frame_timing,
+    cp_layer_renderer_configuration_get_color_format, cp_layer_renderer_get_configuration,
+    cp_layer_renderer_get_state, cp_layer_renderer_query_next_frame, cp_layer_renderer_state,
+    cp_layer_renderer_t, cp_time, cp_view, cp_view_texture_map,
 };
 use objc2_metal::{MTLCommandBuffer, MTLCommandQueue, MTLDevice, MTLPixelFormat, MTLTexture};
 
@@ -412,7 +412,28 @@ impl wxr::Session for AppleSession {
             return Ok(());
         }
 
-        // SAFETY: the frame was just handed out and has not been given back.
+        // The compositor's order matters here: `cp_frame_predict_timing` must be called before the frame's
+        // drawable is queried - the header says so - and a frame asked the other way round is a client bug the
+        // compositor aborts on. The timing is what every pose in the frame is predicted for.
+        //
+        // SAFETY: the frame is the layer's, it is not in flight twice, and it is read between this
+        // `start_update` and the `end_update` that `views` performs.
+        unsafe {
+            cp_frame::start_update(self.frame);
+            let timing = cp_frame::predict_timing(self.frame);
+            // `now` is not used: the compositor's clock is a Mach one and comparing it against a wall clock
+            // is a comparison between two unrelated epochs. What it predicts is what is wanted anyway.
+            let seconds =
+                cp_time::to_cf_time_interval(cp_frame_timing::presentation_time(timing)).max(0.0);
+            self.predicted = Duration::from_secs_f64(seconds);
+
+            // Where the head will be when this is shown, predicted for the presentation time. It is kept
+            // because the drawable that is told about it does not exist yet.
+            self.origin = self.arkit.as_ref().and_then(|arkit| arkit.device(seconds));
+        }
+
+        // SAFETY: the frame is live, the timing above is already read, and the drawables are read before the
+        // update window closes.
         self.drawable = unsafe {
             let array = cp_frame::query_drawables(self.frame);
             if array.is_null() {
@@ -430,26 +451,19 @@ impl wxr::Session for AppleSession {
             }
         };
         if self.drawable.is_null() {
+            // A frame with no drawable is discarded, but the update window it opened still has to close
+            // before the frame is given back: `views` is not reached for a frame that is not rendered.
+            // SAFETY: the frame is begun above and has not been given back.
+            unsafe { cp_frame::end_update(self.frame) };
             self.release();
             return Ok(());
         }
 
-        // SAFETY: the frame is the layer's, it is not in flight twice, and it is read between this
-        // `start_update` and the `end_update` that `views` performs.
+        // SAFETY: the drawable is this frame's and is live until `end`.
         unsafe {
-            cp_frame::start_update(self.frame);
-            let timing = cp_frame::predict_timing(self.frame);
-            // `now` is not used: the compositor's clock is a Mach one and comparing it against a wall clock
-            // is a comparison between two unrelated epochs. What it predicts is what is wanted anyway.
-            let seconds =
-                cp_time::to_cf_time_interval(cp_frame_timing::presentation_time(timing)).max(0.0);
-            self.predicted = Duration::from_secs_f64(seconds);
-
-            // Where the head will be when this is shown, predicted for the presentation time and handed to
-            // the compositor, which compares it with where the head actually is and reprojects the frame if
-            // the two disagree. Doing this is what makes content hold still in the room instead of swimming
-            // behind every movement of the wearer's head.
-            self.origin = self.arkit.as_ref().and_then(|arkit| arkit.device(seconds));
+            // Where the head will be when this is shown, handed to the compositor, which compares it with
+            // where the head actually is and reprojects the frame if the two disagree. Doing this is what
+            // makes content hold still in the room instead of swimming behind every movement of the head.
             if let (Some(arkit), Some(_)) = (&self.arkit, self.origin) {
                 sys::cp_drawable_set_device_anchor(self.drawable, arkit.anchor());
             }
@@ -497,7 +511,16 @@ impl wxr::Session for AppleSession {
                         // `device from view`: the eye's own place in device space. It is a pose already, so
                         // nothing inverts it - the world-from-eye transform is `origin * this`.
                         Mat4::from_cols_array(&sys::cp_view_get_transform(view).0),
-                        sys::cp_view_get_tangents(view).0,
+                        // A mixed-reality layer refuses `cp_view_get_tangents` and wants the projection
+                        // matrix instead; the four openings are read back out of it for `fov` below.
+                        Mat4::from_cols_array(
+                            &sys::cp_drawable_compute_projection(
+                                self.drawable,
+                                cp_axis_direction_convention::right_up_back,
+                                index,
+                            )
+                            .0,
+                        ),
                         cp_view_texture_map::texture_index(map),
                         cp_view_texture_map::slice_index(map) as u32,
                         cp_view_texture_map::viewport(map),
@@ -507,7 +530,7 @@ impl wxr::Session for AppleSession {
             (count, maps)
         };
 
-        for (index, (device_from_eye, tangents, image, layer, viewport)) in
+        for (index, (device_from_eye, projection, image, layer, viewport)) in
             maps.into_iter().enumerate()
         {
             out.views_mut().push(wxr::View {
@@ -519,7 +542,7 @@ impl wxr::Session for AppleSession {
                     wxr::Eye::Right
                 },
                 pose: wxr_render::pose_from_transform(origin * device_from_eye),
-                fov: wxr_render::angles_from_tangents(tangents),
+                fov: wxr_render::angles(projection),
                 viewport: wxr::Viewport {
                     x: viewport.originX.max(0.0) as u32,
                     y: viewport.originY.max(0.0) as u32,

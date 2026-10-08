@@ -18,10 +18,14 @@
 //! too and that a shim was needed to cross. Both halves of that were wrong, and Apple's own documentation
 //! says so:
 //!
-//! * `cp_view_get_transform` and `cp_view_get_tangents` are C functions on `sys`, and Apple's C guide
+//! * `cp_view_get_transform` and `cp_drawable_compute_projection` are C functions on `sys`, and Apple's C
+//!   guide
 //!   [Drawing fully immersive content using Metal](https://developer.apple.com/documentation/compositorservices/drawing-fully-immersive-content-using-metal)
 //!   calls them. `objc2-compositor-services` does not bind them, which is why `sys` declares them - not
-//!   because they are not there.
+//!   because they are not there - and because they return a `simd` vector, the return crosses through the
+//!   small C shim the app builds (`apps/visionos/wxr_compositor_shim.c`): a stable Rust `extern` cannot
+//!   name a vector type, and a struct would read the wrong register. `cp_view_get_tangents` was the third of
+//!   these and is no longer used at all: a mixed-reality layer refuses it and wants the projection matrix.
 //! * ARKit has a **C API**, built for exactly this case and documented as
 //!   [ARKit in visionOS C API](https://developer.apple.com/documentation/arkit/arkit-in-visionos-c-api): a
 //!   session, providers, anchors, hands. `arkit` is that session and the two providers this leg asks for.

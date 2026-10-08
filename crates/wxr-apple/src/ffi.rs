@@ -7,7 +7,7 @@
 //! and a failure is logged rather than thrown, because there is no Swift error on the other side to catch it.
 //!
 //! The device is made here too, and an app is the only place it can be. The compositor owns the Metal device
-//! and wgpu has to be handed one before [`entry::run`] is entered - [`AppleBackend::device`] says why the
+//! and wgpu has to be handed one before [`crate::entry::run`] is entered - [`AppleBackend::device`] says why the
 //! order is this way and what it costs. On visionOS that device is the only one, so an ordinary
 //! `request_adapter` lands on the compositor's own and nothing needs adopting; a platform with more than one
 //! device would need the `wgpu-hal` route the same comment describes.
@@ -22,7 +22,7 @@ use objc2_compositor_services::cp_layer_renderer_t;
 /// Run immersive frames until the space closes, called from Swift.
 ///
 /// The app's `CompositorLayer` closure calls this, and the call does not return until the immersive space
-/// ends - the loop is [`entry::run`]'s, and stopping is the compositor's own state change.
+/// ends - the loop is [`crate::entry::run`]'s, and stopping is the compositor's own state change.
 ///
 /// # Safety
 ///
@@ -37,7 +37,11 @@ pub unsafe extern "C" fn wxr_apple_run(layer_renderer: *mut c_void) -> i32 {
     match unsafe { run(layer_renderer) } {
         Ok(()) => 0,
         Err(error) => {
+            // Both, deliberately: the `log` facade is the crate's idiom, but an app that installs no
+            // logger - which this app is - drops it, and the stderr line is what a `simctl --console-pty`
+            // launch shows. Either may be the only record the failure leaves behind.
             log::error!("wxr-apple: the immersive loop ended with an error: {error}");
+            eprintln!("wxr-apple: the immersive loop ended with an error: {error}");
             1
         }
     }
@@ -70,8 +74,13 @@ unsafe fn run(layer_renderer: *mut c_void) -> Result<(), wxr::Error> {
                     "no adapter for the compositor's Metal device: {error}"
                 ))
             })?;
+    // The adapter is the compositor's own device, so what it reports is the ceiling this device has
+    // to be opened at. wgpu's default limits are the desktop Metal ones and can sit above it - the
+    // simulator reports a lower `max_inter_stage_shader_variables` than the default - and asking for
+    // more than the adapter allows is a refused device rather than a clamped one.
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("wxr-apple compositor device"),
+        required_limits: adapter.limits(),
         ..Default::default()
     }))
     .map_err(|error| {

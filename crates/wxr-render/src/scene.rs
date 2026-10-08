@@ -371,7 +371,9 @@ impl Scene {
 
 /// A field of view is what a runtime reports; a projection also needs the two planes, which it does not.
 pub fn planes() -> (f32, f32) {
-    (0.05, 100.0)
+    // 0.1 is the closest near plane a CompositorServices drawable accepts, so it is the shared floor
+    // rather than a scene choice: a projection built with anything nearer is refused by the compositor.
+    (0.1, 100.0)
 }
 
 /// The triangles and the matrices as bytes.
