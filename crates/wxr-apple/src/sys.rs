@@ -36,22 +36,24 @@
 //! C type they stand for is.
 
 //! **Where the line between generated and written falls, and why.** Once the visionOS SDK was on hand,
-//! these were run through `objc2`'s own translator, and the answer is *sixteen* of the twenty-one:
-//! everything whose signature is plain C, plus `cp_drawable_set_device_anchor` once two lines that
-//! skipped it were removed - they were there because ARKit is generated from the iOS SDK, which has no
-//! visionOS module, and that is not true of this configuration.
+//! these were run through `objc2`'s own translator, and *sixteen* of the twenty-one are in the generated
+//! crate that came out of it. The five left over carry a `simd` type - four returning `simd_float4x4`, one
+//! taking `simd_float2` - which the translator cannot express in a function yet.
 //!
-//! The five left over are the ones whose signature carries a `simd` type: four returning `simd_float4x4`
-//! and one taking `simd_float2`. The translator says so itself - "simd types are not yet possible in
-//! functions" - so the split is a *boundary* rather than a preference, and it is written down because a
-//! reader would otherwise have to guess which declaration came from where.
+//! **The sixteen are not imported, and the reason is measured rather than preferred.** A generated crate
+//! carries the `objc2` it was built with, and this workspace is on the registry's `objc2` 0.6.5, so a
+//! generated ARKit has to be usable beside it. Both ways of arranging that were built, and both fail: the
+//! *released* translator segfaults reading this SDK's visionOS module - it predates the `_DarwinFoundation`
+//! handling - and `main`'s translator, which does read it, emits code for `main`'s `objc2` (`RefEncode
+//! for CStr`, the newer `extern_class!` syntax) that the release does not have. Those are different APIs,
+//! so something has to move - a runtime crate, the translator, or these declarations - and until one of
+//! them does, this file is what stands in for the sixteen.
 //!
-//! To redo it: `aliciaworks/objc2`, branch `visionos-arkit` - a one-line fix (an attribute macro with no
-//! argument was read as one with), and `objc2-ar-kit`'s config naming `visionos` alone so that framework is
-//! read from the SDK that has the module. The workflow `generate-visionos.yml` runs there on a macOS
-//! runner with Xcode 26.6, one framework per run, because a run rewrites its crate's feature list and the
-//! second run then cannot resolve the workspace. It was tried on Linux first and does not work there: the
-//! libclang to hand is years newer than the one the translator was written against.
+//! That is not a licence to guess: [`Tools/check_apple_sys.py`](https://github.com/aliciaworks/wxr/blob/main/Tools/check_apple_sys.py)
+//! reads the same headers out of an SDK mirror and compares each name, its argument count and the shape of
+//! what it returns, in CI. `aliciaworks/objc2`'s branch `visionos-arkit-release` (`objc2-0.6.5` plus
+//! `main`'s translator) is where a generation that links would come from; it generates today and does not
+//! link for exactly the reason above.
 
 use std::ffi::c_void;
 
