@@ -27,7 +27,7 @@ owns one, wgpu is made to adopt it.
 | --- | ---: | ---: | ---: |
 | **Native API reached** - of each backend's own spec | 42/138 | 7/551 | 46/618 |
 | *as a percentage* | 30% | 1% | 7% |
-| **WebXR API reached** - of the whole API | X/452 | Y/452 | Z/452 |
+| **WebXR API reached** - of the whole API | 211/452 | 160/452 | 171/452 |
 | *as a percentage* | 47% | 35% | 38% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
