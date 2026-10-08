@@ -64,7 +64,7 @@ objc2 = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0
 # registry has - so the ivars API it uses is the one the registry has. The fork's objc2 moved
 # that API, so the two call sites are adapted here, in a vendored copy, rather than giving up
 # the generated bindings over a layer wrapper.
-raw-window-metal = { path = "vendor/raw-window-metal" }
+raw-window-metal = { git = "https://github.com/aliciaworks/raw-window-metal", rev = "03f16839804d07fa63d4db07d4b7d2b907b56167" }
 
 [profile.dev]
 opt-level = 1
