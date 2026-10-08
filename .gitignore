@@ -2,3 +2,5 @@ target/
 
 # The OpenXR registry, fetched by Tools/xr_coverage.py.
 Tools/.cache/
+
+.DS_Store
