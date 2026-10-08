@@ -86,13 +86,13 @@ pub struct WebXrSession {
     /// The hit-test sources this session has asked for, each empty until the browser answers.
     pub(super) hit_sources: Vec<Rc<RefCell<hit::Slot>>>,
     /// The light probes this session has asked for, each empty until the browser answers.
-    pub(super) light_probes: Vec<Rc<RefCell<light::Slot>>>,
+    pub(super) light_probes: Vec<Rc<RefCell<crate::light::Slot>>>,
     /// This frame's depth buffer, kept for as long as the reference into it is handed out.
     pub(super) depth_image: Option<JsValue>,
     /// How much foveation the app asked for, if it asked: `None` leaves the layer's own default alone.
     pub(super) foveation: Option<f32>,
     /// The anchors this session has asked for, each empty until the browser answers.
-    pub(super) anchors: Vec<Rc<RefCell<anchors::Slot>>>,
+    pub(super) anchors: Vec<Rc<RefCell<crate::anchors::Slot>>>,
     /// This frame's views, kept because depth is asked for one of them by object and not by index.
     pub(super) frame_views: Vec<XrView>,
     /// Reference-space `reset` events, which arrive on a space rather than on the session and are passed on
@@ -115,7 +115,7 @@ pub struct WebXrSession {
     pub(super) depth_range: Option<(f32, f32)>,
     /// The layers the app has made, each `None` once released. The index *is* the handle's id, which is why a
     /// release leaves a hole rather than shifting the ones after it.
-    pub(super) layers: Vec<Option<layers::Slot>>,
+    pub(super) layers: Vec<Option<crate::layers::Slot>>,
     /// This frame's picture of each layer, kept for as long as the reference into it is handed out - the same
     /// reason `depth_image` is kept, and the same reason it is dropped at the start of a frame.
     pub(super) layer_images: Vec<Option<FrameImage>>,

@@ -1,3 +1,5 @@
+#![cfg(not(target_family = "wasm"))]
+
 //! What wxr's WebXR vocabulary means, checked against another implementation of the same API.
 //!
 //! wxr is a WebXR-shaped API with three backends behind it, and the WebXR Device API has more than one

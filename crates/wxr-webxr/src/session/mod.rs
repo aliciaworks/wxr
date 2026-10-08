@@ -25,7 +25,7 @@ use crate::sys::{
     XrHandedness, XrLayerLayout, XrProjectionLayer, XrReferenceSpace, XrRenderStateInit, XrSession,
     XrView, XrgpuBinding, XrgpuProjectionLayerInit, XrgpuQuadLayerInit,
 };
-use crate::{anchors, depth, hit, input, layers, light, planes, throws};
+use crate::{depth, hit, input, planes, throws};
 
 impl Drop for WebXrSession {
     /// End the browser's session when this one is dropped.
@@ -269,87 +269,7 @@ impl wxr::Session for WebXrSession {
     }
 
     fn poll(&mut self) -> Option<wxr::Event> {
-        // Taken out of the slot as it is read: a session that has arrived moves into the session, and a poll
-        // that left it there would find it again every time - and ask the browser for another animation frame
-        // every time with it, one closure per tick, none of them ever dropped.
-        let arrived = match std::mem::replace(&mut *self.connect.borrow_mut(), Connect::Pending) {
-            Connect::Started(session) => Some(session),
-            Connect::Failed(message) => {
-                log::error!("wxr-webxr: the session was refused: {message}");
-                self.state = wxr::State::Ended;
-                return Some(wxr::Event::Lost);
-            }
-            Connect::Pending => None,
-        };
-        if let Some(session) = arrived {
-            self.state = wxr::State::Ready;
-            // Before the frame loop starts, because a WebGPU-compatible session with no layer set is a session
-            // whose animation frames never arrive at all - and before that, the session is put where the layer
-            // list can find it, because handing over a layer is a thing done *to* a session.
-            self.inner.borrow_mut().session = Some(session.clone());
-            self.start_gpu(&session);
-
-            // The browser can end a session on its own - the person takes the headset off, the page loses the
-            // display - and a session that does not notice is a frame loop drawing into nothing.
-            let ended = self.ended.clone();
-            let on_end = Closure::<dyn FnMut()>::new(move || ended.set(true));
-            session.set_onend(Some(on_end.as_ref().unchecked_ref()));
-            self.on_end = Some(on_end);
-
-            // Subscribed to here because a session is the only thing that can have the events, and this is the
-            // only moment there is one to ask.
-            self.input = Some(input::Events::new(&session, &self.sources));
-
-            // A depth range the app set before the session existed goes on now that there is a render state.
-            self.apply_depth_range();
-            self.request_frame();
-        }
-
-        // Before the visibility, because a session that has ended has no visibility worth reading.
-        if self.ended.get() {
-            if self.state != wxr::State::Ended {
-                self.state = wxr::State::Ended;
-                return Some(wxr::Event::StateChanged(wxr::State::Ended));
-            }
-            if !self.lost {
-                self.lost = true;
-                return Some(wxr::Event::Lost);
-            }
-        }
-
-        // A press the browser has already delivered is news before any tally of what is showing: it happened,
-        // and the frame loop reading it a rung later would be a frame loop acting on the wrong frame.
-        if let Some(events) = &self.input
-            && let Some(event) = events.poll()
-        {
-            return Some(event);
-        }
-
-        // A space that was recentered is news the same way, from a handler that fires between frames.
-        if let Some(event) = self.reset.borrow_mut().pop_front() {
-            return Some(event);
-        }
-
-        // Two axes, and each is news once: the session arriving or not being here yet is the lifecycle, and
-        // the browser's own `visibilityState` is the other - the same vocabulary, one rung at a time.
-        let session = self.inner.borrow().session.clone();
-        let next = match &session {
-            None => wxr::State::Connecting,
-            Some(_) => wxr::State::Ready,
-        };
-        if next != self.state {
-            self.state = next;
-            return Some(wxr::Event::StateChanged(next));
-        }
-        let shown = match &session {
-            None => wxr::Visibility::Hidden,
-            Some(session) => visibility(session.visibility_state()),
-        };
-        if shown != self.visibility {
-            self.visibility = shown;
-            return Some(wxr::Event::VisibilityChanged(shown));
-        }
-        None
+        self.poll_impl()
     }
 
     /// What the display shows behind the picture, which WebXR calls `environmentBlendMode`.
@@ -398,46 +318,7 @@ impl wxr::Session for WebXrSession {
     }
 
     fn space(&mut self, kind: wxr::SpaceKind) -> Result<wxr::ReferenceSpace, wxr::Error> {
-        let Some(session) = self.inner.borrow().session.clone() else {
-            return Err(wxr::Error::Unavailable(
-                "the session has not started yet".into(),
-            ));
-        };
-        let promise: js_sys::Promise = session
-            .request_reference_space(reference_space_type(kind))
-            .unchecked_into();
-        let slot = Rc::new(RefCell::new(Space {
-            space: None,
-            promise: Some(promise.clone()),
-            on_reset: None,
-        }));
-
-        // The id the handle will have, known before the space is here so that the reset handler can name it.
-        let id = self.spaces.len() as u32;
-        let fill = slot.clone();
-        let reset = self.reset.clone();
-        wasm_bindgen_futures::spawn_local(async move {
-            if let Ok(value) = JsFuture::from(promise).await
-                && let Ok(space) = value.dyn_into::<XrReferenceSpace>()
-            {
-                // The space itself says when its origin was recentered, and every pose measured in it is stale
-                // afterwards - so it is passed on as the session's news, because a core event has no space to
-                // arrive on.
-                let handler = Closure::<dyn FnMut(Event)>::new(move |_| {
-                    reset
-                        .borrow_mut()
-                        .push_back(wxr::Event::Reset(wxr::ReferenceSpace::new(kind, id)));
-                });
-                space.set_onreset(Some(handler.as_ref().unchecked_ref()));
-                let mut slot = fill.borrow_mut();
-                slot.space = Some(space);
-                slot.promise = None;
-                slot.on_reset = Some(handler);
-            }
-        });
-
-        self.spaces.push(slot);
-        Ok(wxr::ReferenceSpace::new(kind, id))
+        self.space_impl(kind)
     }
 
     fn offset_space(
@@ -445,100 +326,19 @@ impl wxr::Session for WebXrSession {
         space: wxr::ReferenceSpace,
         offset: wxr::Pose,
     ) -> Result<wxr::ReferenceSpace, wxr::Error> {
-        let Some(base) = self.spaces.get(space.id() as usize).cloned() else {
-            return Err(wxr::Error::NoSpace(space.kind));
-        };
-        let resolved = base.borrow().space.clone();
-        let pending = base.borrow().promise.clone();
-        let slot = Rc::new(RefCell::new(Space::default()));
-        // The base may still be a promise, and an offset of a space that is not here yet is not here yet
-        // either - so the same promise is waited on, which is why a slot keeps it.
-        if let Some(base) = resolved {
-            *slot.borrow_mut() = Space::resolved(offset_reference_space(&base, offset)?);
-        } else if let Some(promise) = pending {
-            let fill = slot.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                if let Ok(value) = JsFuture::from(promise).await
-                    && let Ok(base) = value.dyn_into::<XrReferenceSpace>()
-                    && let Ok(offset) = offset_reference_space(&base, offset)
-                {
-                    *fill.borrow_mut() = Space::resolved(offset);
-                }
-            });
-        } else {
-            return Err(wxr::Error::NoSpace(space.kind));
-        }
-        self.spaces.push(slot);
-        Ok(wxr::ReferenceSpace::new(
-            space.kind,
-            (self.spaces.len() - 1) as u32,
-        ))
+        self.offset_space_impl(space, offset)
     }
 
     fn begin(&mut self, _now: Duration, out: &mut wxr::Frame) -> Result<(), wxr::Error> {
-        out.views_mut().clear();
-        self.located = 0;
-        // Last frame's views are not this frame's, and a depth buffer is about *that* frame's eyes. The same
-        // is true of a layer's picture: it is the compositor's for one frame and taken back at the end of it.
-        self.frame_views.clear();
-        self.layer_images.clear();
-
-        // The frame is whatever the last callback left behind, and the clock is the callback's own: WebXR
-        // has no other.
-        let Some((frame, time)) = self.inner.borrow_mut().frame.take() else {
-            out.state = wxr::FrameState::Wait;
-            // Asked for again, because a callback that is not re-requested is a session that stops.
-            self.request_frame();
-            return Ok(());
-        };
-        self.current = Some(frame);
-        out.predicted_display_time = time;
-        out.state = wxr::FrameState::Render;
-        out.views_mut().clear();
-        Ok(())
+        self.begin_impl(_now, out)
     }
 
     fn binding(&mut self, _layer: wxr::Layer) -> Result<wxr::Binding, wxr::Error> {
-        // WebXR's binding is per GPU device, and a session has exactly one device and therefore one binding -
-        // the one `start_gpu` made. So this hands that back rather than making another: a second would be a
-        // second view of the same GPU device, which is not a thing the API has.
-        if self.gpu.is_some() {
-            Ok(wxr::Binding::new(0))
-        } else {
-            Err(wxr::Error::Unsupported(
-                "the session has no GPU device to bind from".into(),
-            ))
-        }
+        self.binding_impl(_layer)
     }
 
     fn sub_image(&mut self, _binding: wxr::Binding, view: usize) -> Option<wxr::SubImage> {
-        // The browser's own `XRView` for that index, kept by `views` for exactly this - `getViewSubImage` is
-        // asked one of those, not an index into anything this core has.
-        let xr_view = self.frame_views.get(view)?.clone();
-        let gpu = self.gpu.as_ref()?;
-        // A view the browser will not give a sub-image for is no sub-image, which is the same answer as a
-        // session with no binding at all.
-        let sub = throws::get_view_sub_image(&gpu.binding, &gpu.layer, &xr_view).ok()?;
-
-        let color = image_meta(&sub.color_texture());
-        let depth = sub.depth_stencil_texture();
-        let depth = (!depth.is_null_or_undefined()).then(|| image_meta(&depth));
-        let viewport = sub.viewport();
-
-        Some(wxr::SubImage {
-            color_size: wxr::glam::UVec2::new(color.extent.width, color.extent.height),
-            depth_size: depth
-                .map(|meta| wxr::glam::UVec2::new(meta.extent.width, meta.extent.height)),
-            viewport: wxr::Viewport {
-                x: viewport.x().max(0) as u32,
-                y: viewport.y().max(0) as u32,
-                width: viewport.width().max(0) as u32,
-                height: viewport.height().max(0) as u32,
-            },
-            // Which slice of a texture array this eye is, for a stereo layer that carries two pictures in one
-            // texture - which is what the view descriptor says and what `views` already reads.
-            array_index: Some(base_array_layer(&sub.get_view_descriptor())),
-        })
+        self.sub_image_impl(_binding, view)
     }
 
     fn views(
@@ -546,86 +346,7 @@ impl wxr::Session for WebXrSession {
         space: wxr::ReferenceSpace,
         out: &mut wxr::Frame,
     ) -> Result<(), wxr::Error> {
-        let Some(reference) = self
-            .spaces
-            .get(space.id() as usize)
-            .and_then(|slot| slot.borrow().space.clone())
-        else {
-            // The space is still a promise, which is not an error: it is one or two frames of a session
-            // that just started.
-            return Ok(());
-        };
-        let Some(frame) = self.current.clone() else {
-            return Ok(());
-        };
-        let Some(pose) = frame.get_viewer_pose(&reference) else {
-            return Ok(());
-        };
-
-        // The head, which WebXR reports beside the eyes: `transform` is `XRViewerPose.transform`, and the views
-        // below are placed around it.
-        out.viewer = transform(pose.transform());
-
-        let views = pose.views();
-        let out_views = out.views_mut();
-        for index in 0..views.length() {
-            let Ok(view) = views.get(index).dyn_into::<XrView>() else {
-                continue;
-            };
-            // Kept as the browser's own object, because `getDepthInformation` is asked one of these and not an
-            // index into anything this core has.
-            self.frame_views.push(view.clone());
-            // What this view draws into. With a layer, a sub-image per view says which part of the one
-            // texture and which array layer - and the texture itself is taken here too, so that `images` has
-            // it by the time the renderer asks.
-            let (viewport, layer) = match &self.gpu {
-                Some(gpu) => match throws::get_view_sub_image(&gpu.binding, &gpu.layer, &view) {
-                    Ok(sub) => {
-                        let color = sub.color_texture();
-                        let depth = sub.depth_stencil_texture();
-                        let viewport = sub.viewport();
-                        self.meta = image_meta(&color);
-                        self.image = Some(FrameImage {
-                            color,
-                            depth: (!depth.is_null_or_undefined()).then_some(depth),
-                        });
-                        (
-                            wxr::Viewport {
-                                x: viewport.x().max(0) as u32,
-                                y: viewport.y().max(0) as u32,
-                                width: viewport.width().max(0) as u32,
-                                height: viewport.height().max(0) as u32,
-                            },
-                            base_array_layer(&sub.get_view_descriptor()),
-                        )
-                    }
-                    // A sub-image the browser will not give is a frame with no picture, which is the same
-                    // answer as a session that never had a binding.
-                    Err(error) => {
-                        log::warn!("wxr-webxr: no sub-image for a view: {error:?}");
-                        (wxr::Viewport::default(), 0)
-                    }
-                },
-                None => (wxr::Viewport::default(), 0),
-            };
-            out_views.push(wxr::View {
-                eye: match view.eye() {
-                    XrEye::Left => wxr::Eye::Left,
-                    XrEye::Right => wxr::Eye::Right,
-                    XrEye::None | XrEye::__Invalid => wxr::Eye::Mono,
-                },
-                pose: transform(view.transform()),
-                fov: field_of_view(&view.projection_matrix()),
-                viewport,
-                image: 0,
-                layer,
-                recommended_viewport_scale: view
-                    .recommended_viewport_scale()
-                    .map(|scale| scale as f32),
-            });
-        }
-        self.located = out_views.len();
-        Ok(())
+        self.views_impl(space, out)
     }
 
     fn inputs(
@@ -633,93 +354,7 @@ impl wxr::Session for WebXrSession {
         space: wxr::ReferenceSpace,
         out: &mut Vec<wxr::InputSource>,
     ) -> Result<(), wxr::Error> {
-        let Some(reference) = self
-            .spaces
-            .get(space.id() as usize)
-            .and_then(|slot| slot.borrow().space.clone())
-        else {
-            return Ok(());
-        };
-        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
-            return Ok(());
-        };
-        let Some(session) = self.inner.borrow().session.clone() else {
-            return Ok(());
-        };
-
-        // A gamepad is the `xr-standard` mapping, which is a specification of its own and is what makes
-        // the button order below mean anything: the trigger first, the squeeze second, the stick's click
-        // fourth, and the stick's two axes after the touchpad's. A profile that does not follow it is a
-        // profile this reads the wrong way - which is a thing the gamepad's own `mapping` says, and a thing
-        // to handle the day one shows up.
-        let held = session.input_sources();
-        for index in 0..held.length() {
-            let Some(source) = held.get(index) else {
-                continue;
-            };
-            let handedness = match source.handedness() {
-                XrHandedness::Left => wxr::Handedness::Left,
-                XrHandedness::Right => wxr::Handedness::Right,
-                XrHandedness::None | XrHandedness::__Invalid => wxr::Handedness::Unknown,
-            };
-
-            let grip = source
-                .grip_space()
-                .and_then(|space| frame.get_pose(&space, &reference));
-            let aim = frame.get_pose(&source.target_ray_space(), &reference);
-
-            // The generated attribute names the DOM type and this backend leaves it to `web-sys`: a gamepad
-            // is not WebXR's object, and mirroring it would be a second Rust type for one thing.
-            let gamepad = (!source.gamepad().is_null_or_undefined())
-                .then(|| source.gamepad())
-                .and_then(|value| value.dyn_into::<web_sys::Gamepad>().ok());
-            let button = |index: u32| {
-                gamepad.as_ref().and_then(|gamepad| {
-                    gamepad
-                        .buttons()
-                        .get(index)
-                        .dyn_into::<web_sys::GamepadButton>()
-                        .ok()
-                })
-            };
-            let axis = |index: u32| {
-                gamepad
-                    .as_ref()
-                    .and_then(|gamepad| gamepad.axes().get(index).as_f64())
-                    .unwrap_or(0.0) as f32
-            };
-
-            // A source with no grip pose is an aim and nothing to hold - a gaze cursor - and it is not
-            // untracked: it has a direction, and the direction is the whole of it.
-            let tracked = grip.is_some() || aim.is_some();
-            out.push(wxr::InputSource {
-                // The same map the event handlers use, so a frame and an event name the same source the same
-                // way - which is the whole reason the core has an id where WebXR has an object.
-                id: self.sources.id(&source),
-                handedness,
-                target_ray_mode: input::target_ray_mode(&source),
-                // A source with a `hand` is one with a skeleton to ask for, which is the whole of what WebXR
-                // says about it: whether the fingers are tracked is `hand`'s answer, not this one's.
-                hand: source.hand().is_some(),
-                grip: grip
-                    .map(|pose| transform(pose.transform()))
-                    .unwrap_or(wxr::Pose::IDENTITY),
-                aim: aim
-                    .map(|pose| transform(pose.transform()))
-                    .unwrap_or(wxr::Pose::IDENTITY),
-                tracked,
-                buttons: wxr::Buttons {
-                    select: button(0).is_some_and(|button| button.pressed()),
-                    squeeze: button(1).is_some_and(|button| button.pressed()),
-                    menu: button(3).is_some_and(|button| button.pressed()),
-                },
-                axes: wxr::Axes {
-                    trigger: button(0).map(|button| button.value() as f32).unwrap_or(0.0),
-                    thumbstick: wxr::glam::Vec2::new(axis(2), axis(3)),
-                },
-            });
-        }
-        Ok(())
+        self.inputs_impl(space, out)
     }
 
     fn hand(
@@ -728,35 +363,7 @@ impl wxr::Session for WebXrSession {
         space: wxr::ReferenceSpace,
         out: &mut wxr::Hand,
     ) -> Result<(), wxr::Error> {
-        out.clear();
-        let Some(input) = self.sources.get(source) else {
-            return Ok(());
-        };
-        let Some(hand) = input.hand() else {
-            return Ok(());
-        };
-        let Some(reference) = self
-            .spaces
-            .get(space.id() as usize)
-            .and_then(|slot| slot.borrow().space.clone())
-        else {
-            return Ok(());
-        };
-        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
-            return Ok(());
-        };
-        // A joint at a time, because a joint is the call the browser has - and a joint it will not answer for is
-        // a joint that is not tracked, which is what `None` in an empty `Hand` already means.
-        for joint in wxr::HandJoint::ALL {
-            let space = hand.get(hand_joint(joint));
-            if let Some(pose) = frame.get_joint_pose(&space, &reference) {
-                out.joints_mut()[joint.index()] = Some(wxr::Joint {
-                    pose: transform(pose.transform()),
-                    radius: pose.radius(),
-                });
-            }
-        }
-        Ok(())
+        self.hand_impl(source, space, out)
     }
 
     fn planes(
@@ -764,19 +371,7 @@ impl wxr::Session for WebXrSession {
         space: wxr::ReferenceSpace,
         out: &mut Vec<wxr::Plane>,
     ) -> Result<(), wxr::Error> {
-        out.clear();
-        let Some(reference) = self
-            .spaces
-            .get(space.id() as usize)
-            .and_then(|slot| slot.borrow().space.clone())
-        else {
-            return Ok(());
-        };
-        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
-            return Ok(());
-        };
-        planes::detected(&frame, &reference, &self.planes, out);
-        Ok(())
+        self.planes_impl(space, out)
     }
 
     fn bounds(
@@ -784,66 +379,14 @@ impl wxr::Session for WebXrSession {
         space: wxr::ReferenceSpace,
         out: &mut Vec<wxr::glam::Vec2>,
     ) -> Result<(), wxr::Error> {
-        out.clear();
-        let Some(space) = self
-            .spaces
-            .get(space.id() as usize)
-            .and_then(|slot| slot.borrow().space.clone())
-        else {
-            return Ok(());
-        };
-        // `boundsGeometry` is on the bounded-floor space and nowhere else, so a space that is not one is not
-        // this type - which is an outline with no points rather than a failure.
-        let Ok(bounds) = space.dyn_into::<XrBoundedReferenceSpace>() else {
-            return Ok(());
-        };
-        for point in bounds.bounds_geometry().iter() {
-            let Ok(point) = point.dyn_into::<DomPointReadOnly>() else {
-                continue;
-            };
-            out.push(wxr::glam::Vec2::new(point.x() as f32, point.z() as f32));
-        }
-        Ok(())
+        self.bounds_impl(space, out)
     }
 
     fn hit_test_source(
         &mut self,
         space: wxr::ReferenceSpace,
     ) -> Result<wxr::HitTestSource, wxr::Error> {
-        let Some(session) = self.inner.borrow().session.clone() else {
-            return Err(wxr::Error::Unavailable(
-                "the session has not started yet".into(),
-            ));
-        };
-        // Asked of the session before the browser is: `requestHitTestSource` throws `NotSupportedError` when the
-        // feature was not granted, and a session that says it does not have hit testing is a better answer than
-        // an exception from inside a frame.
-        if !has_feature(&session, "hit-test") {
-            return Err(wxr::Error::Unsupported("hit-test".into()));
-        }
-        let Some(base) = self.spaces.get(space.id() as usize).cloned() else {
-            return Err(wxr::Error::NoSpace(space.kind));
-        };
-        let slot = Rc::new(RefCell::new(hit::Slot::default()));
-        // The space may still be a promise, and a ray out of a space that is not here is not here either - so
-        // the request waits on the same promise the space does.
-        let resolved = base.borrow().space.clone();
-        if let Some(base) = resolved {
-            hit::request(&session, &base, slot.clone());
-        } else if let Some(promise) = base.borrow().promise.clone() {
-            let fill = slot.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                if let Ok(value) = JsFuture::from(promise).await
-                    && let Ok(base) = value.dyn_into::<XrReferenceSpace>()
-                {
-                    hit::request(&session, &base, fill);
-                }
-            });
-        } else {
-            return Err(wxr::Error::NoSpace(space.kind));
-        }
-        self.hit_sources.push(slot);
-        Ok(wxr::HitTestSource::new((self.hit_sources.len() - 1) as u32))
+        self.hit_test_source_impl(space)
     }
 
     fn hits(
@@ -852,42 +395,11 @@ impl wxr::Session for WebXrSession {
         space: wxr::ReferenceSpace,
         out: &mut Vec<wxr::Hit>,
     ) -> Result<(), wxr::Error> {
-        out.clear();
-        let Some(slot) = self.hit_sources.get(source.id() as usize) else {
-            return Ok(());
-        };
-        let Some(source) = slot.borrow().source() else {
-            return Ok(());
-        };
-        let Some(base) = self
-            .spaces
-            .get(space.id() as usize)
-            .and_then(|slot| slot.borrow().space.clone())
-        else {
-            return Ok(());
-        };
-        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
-            return Ok(());
-        };
-        hit::results(&frame, &source, &base, out);
-        Ok(())
+        self.hits_impl(source, space, out)
     }
 
     fn light_probe(&mut self) -> Result<wxr::LightProbe, wxr::Error> {
-        let Some(session) = self.inner.borrow().session.clone() else {
-            return Err(wxr::Error::Unavailable(
-                "the session has not started yet".into(),
-            ));
-        };
-        // For the same reason as a hit-test source: `requestLightProbe` throws `NotSupportedError` rather than
-        // rejecting when the feature is not there.
-        if !has_feature(&session, "light-estimation") {
-            return Err(wxr::Error::Unsupported("light-estimation".into()));
-        }
-        let slot = Rc::new(RefCell::new(light::Slot::default()));
-        light::request(&session, slot.clone());
-        self.light_probes.push(slot);
-        Ok(wxr::LightProbe::new((self.light_probes.len() - 1) as u32))
+        self.light_probe_impl()
     }
 
     fn light(
@@ -895,18 +407,7 @@ impl wxr::Session for WebXrSession {
         probe: wxr::LightProbe,
         out: &mut wxr::LightEstimate,
     ) -> Result<(), wxr::Error> {
-        *out = wxr::LightEstimate::default();
-        let Some(slot) = self.light_probes.get(probe.id() as usize) else {
-            return Ok(());
-        };
-        let Some(probe) = slot.borrow().probe() else {
-            return Ok(());
-        };
-        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
-            return Ok(());
-        };
-        light::estimate(&frame, &probe, out);
-        Ok(())
+        self.light_impl(probe, out)
     }
 
     fn set_foveation(&mut self, amount: f32) {
@@ -928,20 +429,7 @@ impl wxr::Session for WebXrSession {
         space: wxr::ReferenceSpace,
         pose: wxr::Pose,
     ) -> Result<wxr::Anchor, wxr::Error> {
-        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
-            return Err(wxr::Error::Unavailable("a frame has not begun yet".into()));
-        };
-        let Some(base) = self
-            .spaces
-            .get(space.id() as usize)
-            .and_then(|slot| slot.borrow().space.clone())
-        else {
-            return Err(wxr::Error::NoSpace(space.kind));
-        };
-        let slot = Rc::new(RefCell::new(anchors::Slot::default()));
-        anchors::create(&frame, &base, rigid(pose)?, slot.clone());
-        self.anchors.push(slot);
-        Ok(wxr::Anchor::new((self.anchors.len() - 1) as u32))
+        self.anchor_impl(space, pose)
     }
 
     fn anchor_pose(
@@ -949,34 +437,11 @@ impl wxr::Session for WebXrSession {
         anchor: wxr::Anchor,
         space: wxr::ReferenceSpace,
     ) -> Result<Option<wxr::Pose>, wxr::Error> {
-        let Some(anchor) = self
-            .anchors
-            .get(anchor.id() as usize)
-            .and_then(|slot| slot.borrow().anchor())
-        else {
-            return Ok(None);
-        };
-        let Some(base) = self
-            .spaces
-            .get(space.id() as usize)
-            .and_then(|slot| slot.borrow().space.clone())
-        else {
-            return Ok(None);
-        };
-        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
-            return Ok(None);
-        };
-        Ok(anchors::pose(&frame, &anchor, &base))
+        self.anchor_pose_impl(anchor, space)
     }
 
     fn release_anchor(&mut self, anchor: wxr::Anchor) {
-        let Some(slot) = self.anchors.get(anchor.id() as usize) else {
-            return;
-        };
-        if let Some(anchor) = slot.borrow().anchor() {
-            anchor.delete();
-        }
-        slot.borrow_mut().forget();
+        self.release_anchor_impl(anchor)
     }
 
     fn depth(&mut self, view: usize) -> Option<(&Self::Depth, wxr::DepthInfo)> {
@@ -996,133 +461,30 @@ impl wxr::Session for WebXrSession {
         shape: wxr::LayerShape,
         pixels: wxr::Extent2d,
     ) -> Result<wxr::Layer, wxr::Error> {
-        let Some(gpu) = self.gpu.as_ref() else {
-            return Err(wxr::Error::Unsupported(
-                "this session has no binding to make a layer from".into(),
-            ));
-        };
-        // A quad is the one shape this backend makes. The bit is per shape on the platform too, so a session
-        // with one shape and not another is the ordinary case rather than an odd one.
-        let (width, height) = match shape {
-            wxr::LayerShape::Quad { width, height } => (width, height),
-            other => return Err(wxr::Error::Unsupported(format!("{} layers", other.name()))),
-        };
-        // A layer is made *in* a space, so a space that is still a promise is a layer to ask for again - the
-        // same answer `hit_test_source` gives, for the same reason.
-        let Some(reference) = self
-            .spaces
-            .get(space.id() as usize)
-            .and_then(|slot| slot.borrow().space.clone())
-        else {
-            return Err(wxr::Error::Unavailable(
-                "the space has not resolved yet".into(),
-            ));
-        };
-        let init = XrgpuQuadLayerInit::new(
-            &gpu.binding.get_preferred_color_format(),
-            &reference,
-            pixels.height,
-            pixels.width,
-        );
-        // Set again by name, because the constructor takes them in the IDL's order and this is the one place a
-        // transposed pair would still compile.
-        init.set_view_pixel_height(pixels.height);
-        init.set_view_pixel_width(pixels.width);
-        // One picture for both eyes, which is the thing that makes a quad worth handing to a compositor at all -
-        // and the only layout this backend asks for, though it is also the default.
-        init.set_layout(XrLayerLayout::Mono);
-        init.set_width(width);
-        init.set_height(height);
-        let layer = throws::create_quad_layer(&gpu.binding, &init)
-            .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?;
-        // A layer is a picture *over* what is already there, so its alpha is part of the picture: a panel drawn
-        // with a transparent background is transparent, which it is not if the compositor ignores the channel.
-        // Opaque content says the same thing with every alpha at one.
-        layer.set_blend_texture_source_alpha(true);
-        let id = self.layers.len() as u32;
-        self.layers.push(Some(layers::Slot {
-            layer,
-            pose: wxr::Pose::IDENTITY,
-        }));
-        // The browser composites what the render state names, so a layer it has not been told about is a
-        // texture nothing reads.
-        if let Err(error) = self.present_layers() {
-            log::warn!("wxr-webxr: the new layer was not presented: {error}");
-        }
-        log::info!(
-            "wxr-webxr: a quad layer, {width}x{height} m at {}x{} px",
-            pixels.width,
-            pixels.height
-        );
-        Ok(wxr::Layer::new(id))
+        self.layer_impl(space, shape, pixels)
     }
 
     fn layer_image(&mut self, layer: wxr::Layer) -> Option<(&Self::Image, wxr::LayerImage)> {
-        let index = layer.id() as usize;
-        let (image, meta, viewport) = {
-            let gpu = self.gpu.as_ref()?;
-            let frame = self.current.clone()?;
-            let slot = self.layers.get(index)?.as_ref()?;
-            // One picture per layer per frame, and a second ask in the same frame gets the same texture - so
-            // this is the frame's picture, and the frame is what takes it back.
-            let sub = throws::get_sub_image(&gpu.binding, &slot.layer, &frame, XrEye::None).ok()?;
-            let color = sub.color_texture();
-            let depth = sub.depth_stencil_texture();
-            let viewport = sub.viewport();
-            (
-                FrameImage {
-                    color: color.clone(),
-                    depth: (!depth.is_null_or_undefined()).then_some(depth),
-                },
-                image_meta(&color),
-                wxr::Viewport {
-                    x: viewport.x().max(0) as u32,
-                    y: viewport.y().max(0) as u32,
-                    width: viewport.width().max(0) as u32,
-                    height: viewport.height().max(0) as u32,
-                },
-            )
-        };
-        self.layer_images.resize_with(self.layers.len(), || None);
-        self.layer_images[index] = Some(image);
-        let image = self.layer_images[index].as_ref()?;
-        Some((image, wxr::LayerImage { meta, viewport }))
+        self.layer_image_impl(layer)
     }
 
     fn set_layer_pose(&mut self, layer: wxr::Layer, pose: wxr::Pose) -> Result<(), wxr::Error> {
-        let Some(slot) = self
-            .layers
-            .get_mut(layer.id() as usize)
-            .and_then(Option::as_mut)
-        else {
-            return Err(wxr::Error::Unsupported("no such layer".into()));
-        };
-        // Relative to the layer's own space, which is why the slot keeps the space it was made in rather than
-        // taking one here.
-        slot.layer.set_transform(&rigid(pose)?);
-        slot.pose = pose;
-        Ok(())
+        self.set_layer_pose_impl(layer, pose)
     }
 
     fn release_layer(&mut self, layer: wxr::Layer) {
-        let Some(slot) = self.layers.get_mut(layer.id() as usize) else {
-            return;
-        };
-        let Some(slot) = slot.take() else {
-            return;
-        };
-        // Told explicitly rather than left to the collector: a layer the runtime is not told about is a picture
-        // the compositor keeps presenting.
-        slot.layer.destroy();
-        if let Err(error) = self.present_layers() {
-            log::warn!("wxr-webxr: the layer list was not updated: {error}");
-        }
+        self.release_layer_impl(layer)
     }
 
     fn end(&mut self, _frame: &mut wxr::Frame) -> Result<(), wxr::Error> {
-        // There is nothing to hand back: the compositor has no image of ours. The next frame is asked for,
-        // which is what keeps the session running.
-        self.request_frame();
-        Ok(())
+        self.end_impl(_frame)
     }
 }
+mod anchors;
+mod events;
+mod frames;
+mod layers;
+mod light;
+mod sources;
+mod spaces;
+mod world;

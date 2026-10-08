@@ -1,3 +1,5 @@
+#![cfg(not(target_family = "wasm"))]
+
 //! Where two readings of the WebXR API agree, and where they must.
 //!
 //! A specification fixes some things exactly - how many session modes there are, what an eye is - and those

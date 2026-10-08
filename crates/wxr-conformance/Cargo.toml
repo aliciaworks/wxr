@@ -8,7 +8,9 @@ edition.workspace = true
 # both implementations. `wxr` is the one under test and `servo-webxr` is the reference: a second, independent
 # implementation of the WebXR API in Rust, which is what makes a differential test possible at all - two
 # readings of one specification, compared.
-[dev-dependencies]
+# The reference reads a browser, so it is a dependency everywhere a browser is not - which is where these
+# tests run: they compare vocabulary, and vocabulary is the same on every host.
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 # The reference. MPL-2.0, and it stays a dependency rather than a copy: what is being compared is its reading
 # of the specification, and a copy of it would be our reading of its reading.
 servo-webxr-api = "0.7"
