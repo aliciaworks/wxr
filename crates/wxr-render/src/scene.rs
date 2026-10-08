@@ -302,10 +302,15 @@ impl Scene {
             depth,
         }
     }
+}
 
+impl crate::Draw for Scene {
     /// Draw the scene for one eye: its own field of view, its own place, the same geometry - and, when the
     /// session measured the room, its depth to test against.
-    pub fn draw(
+    ///
+    /// This is the fixture's implementation of [`crate::Draw`], the seam an app writes its own scenes
+    /// against: nothing here is the renderer's, and a real scene replaces it rather than extends it.
+    fn draw(
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,

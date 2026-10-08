@@ -137,13 +137,44 @@ pub trait Import {
     }
 }
 
+/// What a renderer draws, for one eye.
+///
+/// The renderer's part is the half that is the same for every picture - the attachments, the depth buffer,
+/// and the room's occlusion - and what is *in* a picture is the app's: geometry, materials, lighting, and how
+/// many draws that takes are none of this crate's business, because an XR core over wgpu does not know what
+/// an app wants to show. This trait is the seam the two meet at, and it is the only thing a renderer needs
+/// from a scene.
+///
+/// [`scene::Scene`] is one implementation, and it is a fixture rather than the renderer: the two triangles
+/// exist to exercise the projection and the depth buffer - a picture whose projection is only ever tested and
+/// never used is a projection no one has verified - and an app writes its own.
+///
+/// The room's occlusion is passed through rather than resolved here, because it belongs to the view and the
+/// frame owns it: a scene that hides behind real furniture needs the texture and what its values mean, and a
+/// scene with no use for it ignores the argument.
+pub trait Draw {
+    /// Draw the scene for one eye, into the pass the renderer made for it.
+    ///
+    /// `occlusion` is the session's measurement of the real world for this view, when it made one: the
+    /// texture to test fragments against and what one of its values is worth. `None` is a session that
+    /// measured nothing - the WebXR mock, a device with no room sensing - and then a scene draws everything.
+    fn draw(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        view: &wxr::View,
+        occlusion: Option<&(wgpu::Texture, scene::Occlusion)>,
+        pass: &mut wgpu::RenderPass<'_>,
+    );
+}
+
 /// Draws a frame into whatever the session says the picture goes into.
 pub struct Renderer {
     /// The colour every eye starts as. A scene draws on top of it.
     clear: wgpu::Color,
     /// What to draw, if anything. A renderer with no scene clears, which is what a frame loop wants to be
     /// able to do while the thing being drawn is still being written.
-    scene: Option<scene::Scene>,
+    scene: Option<Box<dyn Draw>>,
     /// One private depth buffer per image, made on first use - the same shape as the image it tests against,
     /// and what a session with no depth of its own gets.
     depth_textures: Vec<Option<wgpu::Texture>>,
@@ -171,11 +202,15 @@ impl Renderer {
         }
     }
 
-    /// A renderer that draws something: a triangle, with each eye's own projection and place.
+    /// A renderer that draws the built-in fixture: two triangles, with each eye's own projection and place.
     ///
     /// `depth` is the convention the target insists on - [`Depth::ZeroToOne`] everywhere but visionOS, whose
     /// compositor drawables are reverse-Z. It is an argument rather than a default because drawing into one
     /// with the wrong convention is a wrong picture rather than a compilation error.
+    ///
+    /// This is a convenience for an app that wants *something* on screen before it has a scene of its own -
+    /// the tests, the backend examples, the visionOS app. A real app builds its own [`Draw`] and hands it to
+    /// [`Renderer::with`].
     pub fn with_scene(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
@@ -183,7 +218,20 @@ impl Renderer {
         depth: Depth,
     ) -> Self {
         Self {
-            scene: Some(scene::Scene::new(device, format, depth)),
+            scene: Some(Box::new(scene::Scene::new(device, format, depth))),
+            depth,
+            ..Self::new(clear)
+        }
+    }
+
+    /// A renderer that draws what it is handed, which is how an app brings its own scene.
+    ///
+    /// The scene is boxed rather than a type parameter because the renderer is made once and lives for the
+    /// session, and a game's scene is not a compile-time fact of the renderer that draws it. `depth` is the
+    /// same convention [`with_scene`](Renderer::with_scene) takes, for the same reason.
+    pub fn with(clear: [f64; 4], depth: Depth, scene: impl Draw + 'static) -> Self {
+        Self {
+            scene: Some(Box::new(scene)),
             depth,
             ..Self::new(clear)
         }

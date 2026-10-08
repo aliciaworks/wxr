@@ -57,7 +57,7 @@
 //! absence: the API does have an environment probe, but it hands back a *cubemap* rather than the spherical
 //! harmonics the core's `LightEstimate` is, so it maps to WebXR's reflection cubemap - which the core has no
 //! word for yet. Each answers `None`, an empty list or `Error::Unsupported`, which is exactly what
-//! [`wxr::Features`] exists to say: the capability bits this backend sets are what the platform has, and the
+//! `wxr::Features` exists to say: the capability bits this backend sets are what the platform has, and the
 //! ones it does not set are what it does not.
 
 #![cfg(target_vendor = "apple")]
