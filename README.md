@@ -25,7 +25,7 @@ owns one, wgpu is made to adopt it.
 
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
-| **Native API reached** - of each backend's own spec | 164/290 | 37/551 | 47/618 |
+| **Native API reached** - of each backend's own spec | 164/290 | 40/551 | 47/618 |
 | *as a percentage* | 57% | 7% | 8% |
 | **WebXR API reached** - of the whole API | 294/452 | 176/452 | 177/452 |
 | *as a percentage* | 65% | 39% | 39% |
