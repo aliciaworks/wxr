@@ -24,7 +24,9 @@ owns one, wgpu is made to adopt it.
 **Two numbers, and both are mechanical** - `python3 Tools/xr_coverage.py`:
 
 - **Native API reached**, of each backend's own spec: WebXR **30%**, OpenXR **1%**, visionOS **7%**.
-- **WebXR translated**, of the core's 36 `Session` methods: WebXR **94%**, OpenXR **61%**, visionOS **56%**.
+- **WebXR translated**, of the core's 36 `Session` methods: WebXR **92%**, OpenXR **58%**, visionOS **47%**.
+  Of the WebXR API itself the core speaks 39 of 138 members, **28%** - and that is the ceiling for all
+  three, because a backend cannot implement a word the core does not have.
 
 ## The core is small on purpose
 
@@ -267,11 +269,11 @@ every vendor extension is counted, and ARKit's C surface is 618 functions once a
 are in it. A native item with no counterpart in the core is one no backend will ever name, so none of these
 can reach 100% by design.
 
-The second is the direction that says whether the *unification* is done: of the core's own `Session` surface,
-36 methods, the backends implement **94%**, **61%** and **56%** - `wxr-webxr` misses two, `wxr-openxr` and
-`wxr-apple` miss fourteen and sixteen, and every one of those is a method and a `Features` bit. And of the
-WebXR IDL itself the core names 39 of 138 members, **28%**, because the core is the vocabulary all three
-share rather than a mirror of any one spec.
+The second is the direction that says whether the *unification* is done, and it has two factors. The core
+speaks 39 of WebXR's 138 IDL members - it is the vocabulary all three backends share rather than a mirror
+of the spec - and of its own 36 `Session` methods the backends define **92%**, **58%** and **47%**. So a
+backend cannot reach the whole of WebXR by implementing methods: the word has to exist in the core first.
+Widening the core and filling the methods are the two things that move this, and both are work.
 
 ## What is not decided yet
 

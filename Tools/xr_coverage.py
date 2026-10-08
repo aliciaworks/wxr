@@ -198,20 +198,49 @@ def webxr_to_core() -> tuple:
     return len(hit), len(items)
 
 
-def core_to_native() -> None:
-    """Of the core's own surface, how much each backend implements - the WebXR-translation number.
-
-    The whole `Session` trait, not the ten `Features`: a capability bit is a label for a method, and what a
-    backend "translates" is the method. Same mechanical rule as everywhere else - the method's name appears in
-    that backend's own source.
-    """
+def core_methods() -> list:
+    """The methods the core's `Session` trait declares - the WebXR vocabulary, as Rust."""
     text = (ROOT / "crates/wxr/src/session.rs").read_text()
-    methods = sorted(set(re.findall(r"^\s{4}fn (\w+)", text, re.M)))
-    print(f"\n## core -> native: the core's {len(methods)} Session methods, per backend")
+    return sorted(set(re.findall(r"^\s{4}fn (\w+)", text, re.M)))
+
+
+def session_impl(crate: str) -> set:
+    """The `Session` methods a backend actually defines.
+
+    Only what is inside its `impl wxr::Session for X` block: a helper with the same name as a trait method -
+    and there are several, `depth` and `planes` among them - is not the method, and counting it is how a
+    backend that offers one capability reads as 94%.
+    """
+    path = ROOT / "crates" / crate / "src" / "session.rs"
+    if not path.exists():
+        return set()
+    text = path.read_text()
+    m = re.search(r"impl\s+(?:\w+::)?Session\s+for\s+\w+\s*\{", text)
+    if not m:
+        return set()
+    depth, block = 0, []
+    for ch in text[m.start() :]:
+        block.append(ch)
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                break
+    return set(re.findall(r"\bfn\s+(\w+)", "".join(block)))
+
+
+def core_to_native() -> None:
+    """Of the core's `Session` surface, how much each backend actually defines."""
+    methods = core_methods()
+    print(f"\n## WebXR -> native: the core's {len(methods)} Session methods, per backend")
     for crate in ["wxr-webxr", "wxr-openxr", "wxr-apple"]:
-        src = source_of(crate)
-        hit = [m for m in methods if re.search(rf"\bfn {m}\b", src)]
-        print(f"- {crate}: **{100 * len(hit) / len(methods):.0f}%** ({len(hit)}/{len(methods)})")
+        hit = session_impl(crate)
+        covered = [m for m in methods if m in hit]
+        print(
+            f"- {crate}: **{100 * len(covered) / len(methods):.0f}%**"
+            f" ({len(covered)}/{len(methods)})"
+        )
 
 
 def report(title, total, source, aliases=None):
