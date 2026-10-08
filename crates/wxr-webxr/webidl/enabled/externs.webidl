@@ -43,6 +43,15 @@ typedef any AudioBuffer;
 // would be a second Rust type for one object. What WebXR names is the *type* of the attribute.
 typedef any Gamepad;
 
+// Its actuator is the one exception, and it is the haptics draft that makes it one: the draft declares
+// `partial interface GamepadHapticActuator`, so the base has to be declared somewhere, and once it is, the
+// standard `pulse` belongs with it - one generated type with both calls, rather than one that can play a
+// waveform and not a buzz. `web-sys`'s own `GamepadHapticActuator` stays off, because two Rust types under
+// one JavaScript name is the duplicate `wasm-bindgen` refuses.
+interface GamepadHapticActuator {
+  Promise<boolean> pulse(double value, double duration);
+};
+
 // A `typedef` and not an `enum`, which needs explaining: a generated string enum is a JavaScript object that
 // `wasm-bindgen` registers under its JavaScript name, and two of them with one name is a duplicate it refuses
 // when the bindings are generated. `PermissionState` belongs to the Permissions specification and `web-sys`

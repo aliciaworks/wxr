@@ -318,6 +318,45 @@ pub trait Session: Any {
         Ok(())
     }
 
+    /// Make a source buzz: `intensity` from `0` to `1`, for `duration` - WebXR's
+    /// `GamepadHapticActuator.pulse`, and the one shape every platform with an actuator can be asked for.
+    ///
+    /// It is a *request*, like [`set_foveation`](Session::set_foveation): intensity is clamped rather than
+    /// refused, a source with no actuator is a source that does not move, and a platform that cannot reach
+    /// its hardware answers [`Error::Unsupported`] rather than pretending. Which is why
+    /// [`InputSource::haptics`] is worth reading first: it is the difference between a game that checks and
+    /// one that asks a question whose answer it could have known.
+    ///
+    /// Whether there is anything to ask at all is [`Features::HAPTICS`].
+    fn pulse(
+        &mut self,
+        _source: InputId,
+        _intensity: f32,
+        _duration: Duration,
+    ) -> Result<(), Error> {
+        Err(Error::Unsupported("haptics".into()))
+    }
+
+    /// Play a buffer of haptic samples on a source - WebXR's `GamepadHapticActuator.playPCM` and OpenXR's
+    /// `XR_FB_haptic_pcm`, which are the same idea: the app hands over the waveform instead of describing it
+    /// with an intensity.
+    ///
+    /// `samples` are amplitudes in `-1..=1` at `sample_rate` hertz, which is what a platform's PCM haptics
+    /// want and what a browser's `AudioBuffer` carries - so an app that already has an audio buffer has the
+    /// hard part. A backend without PCM output answers [`Error::Unsupported`], and a source that cannot be
+    /// felt is the same quiet no-op [`pulse`](Session::pulse) makes of one.
+    ///
+    /// Not every session has this even where it has [`pulse`](Session::pulse): OpenXR's PCM is Meta's
+    /// extension on top of the vibration one, so a runtime can have the buzz and not the waveform.
+    fn play_pcm(
+        &mut self,
+        _source: InputId,
+        _samples: &[f32],
+        _sample_rate: f32,
+    ) -> Result<(), Error> {
+        Err(Error::Unsupported("haptic samples".into()))
+    }
+
     /// Fill in the surfaces the runtime has found, in the space given.
     ///
     /// WebXR's `XRFrame.detectedPlanes`, and the same shape a frame's views have: what is detected *this* frame

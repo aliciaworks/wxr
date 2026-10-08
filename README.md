@@ -25,7 +25,7 @@ owns one, wgpu is made to adopt it.
 
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
-| **Native API reached** - of each backend's own spec | 164/290 | 40/551 | 47/618 |
+| **Native API reached** - of each backend's own spec | 164/290 | 41/551 | 47/618 |
 | *as a percentage* | 57% | 7% | 8% |
 | **WebXR API reached** - of the whole API | 294/452 | 176/452 | 177/452 |
 | *as a percentage* | 65% | 39% | 39% |
@@ -283,10 +283,11 @@ are in it. A native item with no counterpart in the core is one no backend will 
 can reach 100% by design.
 
 The second is the direction that says whether the *unification* is done, and it has two factors. The core
-speaks 39 of WebXR's 138 IDL members - it is the vocabulary all three backends share rather than a mirror
-of the spec - and of its own `Session` methods the backends define **94%**, **60%** and **57%**. So a
-backend cannot reach the whole of WebXR by implementing methods: the word has to exist in the core first.
-Widening the core and filling the methods are the two things that move this, and both are work.
+speaks 61% of WebXR's vocabulary - 276 of the 452 members across every specification - it is the vocabulary all
+three backends share rather than a mirror of the spec - and of its own `Session` methods the backends define
+**88%**, **63%** and **47%**. So a backend cannot reach the whole of WebXR by implementing
+methods: the word has to exist in the core first. Widening the core and filling the methods are the two things
+that move this, and both are work.
 
 ## What is not decided yet
 
@@ -305,6 +306,8 @@ Widening the core and filling the methods are the two things that move this, and
   and that is read back off the GPU in a test - and not a scene. Lighting, textures, instancing and a tone map
   are a renderer's business and this one is a seam. What is missing in the same tier is *submitting* the depth
   to the compositor: all three runtimes can take it and none of this does.
-- **Input beyond the intersection.** Gestures, the hand skeleton, foveation and haptics are all real platform
-  features that this core says nothing about on purpose. The day one of them is needed, it is one `cfg` away
-  - and the seam it should come through is worth choosing then rather than now.
+- **Input beyond the intersection.** The buttons and axes are the intersection of the three platforms and
+  nothing more, so a thumbstick's click, a touchpad's position, and a gesture a platform recognises for itself
+  are all outside it. What the core has widened to - the hand skeleton, foveation, haptics - it did one concept
+  at a time, through the same seam each time: a capability bit, a method or a field, and one backend filled
+  first with the other two left saying honestly that they cannot.

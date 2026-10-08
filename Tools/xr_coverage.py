@@ -256,11 +256,17 @@ def core_to_native() -> None:
         )
 
 
-def webxr_interfaces() -> set:
-    """Every interface, dictionary and enum the WebXR IDL declares."""
+def webxr_interfaces(include_drafts: bool = True) -> set:
+    """Every interface, dictionary and enum the WebXR IDL declares.
+
+    `include_drafts` off is what the *count* reads: a community-group draft is bound so it can be called, and
+    left out of every number, so a name only a draft declares is not something the count is missing.
+    """
     names = set()
     idl = ROOT / "crates/wxr-webxr" / "webidl" / "enabled"
     for path in sorted(idl.glob("*.webidl")):
+        if not include_drafts and path.name in WEBXR_DRAFTS:
+            continue
         text = re.sub(r"//.*", "", path.read_text(errors="ignore"))
         names |= set(
             re.findall(
@@ -312,10 +318,17 @@ def webxr_gap() -> None:
     text = "\n".join(
         p.read_text(errors="ignore") for p in (ROOT / "crates/wxr/src").rglob("*.rs")
     ).lower()
-    names = {n for n in webxr_interfaces() if n.startswith("XR")}
+    counted = {n for n in webxr_interfaces(include_drafts=False) if n.startswith("XR")}
+    drafts = {n for n in webxr_interfaces() if n.startswith("XR")} - counted
+    names = counted | drafts
     missing = sorted(
         n for n in names if n.lower() not in text and n.lower().removeprefix("xr") not in text
     )
+    # A name only a draft declares is marked, because the number above leaves drafts out: it is a concept this
+    # core could give a word to, and it is not one the count is missing.
+    def label(name: str) -> str:
+        return f"`{name}` *(draft)*" if name in drafts else f"`{name}`"
+
     # A `*Init` dictionary and a `*Set` are how the spec passes constructor arguments and collections; the
     # core takes those as arguments and slices, so they are not missing words. What is left is either a rename
     # - `XRRigidTransform` is `Pose` - or a concept the core does not have.
@@ -329,9 +342,9 @@ def webxr_gap() -> None:
     ]
     print(f"\n## WebXR XR-prefixed interfaces with no core name: {len(missing)} of {len(names)}")
     print(f"\n### the real gaps ({len(rest)}) - a concept the core has no word for, or a rename to check")
-    print(", ".join(f"`{n}`" for n in rest))
+    print(", ".join(label(n) for n in rest))
     print(f"\n### dictionaries and sets ({len(dictionaries)}) - how the spec passes arguments and collections")
-    print(", ".join(f"`{n}`" for n in dictionaries))
+    print(", ".join(label(n) for n in dictionaries))
     print(f"\n### the same concept under a word of this core's own ({len(renames)})")
     print(", ".join(f"`{n}` is `{RENAMES[n]}`" for n in renames))
     print(f"\n### one thing the specification names many times ({len(collapsed)})")

@@ -90,6 +90,8 @@ impl Backend for MockBackend {
             frames: 0,
             image: 0,
             layers: Vec::new(),
+            pulses: Vec::new(),
+            waveforms: Vec::new(),
         })
     }
 }
@@ -126,6 +128,12 @@ pub struct MockSession {
     /// `None` for one that was released, so that a test can tell the difference between a layer that is gone and
     /// one that was never there - which is the difference `release_layer` exists to make.
     layers: Vec<Option<MockLayer>>,
+    /// Every vibration asked for, oldest first: what source, how hard, and for how long. A mock records
+    /// because a `pulse` that returns `Ok` and does nothing is indistinguishable from one that failed.
+    pulses: Vec<(InputId, f32, Duration)>,
+    /// Every waveform asked for, as the source, how many samples, and the rate - the samples themselves are
+    /// not kept, because what a test asks is whether the call happened and with what.
+    waveforms: Vec<(InputId, usize, f32)>,
 }
 
 impl Session for MockSession {
@@ -146,12 +154,14 @@ impl Session for MockSession {
 
     fn features(&self) -> Features {
         // The floor is a session and nothing else; a mock told to have a quad layer says so, and that is the
-        // only capability it can have - which is what makes it a thing to test against.
-        if self.quad_layers {
+        // only capability it can have - which is what makes it a thing to test against. Haptics is the second,
+        // and it is always there because the mock's controllers are made with actuators: a caller that branches
+        // on the bit has something to branch into on this backend, which is what testing needs.
+        Features::HAPTICS.union(if self.quad_layers {
             Features::LAYER_QUAD
         } else {
             Features::NONE
-        }
+        })
     }
 
     fn poll(&mut self) -> Option<Event> {
@@ -362,6 +372,9 @@ impl Session for MockSession {
                 // A mock controller, which is what a mock can be without inventing a skeleton: the joints are
                 // what a *hand* has, and the mock is the thing a game is developed against before either exists.
                 hand: false,
+                // And it can buzz, because a mock with no actuator would be a mock that cannot exercise the
+                // two calls that send one - which is the whole reason the bit exists.
+                haptics: true,
                 grip: Pose {
                     position: Vec3::new(x, 1.0, 0.0),
                     orientation: Quat::IDENTITY,
@@ -375,6 +388,24 @@ impl Session for MockSession {
                 axes: Axes::default(),
             });
         }
+        Ok(())
+    }
+
+    fn pulse(&mut self, source: InputId, intensity: f32, duration: Duration) -> Result<(), Error> {
+        // Clamped, not refused: the core's word is a request, and a mock that rejected an out-of-range
+        // intensity would be a mock that behaves unlike every platform.
+        self.pulses
+            .push((source, intensity.clamp(0.0, 1.0), duration));
+        Ok(())
+    }
+
+    fn play_pcm(
+        &mut self,
+        source: InputId,
+        samples: &[f32],
+        sample_rate: f32,
+    ) -> Result<(), Error> {
+        self.waveforms.push((source, samples.len(), sample_rate));
         Ok(())
     }
 
@@ -407,6 +438,16 @@ impl MockSession {
     /// Pretend something was picked up or put down, which is the set of inputs changing.
     pub fn inputs_changed(&mut self) {
         self.pending.push_back(Event::InputsChanged);
+    }
+
+    /// Every vibration asked for, oldest first, as the source, the intensity and the length.
+    pub fn pulses(&self) -> &[(InputId, f32, Duration)] {
+        &self.pulses
+    }
+
+    /// Every waveform asked for, oldest first, as the source, how many samples, and the rate.
+    pub fn waveforms(&self) -> &[(InputId, usize, f32)] {
+        &self.waveforms
     }
 
     /// Pretend a space's origin was recentered, which is the one thing a backend that cannot recenter still

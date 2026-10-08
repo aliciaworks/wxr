@@ -78,6 +78,10 @@ impl WebXrSession {
                 // A source with a `hand` is one with a skeleton to ask for, which is the whole of what WebXR
                 // says about it: whether the fingers are tracked is `hand`'s answer, not this one's.
                 hand: source.hand().is_some(),
+                // And whether there is an actuator to send to, which is the gamepad's list being non-empty -
+                // the one thing about a source that WebXR answers through the gamepad rather than through the
+                // source itself.
+                haptics: haptics::actuator(&source).is_some(),
                 grip: grip
                     .map(|pose| transform(pose.transform()))
                     .unwrap_or(wxr::Pose::IDENTITY),

@@ -21,6 +21,8 @@ use openxr as xr;
 
 use crate::Error;
 
+mod haptics;
+
 /// The hands, and what they are doing.
 pub struct Hands {
     /// One action set, because one game. A set is a group of actions a runtime enables and disables
@@ -29,6 +31,12 @@ pub struct Hands {
     hands: Vec<Hand>,
     /// The press and squeeze edges the last `read` found, waiting to be polled.
     pending: VecDeque<wxr::Event>,
+    /// Whether the instance was made with `XR_EXT_haptic_feedback`, which is what makes the haptic actions
+    /// below mean anything: a runtime without it has no `/output/haptic` path to bind.
+    haptics: bool,
+    /// Whether it also took `XR_FB_haptic_pcm`, which is the waveform on top of the buzz - an app can have
+    /// [`pulse`](Hands::pulse) and not [`play_pcm`](Hands::play_pcm).
+    pcm: bool,
 }
 
 struct Hand {
@@ -52,6 +60,12 @@ struct Hand {
     /// The skeleton, when the runtime has `XR_EXT_hand_tracking` and made one for this hand. A hand without it
     /// is a pose and no fingers, which is what most hands are.
     tracker: Option<xr::HandTracker>,
+    /// `/user/hand/left/output/haptic`: where a vibration for this hand goes. `None` when the runtime does
+    /// not know the path, which is the same as it having no haptics.
+    haptic_path: Option<xr::Path>,
+    /// The vibration output action, when the runtime has haptics at all. An action of its own because a
+    /// haptic is written rather than read: there is no state to sync, only a call to make.
+    haptic: Option<xr::Action<xr::Haptic>>,
     /// What the boolean actions were the last time they were read, so a press is an edge and not a state.
     select_was: bool,
     squeeze_was: bool,
@@ -59,7 +73,15 @@ struct Hand {
 
 impl Hands {
     /// Declare the actions, suggest what they mean, and attach them to the session.
-    pub fn new(instance: &xr::Instance, session: &xr::Session<xr::Vulkan>) -> Result<Self, Error> {
+    ///
+    /// `haptics` is which of the haptic extensions the instance was made with: an output action can only be
+    /// made where the runtime has the path for one, and PCM can only be played where the runtime took the
+    /// extension for it.
+    pub fn new(
+        instance: &xr::Instance,
+        session: &xr::Session<xr::Vulkan>,
+        haptics: crate::HapticExtensions,
+    ) -> Result<Self, Error> {
         let set = instance
             .create_action_set("hands", "Hands", 0)
             .map_err(|error| Error::runtime("create the action set", error))?;
@@ -75,6 +97,24 @@ impl Hands {
             let path = instance
                 .string_to_path(&format!("/user/hand/{side}"))
                 .map_err(|error| Error::runtime("name a hand", error))?;
+            // The vibration comes out of a path of its own - an output rather than an input - and the action
+            // is made only when the runtime has both the extension and the path, because an output action
+            // bound to a path nothing knows is an action that never fires.
+            let haptic_path = instance
+                .string_to_path(&format!("/user/hand/{side}/output/haptic"))
+                .ok();
+            let haptic = if let (true, Some(output)) = (haptics.feedback, haptic_path) {
+                Some(
+                    set.create_action::<xr::Haptic>(
+                        &format!("{side}_haptic"),
+                        &format!("{side} Haptic"),
+                        &[output],
+                    )
+                    .map_err(|error| Error::runtime("create a haptic action", error))?,
+                )
+            } else {
+                None
+            };
             // OpenXR requires every action's *localized* name in a set to be distinct, and a pair of hands
             // declaring a "Grip" each is two the same - so the side belongs in the name a person reads as
             // well as in the one the code uses.
@@ -142,6 +182,8 @@ impl Hands {
                     )
                     .map_err(|error| Error::runtime("create an action", error))?,
                 tracker,
+                haptic_path,
+                haptic,
                 select_was: false,
                 squeeze_was: false,
             });
@@ -151,6 +193,8 @@ impl Hands {
             set,
             hands,
             pending: VecDeque::new(),
+            haptics: haptics.feedback,
+            pcm: haptics.pcm,
         };
         hands.suggest(instance);
         session
@@ -240,6 +284,11 @@ impl Hands {
                     "/input/thumbstick",
                     &mut bindings,
                 );
+                // The one binding that is an output: the runtime knows where a hand's actuator is, and this
+                // says that this action's vibrations go there.
+                if let Some(haptic) = &hand.haptic {
+                    bind(instance, side, haptic, "/output/haptic", &mut bindings);
+                }
             }
             let _ = instance.suggest_interaction_profile_bindings(profile, &bindings);
         }
@@ -264,6 +313,9 @@ impl Hands {
         // The edges this frame is a rising or falling side of, collected here and queued at the end: the hands
         // are borrowed for the loop below, and `pending` cannot be borrowed at the same time.
         let mut edges = Vec::new();
+        // Read out before the hands are borrowed, because whether a source can buzz is a fact about the
+        // instance and not about the hand - it is the same answer for all of them.
+        let haptics = self.haptics;
         for hand in &mut self.hands {
             let grip = hand.grip.locate(base, time).ok();
             let aim = hand.aim.locate(base, time).ok();
@@ -327,6 +379,10 @@ impl Hands {
                 // of the other modes with.
                 target_ray_mode: wxr::TargetRayMode::TrackedPointer,
                 hand: hand.tracker.is_some(),
+                // And whether there is an actuator to send to, which is the extension having been taken and
+                // the path having been found - the same answer for every source, because OpenXR has no
+                // per-controller way to ask.
+                haptics,
                 grip: pose(&grip),
                 aim: pose(&aim),
                 tracked: tracked(&grip) || tracked(&aim),

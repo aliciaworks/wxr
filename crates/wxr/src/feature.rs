@@ -42,6 +42,14 @@ impl Features {
     /// places the core is wider than the specification it is named after, the way [`crate::Presentation`] is.
     pub const REFRESH_RATE: Self = Self(1 << 10);
 
+    /// A source that can be made to buzz: [`crate::Session::pulse`] and [`crate::Session::play_pcm`].
+    ///
+    /// A bit of its own rather than something a caller reads off a source, because whether *this* session has
+    /// any is a question an app asks before it decides what to offer - and because a platform can have the
+    /// hardware and no way to reach it. What is per-source is [`crate::InputSource::haptics`], which says
+    /// which of the things in the list can be felt; this says there is a list at all.
+    pub const HAPTICS: Self = Self(1 << 11);
+
     /// Whether every bit of `other` is in this set.
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0

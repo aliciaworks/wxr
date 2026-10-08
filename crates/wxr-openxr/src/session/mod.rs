@@ -7,7 +7,7 @@ use openxr as xr;
 
 mod state;
 
-pub(crate) use state::LayerExtensions;
+pub(crate) use state::{HapticExtensions, LayerExtensions};
 
 pub use state::OpenXrSession;
 use state::*;
@@ -119,7 +119,7 @@ impl OpenXrSession {
 
         // Inputs are declared here and not in the constructor: they need a session, and a runtime that will
         // not take them is a session without hands rather than a session that failed.
-        let hands = match input::Hands::new(&backend.instance, &session) {
+        let hands = match input::Hands::new(&backend.instance, &session, backend.haptics) {
             Ok(hands) => Some(hands),
             Err(error) => {
                 log::warn!("wxr-openxr: no inputs: {error}");
@@ -160,6 +160,7 @@ impl OpenXrSession {
             format,
             layers_enabled: backend.layers,
             refresh_rate: backend.refresh_rate,
+            haptics: backend.haptics,
             layers: Vec::new(),
         })
     }
@@ -183,33 +184,7 @@ impl wxr::Session for OpenXrSession {
     }
 
     fn features(&self) -> wxr::Features {
-        // A quad layer is in the core specification rather than behind an extension, and a swapchain is the
-        // only thing one needs - so every session of this backend has a quad, which is the one shape it makes.
-        // The other three are `XR_KHR_composition_layer_*`, and the bits for them stay unset until those are
-        // enabled and driven.
-        let mut features = wxr::Features::LAYER_QUAD;
-        if self.refresh_rate {
-            features = features.union(wxr::Features::REFRESH_RATE);
-        }
-        // One bit per extension the instance was made with. A bit set for one that is not enabled would be a
-        // promise the session cannot keep - and the refusal in `layer` is what an app gets if it asks anyway.
-        for (enabled, bit) in [
-            (self.layers_enabled.cylinder, wxr::Features::LAYER_CYLINDER),
-            (self.layers_enabled.equirect, wxr::Features::LAYER_EQUIRECT),
-            (self.layers_enabled.cube, wxr::Features::LAYER_CUBE),
-        ] {
-            if enabled {
-                features = features.union(bit);
-            }
-        }
-        // A hand tracker is the skeleton, so a session that was given one has hand tracking. Everything else
-        // this backend asks for - the depth layer, surfaces - it does not get.
-        if let Some(hands) = &self.hands
-            && hands.has_tracking()
-        {
-            features = features.union(wxr::Features::HAND_TRACKING);
-        }
-        features
+        self.features_impl()
     }
 
     /// The rates the runtime offers, which is `xrEnumerateDisplayRefreshRatesFB`.
@@ -453,6 +428,40 @@ impl wxr::Session for OpenXrSession {
         out: &mut wxr::Hand,
     ) -> Result<(), wxr::Error> {
         self.hand_impl(source, space, out)
+    }
+
+    /// A vibration on one source, which is `xrApplyHapticFeedback` with a `XrHapticVibration`.
+    ///
+    /// A source that has no output path - and every source on a runtime without the extension - is
+    /// `Unsupported` rather than a silent nothing, because unlike foveation this is a call the app chose to
+    /// make and an answer it can act on.
+    fn pulse(
+        &mut self,
+        source: wxr::InputId,
+        intensity: f32,
+        duration: Duration,
+    ) -> Result<(), wxr::Error> {
+        let Some(hands) = &self.hands else {
+            return Err(wxr::Error::Unsupported("haptics".into()));
+        };
+        hands
+            .pulse(&self.session, source, intensity, duration)
+            .map_err(wxr::Error::from)
+    }
+
+    /// A waveform on one source, which is `XR_FB_haptic_pcm`'s vibration.
+    fn play_pcm(
+        &mut self,
+        source: wxr::InputId,
+        samples: &[f32],
+        sample_rate: f32,
+    ) -> Result<(), wxr::Error> {
+        let Some(hands) = &self.hands else {
+            return Err(wxr::Error::Unsupported("haptic samples".into()));
+        };
+        hands
+            .play_pcm(&self.session, source, samples, sample_rate)
+            .map_err(wxr::Error::from)
     }
 
     fn end(&mut self, _frame: &mut wxr::Frame) -> Result<(), wxr::Error> {

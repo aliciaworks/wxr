@@ -5,6 +5,9 @@ pub struct OpenXrSession {
     pub(super) layers_enabled: LayerExtensions,
     /// Whether the runtime will take a display refresh rate.
     pub(super) refresh_rate: bool,
+    /// Which haptic extensions the instance was made with, which is what the capability bit and the two
+    /// output calls are built on.
+    pub(super) haptics: HapticExtensions,
     /// The instance is kept for its event queue: OpenXR polls events from the instance, not the session.
     pub(super) instance: xr::Instance,
     pub(super) events: xr::EventDataBuffer,
@@ -95,4 +98,16 @@ pub(crate) struct LayerExtensions {
     pub(crate) cylinder: bool,
     pub(crate) equirect: bool,
     pub(crate) cube: bool,
+}
+
+/// Which haptic extensions the instance was made with.
+///
+/// Two of them and not one, because they are two calls of different ages: `XR_EXT_haptic_feedback` is the
+/// vibration every runtime with an actuator has, and `XR_FB_haptic_pcm` is Meta's waveform on top of it - so
+/// a session can have [`wxr::Session::pulse`] and not [`wxr::Session::play_pcm`]. Like the layer extensions,
+/// this is fixed at `xrCreateInstance`, so it is remembered rather than asked again.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct HapticExtensions {
+    pub(crate) feedback: bool,
+    pub(crate) pcm: bool,
 }

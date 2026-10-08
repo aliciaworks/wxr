@@ -76,3 +76,43 @@ impl OpenXrSession {
         }
     }
 }
+
+impl OpenXrSession {
+    /// What this instance was made with, as the capability bits the core carries.
+    ///
+    /// Every bit is an extension that was actually enabled at `xrCreateInstance` or a facility that exists
+    /// without one - a bit set for something not enabled would be a promise the session cannot keep, and the
+    /// refusals in `layer` and the haptic calls are what an app gets if it asks anyway.
+    pub(super) fn features_impl(&self) -> wxr::Features {
+        // A quad layer is in the core specification rather than behind an extension, and a swapchain is the
+        // only thing one needs - so every session of this backend has a quad, which is the one shape it makes.
+        let mut features = wxr::Features::LAYER_QUAD;
+        if self.refresh_rate {
+            features = features.union(wxr::Features::REFRESH_RATE);
+        }
+        // One bit per composition-layer extension the instance was made with.
+        for (enabled, bit) in [
+            (self.layers_enabled.cylinder, wxr::Features::LAYER_CYLINDER),
+            (self.layers_enabled.equirect, wxr::Features::LAYER_EQUIRECT),
+            (self.layers_enabled.cube, wxr::Features::LAYER_CUBE),
+        ] {
+            if enabled {
+                features = features.union(bit);
+            }
+        }
+        // A hand tracker is the skeleton, so a session that was given one has hand tracking. Everything else
+        // this backend asks for - the depth layer, surfaces - it does not get.
+        if let Some(hands) = &self.hands
+            && hands.has_tracking()
+        {
+            features = features.union(wxr::Features::HAND_TRACKING);
+        }
+        // Haptics, and here the bit is the extension rather than a per-controller answer: OpenXR has no way to
+        // ask whether a particular controller has an actuator, so a runtime with the extension is a session
+        // whose sources say they can buzz, and one without is a session whose sources say they cannot.
+        if self.haptics.feedback {
+            features = features.union(wxr::Features::HAPTICS);
+        }
+        features
+    }
+}

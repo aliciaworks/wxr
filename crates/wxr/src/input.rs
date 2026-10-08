@@ -225,6 +225,13 @@ pub struct InputSource {
     /// A controller has none, and neither does a platform whose hands are a pose and no fingers - so this is a
     /// question to ask before [`crate::Session::hand`], not a promise that the fingers are there.
     pub hand: bool,
+    /// Whether this source can be made to buzz, which is WebXR's gamepad having a `hapticActuator`, OpenXR's
+    /// `/output/haptic` path being bound, and Apple's controller reporting a haptic locality.
+    ///
+    /// The same kind of question as [`InputSource::hand`]: asked before a vibration is sent, because a
+    /// controller without an actuator is a controller, and a game that sends one anyway is a game that either
+    /// loses the buzz or, on a platform that treats it as an error, loses the frame.
+    pub haptics: bool,
     /// In whichever reference space the sources were asked for.
     ///
     /// Two poses and not one, because a controller is one thing with two places on it: a grip is where it is

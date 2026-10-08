@@ -332,6 +332,11 @@ impl wxr::Session for AppleSession {
                 // are a palm pose, and the joints are in the Swift `HandAnchor.skeleton` this crate cannot see.
                 // So there is nothing to ask for and `Session::hand` would have nothing to answer with.
                 hand: false,
+                // And nothing to buzz, for now: visionOS has controllers - a PlayStation VR2 Sense pad is one,
+                // and `GCDeviceHaptics` is how its actuators are reached - but this backend reads only ARKit's
+                // hand anchors, so there is no controller here to attach an actuator to. The `features` bit is
+                // off for the same reason, and both turn on together the day the Game Controller path lands.
+                haptics: false,
                 // A hand here is a place and an orientation, and that is all the C API gives - the skeleton
                 // is the Swift API's, so there is no fingertip to aim from and no pinch to read. Grip and
                 // aim are therefore the same pose, and the pose's own orientation is the palm's direction:

@@ -93,6 +93,35 @@ fn a_press_is_a_start_an_end_and_a_selection() {
 }
 
 #[test]
+fn a_pulse_names_the_source_it_reaches() {
+    let mut session = running();
+    let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+    let mut sources = Vec::new();
+    session.inputs(space, &mut sources).unwrap();
+    // The mock's controllers are made with actuators, so this is a call it can answer - which is what makes it
+    // worth recording: a `pulse` that returned `Ok` and did nothing would pass an assertion on the result
+    // alone, and an app would find out by feeling nothing.
+    assert!(sources[0].haptics);
+    assert!(session.features().contains(crate::Features::HAPTICS));
+
+    let id = sources[1].id;
+    session.pulse(id, 0.5, Duration::from_millis(25)).unwrap();
+    // Clamped rather than refused, which is the one thing the mock does to the number: the core's word is a
+    // request, and every platform's own is the same.
+    session.pulse(id, 7.0, Duration::from_millis(5)).unwrap();
+    assert_eq!(
+        session.pulses(),
+        &[
+            (id, 0.5, Duration::from_millis(25)),
+            (id, 1.0, Duration::from_millis(5)),
+        ]
+    );
+
+    session.play_pcm(id, &[0.0, 1.0, 0.0], 800.0).unwrap();
+    assert_eq!(session.waveforms(), &[(id, 3, 800.0)]);
+}
+
+#[test]
 fn a_recentered_space_is_stale_and_says_so() {
     let mut session = running();
     let space = session.space(SpaceKind::LocalFloor).expect("a floor");
@@ -116,7 +145,9 @@ fn a_space_with_no_boundary_has_an_empty_one() {
 fn a_backend_without_depth_sensing_answers_none() {
     let mut session = running();
     assert!(session.depth(0).is_none());
-    assert_eq!(session.features(), crate::Features::NONE);
+    // Not `Features::NONE`: the mock's controllers have actuators now, so haptics is a bit it does have. What
+    // this test is about is the bit it does not.
+    assert!(!session.features().contains(crate::Features::DEPTH));
 
     // Anchors are the same shape: a backend that cannot make one says so rather than handing back a name that
     // never resolves.

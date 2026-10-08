@@ -45,8 +45,8 @@ mod input;
 mod session;
 
 pub use import::Images;
-pub(crate) use session::LayerExtensions;
 pub use session::OpenXrSession;
+pub(crate) use session::{HapticExtensions, LayerExtensions};
 
 /// The pose conversion `input` reaches by name, kept at the root so a module can say `crate::pose`.
 pub(crate) use convert::pose;
@@ -75,6 +75,9 @@ pub struct OpenXr {
     /// so what a session can hand over was decided before the session existed - and both the capability bits
     /// and the per-shape refusal read from here rather than from the runtime.
     layers: LayerExtensions,
+    /// Which haptic extensions it was made with, fixed at the same moment and read by the capability bit and
+    /// by the two output calls.
+    haptics: HapticExtensions,
 }
 
 impl OpenXr {
@@ -122,6 +125,24 @@ impl OpenXr {
         // it. A runtime without it is a runtime whose display runs at one rate, which is a fact and not a
         // failure.
         extensions.fb_display_refresh_rate = supported.fb_display_refresh_rate;
+
+        // Haptics. `XR_EXT_haptic_feedback` is the one that matters, and it is the one extension the crate
+        // leaves out of its `ExtensionSet`: it knows the calls - `xrApplyHapticFeedback` is loaded with the
+        // instance like every other entry point - but the set has no field naming it, so it is asked for by
+        // name through the set's catch-all, and only from a runtime that lists it. Meta's waveform builds on
+        // top of it, so it is asked for only where both are there.
+        let feedback = supported
+            .other
+            .iter()
+            .any(|name| name.as_slice() == b"XR_EXT_haptic_feedback".as_slice());
+        if feedback {
+            extensions.other.push(b"XR_EXT_haptic_feedback".to_vec());
+        }
+        extensions.fb_haptic_pcm = feedback && supported.fb_haptic_pcm;
+        let haptics = HapticExtensions {
+            feedback,
+            pcm: extensions.fb_haptic_pcm,
+        };
         let layers = LayerExtensions {
             cylinder: extensions.khr_composition_layer_cylinder,
             equirect: extensions.khr_composition_layer_equirect2,
@@ -170,6 +191,7 @@ impl OpenXr {
             prefer_hdr: false,
             layers,
             refresh_rate: extensions.fb_display_refresh_rate,
+            haptics,
         })
     }
 

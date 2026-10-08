@@ -77,6 +77,19 @@ impl WebXrSession {
         if self.gpu.is_some() && has_feature(&session, "layers") {
             features = features.union(wxr::Features::LAYER_QUAD);
         }
+        // Haptics is the gamepad's rather than the session's: an actuator belongs to a controller, so the only
+        // place the answer exists is the controllers that are connected. An empty list, and a list of
+        // controllers with no actuators, are the same answer - a session with nothing to buzz.
+        let held = session.input_sources();
+        for index in 0..held.length() {
+            let Some(source) = held.get(index) else {
+                continue;
+            };
+            if haptics::actuator(&source).is_some() {
+                features = features.union(wxr::Features::HAPTICS);
+                break;
+            }
+        }
         features
     }
 }

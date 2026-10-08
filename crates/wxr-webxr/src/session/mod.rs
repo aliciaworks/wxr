@@ -351,6 +351,19 @@ impl wxr::Session for WebXrSession {
         self.hand_impl(source, space, out)
     }
 
+    /// A buzz on one source, which is the gamepad's own `pulse`.
+    ///
+    /// The prompt one where there is a choice between this and `play_pcm`: the standard call is what every
+    /// browser with an actuator implements, and the draft's waveform is meta's and OpenXR's.
+    fn pulse(
+        &mut self,
+        source: wxr::InputId,
+        intensity: f32,
+        duration: Duration,
+    ) -> Result<(), wxr::Error> {
+        self.pulse_impl(source, intensity, duration)
+    }
+
     fn planes(
         &mut self,
         space: wxr::ReferenceSpace,
@@ -468,6 +481,7 @@ impl wxr::Session for WebXrSession {
 mod anchors;
 mod events;
 mod frames;
+mod haptics;
 mod layers;
 mod light;
 mod sensing;
