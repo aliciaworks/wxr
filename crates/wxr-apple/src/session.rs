@@ -286,8 +286,12 @@ impl wxr::Session for AppleSession {
 
     fn features(&self) -> wxr::Features {
         // ARKit's world tracking is a reference space rather than a capability, and its hands are a palm with
-        // no skeleton - so there is nothing here that every session does not already have.
-        wxr::Features::NONE
+        // no skeleton. Surfaces it does have - the plane detection provider - and that is the one bit here.
+        let mut features = wxr::Features::NONE;
+        if self.arkit.as_ref().is_some_and(ArKit::has_planes) {
+            features = features.union(wxr::Features::PLANES);
+        }
+        features
     }
 
     fn poll(&mut self) -> Option<wxr::Event> {
@@ -576,6 +580,29 @@ impl wxr::Session for AppleSession {
                 axes: wxr::Axes::default(),
             });
         }
+        Ok(())
+    }
+
+    fn planes(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        out: &mut Vec<wxr::Plane>,
+    ) -> Result<(), wxr::Error> {
+        let Some(arkit) = &self.arkit else {
+            return Ok(());
+        };
+        // ARKit reports planes in the session's own origin, which is this backend's `Local`; a caller
+        // asking for another space gets them brought over, the same way the views are.
+        let origin = self.space_origin(space);
+        let (_, orientation, position) = origin.to_scale_rotation_translation();
+        let origin = wxr::Pose {
+            position,
+            orientation,
+        };
+        out.extend(arkit.planes().into_iter().map(|mut plane| {
+            plane.pose = plane.pose.relative_to(origin);
+            plane
+        }));
         Ok(())
     }
 
