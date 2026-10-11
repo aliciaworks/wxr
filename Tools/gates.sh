@@ -41,6 +41,19 @@ else
 
   step "doc (workspace)"
   RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+
+  # The examples are checks too, and they are the only ones that draw: `headless` runs the frame loop, `layers`
+  # makes a quad against an idle session, and `rendered` imports the compositor's images and puts a picture in
+  # them. All three want a runtime, and a runtime is a thing this host may not have - so the test suite above
+  # skips itself when there is none, and these are asked whether there is one first rather than failing for it.
+  if compgen -G "/usr/share/openxr/1/*.json" > /dev/null || [[ -e /etc/openxr/1/openxr_runtime.json ]]; then
+    step "examples (wxr-openxr)"
+    cargo run -q -p wxr-openxr --example headless
+    cargo run -q -p wxr-openxr --example layers
+    cargo run -q -p wxr-openxr --example rendered
+  else
+    step "examples (wxr-openxr) - skipped, this machine has no OpenXR runtime"
+  fi
 fi
 
 if rustup target list --installed 2>/dev/null | grep -qx aarch64-apple-visionos; then

@@ -226,12 +226,13 @@ Each backend crate is empty outside its own target family - `wxr-openxr` off was
 other way, `wxr-apple` off Apple - so a host build tests the core and the renderer and leaves the platforms to
 a cross-compiler. `.github/workflows/ci.yml` runs exactly this list.
 
-Beyond the compiler, six things are checked, and each is checked by the one that can:
+Beyond the compiler, seven things are checked, and each is checked by the one that can:
 
 ```sh
 python3 Tools/check_webxr_sys.py                            # the generated bindings, against their IDL
 cargo test -p wxr-openxr                                    # the backend, against the runtime this machine has
 cargo run -p wxr-openxr --example layers                    # a quad layer, against the runtime this machine has
+cargo run -p wxr-openxr --example rendered                  # the whole frame, drawn, against that same runtime
 cargo test -p wxr-conformance                               # the vocabulary, against another reading of the same API
 cargo test -p wxr-apple                                     # the Apple backend's own tables   (on a Mac)
 bash apps/visionos/build.sh && bash apps/visionos/run.sh     # the app, in the visionOS simulator   (on a Mac)
@@ -251,25 +252,34 @@ so the backend opens and closes it with no layers in it - the caller was told `W
 `Session::end` - because leaving the pair open makes the *next* `xrWaitFrame` wait for a frame that is not
 coming. That is the loop `examples/headless.rs` runs to the end. The third is the OpenXR half of the layer API
 against a real runtime: on a machine with no display a frame comes back with nothing to draw, so a *layer* is
-not available - but a layer
-is made against an idle session, and the runtime takes the swapchain, hands back its images and lets go of it
-on release. The fourth is the vocabulary
+not available there - but a layer is made against an idle session, and the runtime takes the swapchain, hands
+back its images and lets go of it on release. The fourth is the one that draws all of the above and is new:
+`examples/rendered.rs` imports the compositor's images as `wgpu` textures, draws into them with each eye's own
+projection and place, and hands the frame back - four hundred of them, on the same runtime that shows nothing.
+It is the check that would have caught the two bugs the last two commits are about, and it could not run
+before either of them. The fifth is the vocabulary
 against the other reading of the same specification: `servo-webxr-api`, a Rust implementation of the WebXR API,
 named as a dependency rather than copied, so that the names this core gives things - a session mode, an eye, a
-joint of a hand - are compared with a second reading of the sentences that define them. The fifth is the
+joint of a hand - are compared with a second reading of the sentences that define them. The sixth is the
 Apple backend's own tables, and it is new: `wxr-apple` had no tests at all before it. What is checked is the
 joint table that reads ARKit's twenty-seven names as WebXR's twenty-five, the pixel formats, the two id
 ranges a hand and a controller are numbered from, and the size and alignment of the values that cross the
 shim. None of it needs a runtime - the crate is `target_vendor = "apple"`, and a Mac is one - so it links and
 runs on the same machine that links it, and everywhere else it is empty for the reason the crate is. The
-sixth is the one that *draws*: the app runs in the visionOS simulator, the compositor creates a layer and
+seventh is the one that *draws*: the app runs in the visionOS simulator, the compositor creates a layer and
 presents what the frame loop draws into it, and the picture is there to be looked at.
 
-What the simulator reports on that last one is a single **mono** view - asking the layer for the per-view
-layout does not change it - so the two-eye arithmetic is exercised on the mock rather than there, and the
-stereo question is the one still open.
+What the simulator reports on that last one is a single **mono** view, and that is the simulator rather than a
+gap here: Apple's header says so, under `cp_drawable_get_view_count` in `drawable.h` -
+
+> The actual number of views can vary based on the drawing environment or your app's configuration. For
+> example, you typically render only one view in Simulator.
+
+So the two-eye arithmetic is exercised on the mock rather than there, and the one-eye path it takes instead is
+the one the code already has a word for (`Eye::Mono`) and a compositor already hands it.
 
 What none of it proves is that any of the three has drawn a frame on a **headset**, because none of them has.
+That is the only thing left open here, and it is not a thing that can be closed without the hardware.
 
 ## What each backend reaches
 
