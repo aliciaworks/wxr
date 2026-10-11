@@ -36,6 +36,13 @@
 //! session can have either without the other. [`wxr::Session::anchor`] is the world rather than the room: a
 //! world anchor is made through the world-tracking provider, which is what [`ArKit::add_anchor`] does.
 //!
+//! **The room's light is a third description of it, and the only one here that is not a shape.** ARKit's
+//! environment probe photographs the room as a cubemap and pushes it over on a queue of its own; the core
+//! asks for nine spherical harmonics and a brightest direction once a frame. [`ArKit::light`] is that
+//! mismatch and everything under it - an adapter from push to pull, a projection from a cubemap to
+//! order-two harmonics, and a conversion out of P3 - with the arithmetic kept apart from the API on
+//! purpose, because none of it can be checked without deciding first which half is which.
+//!
 //! **Foveation is the one thing this platform has that the core cannot reach, and the reason is `wgpu`.** The
 //! compositor does foveation -
 //! `cp_layer_renderer_capabilities_supports_foveation` says whether, `cp_layer_renderer_configuration_set_foveation_enabled`
@@ -56,9 +63,8 @@ use objc2::rc::Retained;
 use objc2_ar_kit::{
     ar_data_provider_t, ar_data_providers_t, ar_device_anchor_query_status_t, ar_device_anchor_t,
     ar_error_t, ar_hand_anchor_t, ar_hand_tracking_configuration_t, ar_hand_tracking_provider_t,
-    ar_mesh_anchors_t, ar_plane_alignment_t, ar_plane_anchor_t, ar_plane_anchors_t,
-    ar_plane_detection_configuration_t, ar_plane_detection_provider_t, ar_plane_extent_t,
-    ar_plane_geometry_t, ar_scene_reconstruction_configuration_t,
+    ar_mesh_anchors_t, ar_plane_anchors_t, ar_plane_detection_configuration_t,
+    ar_plane_detection_provider_t, ar_scene_reconstruction_configuration_t,
     ar_scene_reconstruction_provider_t, ar_session_t, ar_trackable_anchor_t, ar_world_anchor_t,
     ar_world_tracking_configuration_t, ar_world_tracking_provider_t,
 };
@@ -66,10 +72,14 @@ use wxr::glam::Mat4;
 
 use crate::sys;
 
+mod light;
 mod mesh;
+mod plane;
 mod skeleton;
 
+use light::Lights;
 use mesh::collect_mesh;
+use plane::collect_plane;
 
 /// Reinterpret a concrete provider as the `ar_data_provider_t` a collection takes.
 ///
@@ -137,6 +147,10 @@ pub struct ArKit {
     hands: Option<Hands>,
     planes: Option<Planes>,
     meshes: Option<Meshes>,
+    /// Light estimation, and the one provider here that describes the room by its light rather than its
+    /// shape. Separate from the two above for the same reason they are separate from each other: a session
+    /// can trace a room as triangles without ever being able to photograph it.
+    lights: Option<Lights>,
     /// The world anchors this session made, by the name the core carries: an anchor is a handle, and
     /// the handle has to be able to find the object again.
     anchors: HashMap<u32, Retained<ar_world_anchor_t>>,
@@ -156,6 +170,7 @@ impl ArKit {
             let hands = Self::start_hands(&providers);
             let planes = Self::start_planes(&providers);
             let meshes = Self::start_meshes(&providers);
+            let lights = Lights::start(&providers);
             if world.is_none() && hands.is_none() {
                 return None;
             }
@@ -169,6 +184,7 @@ impl ArKit {
                 hands,
                 planes,
                 meshes,
+                lights,
                 anchors: HashMap::new(),
                 next_anchor: 0,
             })
@@ -334,6 +350,22 @@ impl ArKit {
         }
     }
 
+    /// Whether the room's light can be estimated, which is what `features` asks.
+    ///
+    /// The provider being up, and not a promise of a photograph: a room ARKit cannot see well enough to
+    /// light is a room that answers with no estimate, which the core says is all zero.
+    pub fn has_light(&self) -> bool {
+        self.lights.is_some()
+    }
+
+    /// What the room's light is, or `None` for the frames before ARKit has seen a lit one.
+    ///
+    /// A copy, like every other read here, and the cheapest thing in this file to call: the projection
+    /// happened on ARKit's queue when the photograph arrived, and all this does is take a lock.
+    pub fn light(&self) -> Option<wxr::LightEstimate> {
+        self.lights.as_ref()?.estimate()
+    }
+
     /// Whether world anchors can be made, which is the world-tracking provider being up.
     pub fn has_anchors(&self) -> bool {
         self.world.is_some()
@@ -390,65 +422,6 @@ impl ArKit {
     pub fn release_anchor(&mut self, anchor: wxr::Anchor) {
         self.anchors.remove(&anchor.id());
     }
-}
-
-/// One plane anchor, as the core's [`wxr::Plane`].
-///
-/// The pose is the anchor's transform, which ARKit builds with the surface's normal on +Y and its extent
-/// along X and Z - the same space WebXR's plane space is, and the one the core says a plane's pose is in.
-///
-/// # Safety
-///
-/// `anchor` must be a live plane anchor.
-unsafe fn plane_of(anchor: &ar_plane_anchor_t) -> wxr::Plane {
-    // SAFETY: the caller guarantees the anchor is live; the transform is where ARKit put it, and the
-    // geometry is the extent it reports for it.
-    unsafe {
-        let transform = sys::ar_anchor_get_origin_from_anchor_transform(
-            std::ptr::from_ref(anchor).cast::<c_void>(),
-        );
-        let (_, orientation, position) =
-            Mat4::from_cols_array(&transform.0).to_scale_rotation_translation();
-        let geometry = ar_plane_anchor_t::geometry(anchor);
-        let extent = ar_plane_geometry_t::plane_extent(&geometry);
-        let mut identifier = [0u8; 16];
-        ar_plane_anchor_t::identifier(anchor, &mut identifier);
-        let alignment = ar_plane_anchor_t::alignment(anchor);
-        wxr::Plane {
-            // The anchor's UUID folded to the name the core carries: the same 32 bits for as long as the
-            // anchor lives, which is what a stable id has to be.
-            id: u32::from_le_bytes([identifier[0], identifier[1], identifier[2], identifier[3]]),
-            pose: wxr::Pose {
-                position,
-                orientation,
-            },
-            extent: wxr::glam::Vec2::new(
-                ar_plane_extent_t::width(&extent),
-                ar_plane_extent_t::height(&extent),
-            ),
-            orientation: match alignment {
-                a if a == ar_plane_alignment_t::horizontal => wxr::PlaneOrientation::Horizontal,
-                a if a == ar_plane_alignment_t::vertical => wxr::PlaneOrientation::Vertical,
-                _ => wxr::PlaneOrientation::Unknown,
-            },
-        }
-    }
-}
-
-/// The enumerator `planes` hands to ARKit: one plane into the `Vec` the context points at.
-///
-/// # Safety
-///
-/// `context` must be the `*mut Vec<wxr::Plane>` the caller passed, and `anchor` a live plane anchor.
-unsafe extern "C-unwind" fn collect_plane(
-    context: *mut c_void,
-    anchor: &ar_plane_anchor_t,
-) -> bool {
-    // SAFETY: the caller guarantees both.
-    unsafe {
-        (*context.cast::<Vec<wxr::Plane>>()).push(plane_of(anchor));
-    }
-    true
 }
 
 /// The completion `anchor` hands ARKit: the add is asynchronous, and the anchor is already in the map, so

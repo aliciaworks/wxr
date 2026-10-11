@@ -31,6 +31,12 @@ objc2-ar-kit = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141
 # only this module uses it.
 objc2-foundation-visionos = { package = "objc2-foundation", git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b", features = ["NSObject", "NSArray"] }
 objc2-metal-visionos = { package = "objc2-metal", git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b" }
+# ARKit's update handlers are handed a queue to run on, and naming one needs the crate that declares it.
+# The same fork as ARKit above, for the same reason as the two renames beside it: a git dependency is a
+# *different crate* from the crates.io one of the same name, so `DispatchQueue` here has to be the fork's
+# or it is not the type `ar_environment_light_estimation_provider_set_update_handler_f` takes. No rename
+# needed, because only this crate's copy is named.
+dispatch2 = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b" }
 objc2-game-controller = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b", features = ["objc2-core-haptics"] }
 objc2-core-haptics = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b" }
 log = { workspace = true }

@@ -272,6 +272,7 @@ impl AppleSession {
 }
 
 mod dispatch;
+mod frame;
 mod sources;
 
 /// A Metal pixel format in the core's terms.

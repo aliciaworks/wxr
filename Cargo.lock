@@ -714,6 +714,8 @@ version = "0.3.1"
 source = "git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b#5830107141eb819d0df01c1ead2b43ee54637a0b"
 dependencies = [
  "bitflags 2.13.2",
+ "block2 0.6.2 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
+ "libc",
  "objc2",
 ]
 
@@ -5103,6 +5105,7 @@ dependencies = [
 name = "wxr-apple"
 version = "0.1.0"
 dependencies = [
+ "dispatch2 0.3.1 (git+https://github.com/aliciaworks/objc2?rev=5830107141eb819d0df01c1ead2b43ee54637a0b)",
  "log",
  "objc2",
  "objc2-ar-kit",
