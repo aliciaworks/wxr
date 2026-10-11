@@ -4,6 +4,10 @@
 //! session is told about it, and the frames come back with two views and an image to draw them into. What a
 //! runtime does with a machine that has no display is the runtime's business - Monado has a null device for
 //! exactly this - and a `NoDisplay` from `system()` is a machine without a runtime rather than a bug here.
+//!
+//! "Nothing drawn" is a frame the runtime asked for and does not want a picture in, and OpenXR still wants it
+//! begun and ended - the backend does that part, because a caller told `Wait` has nothing to hand back and
+//! never reaches `Session::end`. That pairing is what stops the frame after it from waiting forever.
 
 #[cfg(not(target_family = "wasm"))]
 mod native {

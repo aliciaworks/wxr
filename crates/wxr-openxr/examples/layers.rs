@@ -1,11 +1,11 @@
 //! Make a composition layer on the runtime this machine has, and hand it back.
 //!
-//! The frame loop cannot run on a machine with no display - `xrWaitFrame` waits for a session that never
-//! becomes visible - so `headless` proves the seam and stops at the frame it cannot get. A *layer* needs no
-//! frame: `XR_KHR_composition_layer_*` layers aside, a quad is in the core specification, and its swapchain is
-//! created against a session that is merely idle. So this is what can be verified without a headset: that the
-//! runtime makes a swapchain of the shape a quad names, that its images come back in the size and format the
-//! app asked for, and that letting it go is enough to be rid of it.
+//! The frame loop does run without a display - `headless` runs it, and `xrWaitFrame` on such a machine comes
+//! back with nothing to draw - but a frame nobody draws a layer into proves nothing about layers. A *layer*
+//! needs no frame: `XR_KHR_composition_layer_*` layers aside, a quad is in the core specification, and its
+//! swapchain is created against a session that is merely idle. So this is what can be verified without a
+//! headset: that the runtime makes a swapchain of the shape a quad names, that its images come back in the size
+//! and format the app asked for, and that letting it go is enough to be rid of it.
 //!
 //! What it does *not* prove is a layer on a display: that is `xrEndFrame` with a quad in the list, and it needs
 //! a session that is visible. It is written down here so the gap is a known one.

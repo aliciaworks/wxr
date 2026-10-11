@@ -41,6 +41,17 @@ impl OpenXrSession {
         out.views_mut().clear();
 
         if out.state != wxr::FrameState::Render {
+            // The runtime asked for a frame it does not want drawn, and OpenXR's frame loop is still a loop:
+            // one `xrWaitFrame` is one `xrBeginFrame` and one `xrEndFrame`, and a frame with nothing in it is a
+            // frame submitted with no layers at all. Closing the pair here - the caller is told `Wait` and has
+            // nothing to draw, so it never reaches `Session::end` - is what keeps the *next* `xrWaitFrame`
+            // from waiting for a frame that is never coming.
+            self.stream
+                .begin()
+                .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+            self.stream
+                .end(self.predicted, self.blend, &[])
+                .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
             return Ok(());
         }
 
@@ -143,6 +154,14 @@ impl OpenXrSession {
 
 impl OpenXrSession {
     pub(super) fn end_impl(&mut self, _frame: &mut wxr::Frame) -> Result<(), wxr::Error> {
+        // A frame the runtime did not want drawn was already opened and closed by `begin_impl`, because the
+        // caller was told `Wait` and has nothing to hand back. Ending it again is a call-order error at the
+        // runtime - an image released that was never acquired - and this is the end of a frame that was never
+        // begun, which is nothing at all.
+        if self.held.is_none() {
+            return Ok(());
+        }
+
         self.held = None;
         self.swapchain
             .release_image()

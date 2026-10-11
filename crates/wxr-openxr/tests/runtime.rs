@@ -7,12 +7,12 @@
 //! backend that reports `Unavailable` has answered correctly and a test that fails for it would be
 //! testing the machine.
 //!
-//! What it deliberately does *not* do is wait for a frame. A frame is `xrWaitFrame`, and a runtime only
-//! answers one when the session is visible, which needs a display or a compositor that pretends to be
-//! one. The null compositor begins a session and never shows it, so `xrWaitFrame` there is a wait with
-//! no end - see `examples/headless.rs`, which is written against a runtime that does produce frames.
-//! The frame loop is therefore the one part of this crate that a machine like this cannot check, and
-//! saying so here is better than a test that hangs.
+//! What it also does is run the frame loop, which is the part this file used to say it could not. A frame is
+//! `xrWaitFrame`, and on a machine with no display it comes back with `should_render` false for as long as the
+//! session is not on one - but OpenXR still wants its `xrBeginFrame` and `xrEndFrame` for that frame, and
+//! leaving the pair open is a second `xrWaitFrame` that never returns. The backend closes the pair itself,
+//! because the caller is told `Wait` and so never reaches `Session::end`; that is what makes this suite, and
+//! `examples/headless.rs`, able to run to the end on a machine with a compositor that shows nothing.
 
 // The crate under test is empty on a browser, so there is nothing here to name either - the same rule its
 // `lib.rs` states, applied to the tests of it.
@@ -399,6 +399,55 @@ fn a_frame_before_the_session_is_begun_is_a_frame_to_wait_for() {
         "a session that has not begun is drawing, which is a frame nobody waited for"
     );
     assert_eq!(frame.views().len(), 0);
+}
+
+#[test]
+fn a_frame_the_runtime_has_nothing_to_draw_in_is_still_a_frame_that_comes_back() {
+    let Some((_turn, _, mut session)) = connect() else {
+        eprintln!("no OpenXR runtime on this machine; nothing to connect to");
+        return;
+    };
+
+    // A frame is submitted in a space, and this backend builds its projection layer in the first space the
+    // session has - so a session with none has a frame to wait for and nowhere to hand one back to. `Local`
+    // is the one space the specification says every runtime must make.
+    let Ok(space) = session.space(SpaceKind::Local) else {
+        eprintln!("this runtime makes no local space; there is no frame to submit one in");
+        return;
+    };
+
+    // The frame loop, on a machine whose compositor never puts the session on a display: `xrWaitFrame`
+    // answers with nothing to draw, the caller is told `Wait`, and `Session::end` is not called - which is
+    // what every caller in the workspace does with a frame it has nothing to draw in. OpenXR still wants
+    // that frame begun and ended, and the backend is the only one who can do it. Without that, the second
+    // `xrWaitFrame` below never returns, and this test hangs instead of failing.
+    let mut frame = wxr::Frame::default();
+    let mut drawn = 0;
+    for _ in 0..120 {
+        while session.poll().is_some() {}
+        session
+            .begin(std::time::Duration::ZERO, &mut frame)
+            .expect("a frame of a begun session");
+        if !frame.is_render() {
+            continue;
+        }
+        session
+            .views(space, &mut frame)
+            .expect("the views of a frame that is being drawn");
+        session.end(&mut frame).expect("a frame handed back");
+        drawn += 1;
+        if drawn >= 3 {
+            break;
+        }
+    }
+
+    // Three, because one proves nothing about the *second* `xrWaitFrame`, which is where an unpaired loop
+    // stops - and because a runtime that has begun a session it will never show is answered by the loop
+    // coming back at all, which is the thing this test is here to notice.
+    assert_eq!(
+        drawn, 3,
+        "the runtime gave {drawn} frame(s) to draw out of the 120 asked for"
+    );
 }
 
 #[test]

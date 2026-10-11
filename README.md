@@ -244,10 +244,14 @@ hand can be caught; `Tools/capture_webxr_prototypes.js` is what produces the dum
 asked of a runtime, and it needs no headset: Monado runs a simulated head-mounted display behind a compositor
 that has nothing to present, which is enough for a session, its images, the spaces it will make and the
 capability bits it will answer for. It skips itself on a machine with no runtime at all, since a backend that
-reports `Unavailable` has answered correctly. The frame loop is the one part it does not reach, and it says so
-rather than hanging: a session is begun but never shown, and `xrWaitFrame` then waits for a frame that is not
-coming. The third is the OpenXR half of the layer API against a real runtime: `xrWaitFrame` waits for a
-session that never becomes visible on a machine with no display, so a *frame* is not available - but a layer
+reports `Unavailable` has answered correctly. The frame loop it reaches as well, which is what this file used
+to say it could not: a session begun on a machine with no display is a session the compositor never shows, and
+`xrWaitFrame` answers such a frame with nothing to draw. OpenXR wants that frame begun and ended all the same,
+so the backend opens and closes it with no layers in it - the caller was told `Wait` and so never reaches
+`Session::end` - because leaving the pair open makes the *next* `xrWaitFrame` wait for a frame that is not
+coming. That is the loop `examples/headless.rs` runs to the end. The third is the OpenXR half of the layer API
+against a real runtime: on a machine with no display a frame comes back with nothing to draw, so a *layer* is
+not available - but a layer
 is made against an idle session, and the runtime takes the swapchain, hands back its images and lets go of it
 on release. The fourth is the vocabulary
 against the other reading of the same specification: `servo-webxr-api`, a Rust implementation of the WebXR API,
