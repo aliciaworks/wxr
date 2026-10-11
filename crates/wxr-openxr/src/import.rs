@@ -53,13 +53,16 @@ impl wxr_render::Import for Images {
             view_formats: Vec::new(),
         };
         // SAFETY: the image is the runtime's and stays valid while the session does, which is longer than
-        // this texture is meant to live. `None` for the drop callback is what says "do not free it": the
-        // compositor owns it and will want it back.
+        // this texture is meant to live. The drop callback is a no-op rather than `None`, and the difference
+        // is the whole of the safety: wgpu-hal takes `None` to mean "this image is now mine" and destroys it
+        // when the texture goes - which is the compositor's image, freed under it, and the next frame's
+        // `vkSetDebugUtilsObjectNameEXT` on the freed handle is a segmentation fault in the driver. A
+        // callback that does nothing is what says "the compositor owns it and will want it back".
         let hal_texture = unsafe {
             hal_device.texture_from_raw(
                 ash::vk::Image::from_raw(*image),
                 &descriptor,
-                None,
+                Some(Box::new(|| {})),
                 wgpu::hal::vulkan::TextureMemory::External,
             )
         };
