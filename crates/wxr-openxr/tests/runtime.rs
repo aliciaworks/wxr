@@ -304,6 +304,80 @@ fn a_boundary_belongs_to_a_bounded_space_and_is_a_closed_loop() {
 }
 
 #[test]
+fn a_refresh_rate_is_offered_or_the_call_is_a_silence() {
+    let Some((_turn, _, mut session)) = connect() else {
+        eprintln!("no OpenXR runtime on this machine; nothing to connect to");
+        return;
+    };
+
+    // Asking is not setting: a runtime that will not take a refresh rate answers the enumerate with an error
+    // this backend logs rather than a failure, because a session with a fixed display is still a session.
+    // So whatever comes back, the answer has to be rates a display could actually run at.
+    let mut rates = Vec::new();
+    session.refresh_rates(&mut rates);
+    for rate in &rates {
+        assert!(
+            *rate > 0.0 && *rate < 1000.0,
+            "the runtime offered a {rate} Hz display, which is not a rate"
+        );
+    }
+
+    // The bit and the answer are the same answer again: the capability is a promise that this call has
+    // something to say, and a runtime without the extension is one where the list stays empty.
+    assert_eq!(
+        session.features().contains(wxr::Features::REFRESH_RATE),
+        !rates.is_empty(),
+        "{:?} and a list of {} rates disagree",
+        wxr::Features::REFRESH_RATE,
+        rates.len(),
+    );
+
+    // And a rate is asked for without a failure escaping, whichever the runtime makes of it: the worst
+    // outcome is a logged refusal, since an app that wants 90 Hz on a 60 Hz panel has asked for the
+    // impossible and does not need the frame loop to end over it.
+    let rate = rates.first().copied().unwrap_or(90.0);
+    session.set_refresh_rate(rate);
+}
+
+#[test]
+fn inputs_on_a_runtime_with_no_controllers_are_none_and_not_a_failure() {
+    let Some((_turn, _, mut session)) = connect() else {
+        eprintln!("no OpenXR runtime on this machine; nothing to connect to");
+        return;
+    };
+
+    let space = session.space(SpaceKind::Local).expect("a local space");
+
+    // A runtime that will not take the action set is a session with no inputs rather than a session that
+    // failed - which is what a machine with a head and no controllers is. The simulated head here is exactly
+    // that, so this is the branch rather than the exception; the assertion is that it is quiet about it.
+    let mut sources = Vec::new();
+    session
+        .inputs(space, &mut sources)
+        .expect("inputs asked of a session with none");
+
+    // No source names a hand that is not there. A runtime with controllers reports them here instead, and
+    // the same assertion holds: a source is a thing with a hand on it.
+    for source in &sources {
+        assert!(
+            matches!(
+                source.handedness,
+                wxr::Handedness::Left | wxr::Handedness::Right
+            ),
+            "a source came back with no hand: {source:?}"
+        );
+    }
+
+    // And a hand read for an id that exists comes back as an answer - empty when nothing is tracked, which
+    // on this machine is always. What it must not do is fail: `hand` is a read of a frame's worth of
+    // skeleton, and a runtime with no hands to give has nothing to read.
+    let mut hand = wxr::Hand::default();
+    session
+        .hand(wxr::InputId::new(0), space, &mut hand)
+        .expect("a hand asked of a session with none");
+}
+
+#[test]
 fn a_frame_before_the_session_is_begun_is_a_frame_to_wait_for() {
     // Its own session, and one that is never polled: polling is what begins a session, and `xrWaitFrame`
     // after that is a wait for a display this machine does not have.
