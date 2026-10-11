@@ -18,7 +18,7 @@ impl WebXrSession {
         else {
             return Ok(());
         };
-        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
+        let Some(frame) = self.frame() else {
             return Ok(());
         };
         planes::detected(&frame, &reference, &self.planes, out);
@@ -118,7 +118,7 @@ impl WebXrSession {
         else {
             return Ok(());
         };
-        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
+        let Some(frame) = self.frame() else {
             return Ok(());
         };
         hit::results(&frame, &source, &base, out);

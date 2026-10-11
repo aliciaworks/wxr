@@ -54,6 +54,27 @@ else
   else
     step "examples (wxr-openxr) - skipped, this machine has no OpenXR runtime"
   fi
+
+  # The third backend is the one that runs in a browser, so this is the only host that can run it. It needs a
+  # wasm toolchain, and it needs Chromium - and a machine with neither has not disproved anything, so the
+  # driver says 77 and this passes on. `serve.py` beside it builds the page, and `webxr-stub.js` beside that is
+  # the WebXR the page is given, because a desktop browser has WebXR and no headset behind it.
+  if rustup target list --installed 2>/dev/null | grep -qx wasm32-unknown-unknown && command -v chromium > /dev/null; then
+    step "smoke (wxr-webxr)"
+    # 77 is what the driver answers when it has nothing to drive, which is a skip and not a failure - and
+    # `set -e` would make the two indistinguishable, so the code is looked at rather than the exit alone.
+    set +e
+    PATH="$HOME/.cargo/bin:$PATH" python3 crates/wxr-webxr-smoke/drive.py
+    smoke=$?
+    set -e
+    if [[ $smoke -eq 77 ]]; then
+      step "smoke (wxr-webxr) - skipped, no browser worth driving"
+    elif [[ $smoke -ne 0 ]]; then
+      exit $smoke
+    fi
+  else
+    step "smoke (wxr-webxr) - skipped, no wasm32 target or no chromium"
+  fi
 fi
 
 if rustup target list --installed 2>/dev/null | grep -qx aarch64-apple-visionos; then

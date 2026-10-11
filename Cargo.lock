@@ -5171,6 +5171,7 @@ dependencies = [
 name = "wxr-webxr-smoke"
 version = "0.1.0"
 dependencies = [
+ "log",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

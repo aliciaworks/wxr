@@ -11,8 +11,9 @@ Three steps, and each exists for a reason:
 * The page is written here rather than kept beside this file, so that the module's name and the page cannot
   drift apart, and so that the directory served is a build artifact.
 
-It binds to loopback, and a browser needs a WebXR device to hand over: on a desktop that means the
-Immersive Web Emulator extension, loaded with `--load-extension`. Two flags are worth knowing about:
+It binds to loopback. The page it serves is `index.html`, which uses whatever WebXR the browser really has, and
+`stub.html`, which is the same page with `webxr-stub.js` in front of it - an XRSystem of our own, for a desktop
+that has no headset to hand over. Two flags are worth knowing about:
 `--enable-webgpu-developer-features` is *not* the one for WebXR (it is about WebGPU's own developer features),
 and `--enable-features=WebXRWebGPUBinding` *is* - it is what puts `XRGPUBinding` in a page, which is what a
 session would need to have images at all.
@@ -54,6 +55,16 @@ INDEX = """<!doctype html>
 </html>
 """.replace("__NAME__", NAME)
 
+# The same page, with the stub in front of it. A classic script in the head and not a module, because a module
+# is deferred and would land after the page's own script had already looked for `navigator.xr`.
+STUB = INDEX.replace(
+    "</head>",
+    '<script src="./webxr-stub.js"></script>\n</head>',
+).replace(
+    "<title>wxr-webxr smoke</title>",
+    "<title>wxr-webxr smoke, with the stubbed WebXR</title>",
+)
+
 
 def build(root: str) -> str:
     """Build the crate and bind it, and answer with the directory to serve."""
@@ -72,6 +83,9 @@ def build(root: str) -> str:
     )
     with open(os.path.join(out, "index.html"), "w") as page:
         page.write(INDEX)
+    with open(os.path.join(out, "stub.html"), "w") as page:
+        page.write(STUB)
+    shutil.copy(os.path.join(os.path.dirname(os.path.abspath(__file__)), "webxr-stub.js"), out)
     return out
 
 

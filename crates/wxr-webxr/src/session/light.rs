@@ -36,7 +36,7 @@ impl WebXrSession {
         let Some(probe) = slot.borrow().probe() else {
             return Ok(());
         };
-        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
+        let Some(frame) = self.frame() else {
             return Ok(());
         };
         crate::light::estimate(&frame, &probe, out);

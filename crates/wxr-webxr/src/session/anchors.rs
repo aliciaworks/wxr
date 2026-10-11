@@ -10,7 +10,7 @@ impl WebXrSession {
         space: wxr::ReferenceSpace,
         pose: wxr::Pose,
     ) -> Result<wxr::Anchor, wxr::Error> {
-        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
+        let Some(frame) = self.frame() else {
             return Err(wxr::Error::Unavailable("a frame has not begun yet".into()));
         };
         let Some(base) = self
@@ -47,7 +47,7 @@ impl WebXrSession {
         else {
             return Ok(None);
         };
-        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
+        let Some(frame) = self.frame() else {
             return Ok(None);
         };
         Ok(crate::anchors::pose(&frame, &anchor, &base))

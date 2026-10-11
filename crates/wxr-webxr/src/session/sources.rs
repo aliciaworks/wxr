@@ -17,7 +17,7 @@ impl WebXrSession {
         else {
             return Ok(());
         };
-        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
+        let Some(frame) = self.frame() else {
             return Ok(());
         };
         let Some(session) = self.inner.borrow().session.clone() else {
@@ -125,7 +125,7 @@ impl WebXrSession {
         else {
             return Ok(());
         };
-        let Some((frame, _)) = self.inner.borrow().frame.clone() else {
+        let Some(frame) = self.frame() else {
             return Ok(());
         };
         // A joint at a time, because a joint is the call the browser has - and a joint it will not answer for is

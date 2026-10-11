@@ -9,9 +9,10 @@
 //! session can render, and run frames until it has drawn a few. Everything it learns it writes into the page
 //! as well as the console, because a test whose result needs another window opened is a test nobody reads.
 //!
-//! `serve.py` beside this file builds it, binds `wasm-bindgen` to it, and serves it - and a browser needs a
-//! WebXR device to hand over, which on a desktop means the Immersive Web Emulator extension loaded with
-//! `--load-extension`.
+//! `serve.py` beside this file builds it, binds `wasm-bindgen` to it, and serves it - and a desktop browser
+//! has WebXR and no headset behind it, so it also serves `webxr-stub.js`: an XRSystem with a head, two hands
+//! and two controllers, made here rather than borrowed from an extension. `drive.py` presses the button and
+//! reads the verdict back off the server's record.
 
 #![cfg(target_family = "wasm")]
 
@@ -39,11 +40,39 @@ fn say(line: &str) {
         init.set_method("POST");
         init.set_body(&JsValue::from_str(line));
         let _ = window.fetch_with_str_and_init("/log", &init);
-        if let Some(body) = window.document().and_then(|document| document.body()) {
-            let before = body.inner_text();
-            body.set_inner_text(&format!("{before}{line}\n"));
+        if let Some(log) = window.document().as_ref().and_then(log_element) {
+            let before = log.inner_text();
+            log.set_inner_text(&format!("{before}{line}\n"));
         }
     }
+}
+
+/// Where the lines go on the page, made the first time one is printed.
+///
+/// An element of its own rather than the body, which is where this used to write: `set_inner_text` on a
+/// node replaces *everything in it*, so the button that had just been appended to the body was gone by the
+/// time the line saying it was waiting had been printed - and the run that needed it to be pressed found a
+/// page with nothing to press.
+fn log_element(document: &web_sys::Document) -> Option<web_sys::HtmlElement> {
+    let element = match document.get_element_by_id("log") {
+        Some(element) => element,
+        None => {
+            let element = document.create_element("pre").ok()?;
+            element.set_id("log");
+            document.body()?.append_child(&element).ok()?;
+            element
+        }
+    };
+    element.dyn_into().ok()
+}
+
+/// A run that did not draw, said once and in the one place a driver looks.
+///
+/// The smoke page has exactly two verdicts, `done` and `FAILED`, and both are lines on the record rather than
+/// a status read out of the page: a driver that had to ask the DOM would be a driver that could be reading a
+/// page that had not started yet.
+fn fail(reason: &str) {
+    say(&format!("FAILED: {reason}"));
 }
 
 /// What one run is holding: the session, the frame being built, and how far it has got.
@@ -58,20 +87,51 @@ struct Board {
     visibility: wxr::Visibility,
     /// Whether the inputs have been reported, so a controller is news once rather than every frame.
     input_said: bool,
+    /// Whether the skeletons have been asked for, and the buzzes sent, for the same reason.
+    hands_said: bool,
+    /// The hands, because a joint is asked of one and not of a session.
+    hands: Vec<wxr::Hand>,
+}
+
+/// The backend's own log lines, which are the ones that say *why*.
+///
+/// A refused session arrives as an event, and an event has nowhere to put a sentence - so `wxr-webxr` logs
+/// the browser's own explanation and hands back `Lost`. A page with no logger drops those lines on the floor,
+/// and what is left on the record is "the session was lost" with no reason in it, which is the least useful
+/// sentence a backend can produce.
+struct Beacon;
+
+impl log::Log for Beacon {
+    fn enabled(&self, _: &log::Metadata) -> bool {
+        true
+    }
+
+    fn log(&self, record: &log::Record) {
+        say(&record.args().to_string());
+    }
+
+    fn flush(&self) {}
 }
 
 #[wasm_bindgen(start)]
 fn start() {
+    // Before anything else, so that the backend's explanation of a failure is on the record before the
+    // failure is. A second logger is not an error worth stopping for: there is only ever one page here.
+    if log::set_logger(&Beacon).is_ok() {
+        log::set_max_level(log::LevelFilter::Trace);
+    }
     wasm_bindgen_futures::spawn_local(setup());
 }
 
 async fn setup() {
     say("wxr-webxr smoke: starting");
 
-    let backend = match wxr_webxr::WebXr::load() {
-        Ok(backend) => backend,
-        Err(error) => return say(&format!("no WebXR here: {error}")),
-    };
+    // Asked here as well as in the click handler, because a browser with no XR system at all should say so
+    // before it asks for a button rather than after somebody presses one. There is nothing to keep: `WebXr`
+    // is a handle on `navigator.xr`, and the one that matters is the one current when the gesture happens.
+    if let Err(error) = wxr_webxr::WebXr::load() {
+        return fail(&format!("no WebXR here: {error}"));
+    }
     say(&format!(
         "browser has the WebXR/WebGPU binding: {}",
         wxr_webxr::WebXr::gpu_binding()
@@ -93,23 +153,59 @@ async fn setup() {
         .await
     {
         Ok(adapter) => adapter,
-        Err(error) => return say(&format!("no adapter: {error:?}")),
+        Err(error) => return fail(&format!("no adapter: {error:?}")),
     };
     let (device, _queue) = match adapter
         .request_device(&wgpu::DeviceDescriptor::default())
         .await
     {
         Ok(pair) => pair,
-        Err(error) => return say(&format!("no device: {error:?}")),
+        Err(error) => return fail(&format!("no device: {error:?}")),
     };
     say(&format!(
         "a WebGPU device, made by the page (asked for an XR-compatible adapter: {xr_compatible})"
     ));
 
+    // A button, and not a call on load. `requestSession` is one of the calls the specification reserves for a
+    // user gesture, so a page that asks as soon as it loads gets `SecurityError` and a session that never
+    // exists - which is the platform's rule and not this page's shortcoming. Every immersive page ever written
+    // has a button in it for exactly this, and a page without one could only ever fail here.
+    let document = web_sys::window()
+        .and_then(|window| window.document())
+        .expect("a page has a document");
+    let button = document
+        .create_element("button")
+        .expect("a document can make an element");
+    button.set_id("enter");
+    button.set_text_content(Some("Enter XR"));
+    if let Some(body) = document.body() {
+        // Before the log rather than after it: a page whose button is a screenful down is a page a driver has
+        // to scroll, and coordinates are the only thing a driver has to aim with.
+        let _ = body.insert_before(&button, body.first_child().as_ref());
+    }
+    say("waiting for a click to enter XR");
+
+    let on_click = Closure::<dyn FnMut(web_sys::Event)>::new(move |_| {
+        // The backend again rather than a copy of one: `WebXr` is a handle on `navigator.xr`, and holding it
+        // across a click would be holding something the page is free to have replaced in the meantime.
+        let backend = match wxr_webxr::WebXr::load() {
+            Ok(backend) => backend,
+            Err(error) => return fail(&format!("no WebXR here: {error}")),
+        };
+        let device = device.clone();
+        wasm_bindgen_futures::spawn_local(async move { enter(backend, device).await });
+    });
+    let _ = button.add_event_listener_with_callback("click", on_click.as_ref().unchecked_ref());
+    // The closure lives for as long as the page does, which is the only lifetime a page has.
+    on_click.forget();
+}
+
+/// Everything after the gesture: the session, and the loop that draws its frames.
+async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
     let session = match backend.connect(wxr_webxr::Device { device }, wxr::SessionMode::ImmersiveVr)
     {
         Ok(session) => session,
-        Err(error) => return say(&format!("connect refused: {error}")),
+        Err(error) => return fail(&format!("connect refused: {error}")),
     };
     say(&format!(
         "connected, state {:?}, visibility {:?}",
@@ -128,18 +224,31 @@ async fn setup() {
         state: wxr::State::default(),
         visibility: wxr::Visibility::default(),
         input_said: false,
+        hands_said: false,
+        hands: Vec::new(),
     }));
     let ticking = board.clone();
     let interval: Rc<RefCell<Option<i32>>> = Rc::new(RefCell::new(None));
     let stop = interval.clone();
     let callback = Closure::<dyn FnMut()>::new(move || {
         let mut board = ticking.borrow_mut();
-        tick(&mut board);
-        if board.drawn >= FRAMES || !board.session.state().is_alive() {
-            say("done");
-            if let (Some(id), Some(window)) = (stop.borrow_mut().take(), web_sys::window()) {
-                window.clear_interval_with_handle(id);
-            }
+        // One verdict, and it is a line rather than a status: a driver that had to read the page would be a
+        // driver reading a page that might not have started yet.
+        let verdict = match tick(&mut board) {
+            Ok(()) if board.drawn >= FRAMES => Some("done".to_string()),
+            Ok(()) if !board.session.state().is_alive() => Some(format!(
+                "FAILED: the session ended after {} frame(s)",
+                board.drawn
+            )),
+            Ok(()) => None,
+            Err(reason) => Some(format!("FAILED: {reason}")),
+        };
+        let Some(verdict) = verdict else {
+            return;
+        };
+        say(&verdict);
+        if let (Some(id), Some(window)) = (stop.borrow_mut().take(), web_sys::window()) {
+            window.clear_interval_with_handle(id);
         }
     });
     let handle = web_sys::window()
@@ -158,7 +267,9 @@ async fn setup() {
 }
 
 /// One tick of the loop: what happened, where the eyes are, and a frame handed back.
-fn tick(board: &mut Board) {
+///
+/// `Err` is a run that cannot get to the next frame, with the sentence a person would want to read.
+fn tick(board: &mut Board) -> Result<(), String> {
     board.ticks += 1;
     while let Some(event) = board.session.poll() {
         say(&format!("event: {event:?}"));
@@ -178,6 +289,9 @@ fn tick(board: &mut Board) {
             meta.format,
             meta.extent
         ));
+        // Asked on every rung rather than once at the end: the features are the session's and a session that
+        // has not arrived has none, so this is the rung that answers with something.
+        say(&format!("features: {:?}", board.session.features()));
     }
 
     if board.space.is_none() && board.session.visibility().can_render() {
@@ -187,21 +301,20 @@ fn tick(board: &mut Board) {
                 board.space = Some(space);
             }
             Err(error) => {
-                say(&format!("no floor space: {error}"));
-                return;
+                return Err(format!("no floor space: {error}"));
             }
         }
     }
     let Some(space) = board.space else {
-        return;
+        return Ok(());
     };
 
     let now = Duration::from_millis(u64::from(board.ticks) * 16);
     if let Err(error) = board.session.begin(now, &mut board.frame) {
-        return say(&format!("begin failed: {error}"));
+        return Err(format!("begin failed: {error}"));
     }
     if !board.frame.is_render() {
-        return;
+        return Ok(());
     }
     if let Err(error) = board.session.views(space, &mut board.frame) {
         say(&format!("views failed: {error}"));
@@ -241,9 +354,49 @@ fn tick(board: &mut Board) {
             ));
         }
     }
+    // The skeletons, and one buzz each, both asked once. A joint is asked of a *hand* and a hand belongs to a
+    // source, so the sources above are what a hand is found by - and a run that asked every frame would be a
+    // run whose record is the same line twenty times over.
+    if !board.hands_said && !sources.is_empty() {
+        board.hands_said = true;
+        for source in &sources {
+            let index = source.id.get() as usize;
+            while board.hands.len() <= index {
+                board.hands.push(wxr::Hand::default());
+            }
+            if let Err(error) = board
+                .session
+                .hand(source.id, space, &mut board.hands[index])
+            {
+                say(&format!("  {:?} hand refused: {error}", source.handedness));
+                continue;
+            }
+            let tracked = wxr::HandJoint::ALL
+                .iter()
+                .filter(|joint| board.hands[index].joint(**joint).is_some())
+                .count();
+            say(&format!(
+                "  {:?} hand: {tracked} of {} joints tracked",
+                source.handedness,
+                wxr::HandJoint::COUNT,
+            ));
+            // A buzz is a request that has been sent and nothing more: the answer is whether the platform
+            // took it, not whether a motor moved, which is a thing no frame can see.
+            match board
+                .session
+                .pulse(source.id, 0.5, Duration::from_millis(100))
+            {
+                Ok(()) => say(&format!("  {:?} buzz sent", source.handedness)),
+                Err(error) => say(&format!(
+                    "  {:?} would not buzz: {error}",
+                    source.handedness
+                )),
+            }
+        }
+    }
 
     if let Err(error) = board.session.end(&mut board.frame) {
-        say(&format!("end failed: {error}"));
+        return Err(format!("end failed: {error}"));
     }
     board.drawn += 1;
     say(&format!(
@@ -251,6 +404,7 @@ fn tick(board: &mut Board) {
         board.drawn,
         board.session.image_count()
     ));
+    Ok(())
 }
 
 #[cfg(not(target_family = "wasm"))]

@@ -226,7 +226,7 @@ Each backend crate is empty outside its own target family - `wxr-openxr` off was
 other way, `wxr-apple` off Apple - so a host build tests the core and the renderer and leaves the platforms to
 a cross-compiler. `.github/workflows/ci.yml` runs exactly this list.
 
-Beyond the compiler, seven things are checked, and each is checked by the one that can:
+Beyond the compiler, eight things are checked, and each is checked by the one that can:
 
 ```sh
 python3 Tools/check_webxr_sys.py                            # the generated bindings, against their IDL
@@ -235,6 +235,7 @@ cargo run -p wxr-openxr --example layers                    # a quad layer, agai
 cargo run -p wxr-openxr --example rendered                  # the whole frame, drawn, against that same runtime
 cargo test -p wxr-conformance                               # the vocabulary, against another reading of the same API
 cargo test -p wxr-apple                                     # the Apple backend's own tables   (on a Mac)
+python3 crates/wxr-webxr-smoke/drive.py                     # the WebXR backend, in a browser
 bash apps/visionos/build.sh && bash apps/visionos/run.sh     # the app, in the visionOS simulator   (on a Mac)
 ```
 
@@ -277,6 +278,28 @@ gap here: Apple's header says so, under `cp_drawable_get_view_count` in `drawabl
 
 So the two-eye arithmetic is exercised on the mock rather than there, and the one-eye path it takes instead is
 the one the code already has a word for (`Eye::Mono`) and a compositor already hands it.
+
+The eighth is the WebXR backend, in a browser, and it is the one with the shortest way to a wrong answer: a
+desktop browser has `navigator.xr` and no headset behind it, so `immersive-vr` there is `false` and a page that
+believes it has a device is a page that has not asked. The usual fix is the Immersive Web Emulator, which is an
+extension with a popup, a device catalogue, and a race between two content scripts over which of them dispatches
+the device definition first - archaeology, not a test. So `crates/wxr-webxr-smoke/webxr-stub.js` is the WebXR
+instead: an `XRSystem` of our own with a head that moves, two hands with all twenty-five joints each, two
+controllers on the `xr-standard` mapping with a motor each, and no compositing at all. It is loaded by
+`stub.html` and not by `index.html`, so a page that did not ask for it gets whatever the browser really has.
+`drive.py` builds the page, serves it on a port nothing else is using, opens Chromium headless over the DevTools
+pipe, presses the button the page waits for - `requestSession` is one of the calls the specification reserves for
+a user gesture, so a synthetic `.click()` is refused and real input is dispatched instead - and reads the
+verdict back off the server's own record. It needs no headset, no extension and no network, and it exits 77
+rather than failing on a machine with no Chromium.
+
+It earned its place on the first run. The smoke page asks for the frame's input sources and gets none, and the
+reason is that `begin` takes the frame out of the slot the animation callback fills while seven readers - the
+inputs, the hand's joints, the planes, the hits, the light, and an anchor made or asked about - were still
+reading that slot after `begin` had emptied it. Every one of them answered a silent "nothing here" to every
+question, which looks exactly like a session that has none of those things. `views` had been fixed already,
+because a session that draws no views is a session that visibly does nothing; the rest had not been noticed,
+and a page that had never run could not have said so.
 
 What none of it proves is that any of the three has drawn a frame on a **headset**, because none of them has.
 That is the only thing left open here, and it is not a thing that can be closed without the hardware.

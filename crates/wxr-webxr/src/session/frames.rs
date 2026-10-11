@@ -5,6 +5,20 @@
 use super::*;
 
 impl WebXrSession {
+    /// The frame this session is drawing into, which is the one `begin` took out of the slot.
+    ///
+    /// Every one of these readers used to look in the slot the animation callback fills instead, and every one
+    /// of them got nothing back: `begin` *takes* that slot, so between `begin` and `end` it is empty. `views`
+    /// was fixed - a session that draws no views is a session that visibly does nothing - and the rest had
+    /// been answering "no inputs, no joints, no planes, no hits, no light, no anchors" ever since, each of
+    /// them a silent `Ok` that looked like a session with none of those things rather than one that could not
+    /// find its own frame. This is the one place that asks, so that the next one cannot ask the wrong place.
+    pub(super) fn frame(&self) -> Option<XrFrame> {
+        self.current.clone()
+    }
+}
+
+impl WebXrSession {
     pub(super) fn begin_impl(
         &mut self,
         _now: Duration,
@@ -12,6 +26,9 @@ impl WebXrSession {
     ) -> Result<(), wxr::Error> {
         out.views_mut().clear();
         self.located = 0;
+        // Last frame's views are not this frame's, and neither is last frame's *frame*: a `Wait` below leaves
+        // this session between frames, and a question about the frame asked then has no frame to answer for.
+        self.current = None;
         // Last frame's views are not this frame's, and a depth buffer is about *that* frame's eyes. The same
         // is true of a layer's picture: it is the compositor's for one frame and taken back at the end of it.
         self.frame_views.clear();
@@ -57,7 +74,7 @@ impl WebXrSession {
             // that just started.
             return Ok(());
         };
-        let Some(frame) = self.current.clone() else {
+        let Some(frame) = self.frame() else {
             return Ok(());
         };
         let Some(pose) = frame.get_viewer_pose(&reference) else {
