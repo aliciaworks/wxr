@@ -226,10 +226,11 @@ Each backend crate is empty outside its own target family - `wxr-openxr` off was
 other way, `wxr-apple` off Apple - so a host build tests the core and the renderer and leaves the platforms to
 a cross-compiler. `.github/workflows/ci.yml` runs exactly this list.
 
-Beyond the compiler, four things are checked, and each is checked by the one that can:
+Beyond the compiler, five things are checked, and each is checked by the one that can:
 
 ```sh
 python3 Tools/check_webxr_sys.py                            # the generated bindings, against their IDL
+cargo test -p wxr-openxr                                    # the backend, against the runtime this machine has
 cargo run -p wxr-openxr --example layers                    # a quad layer, against the runtime this machine has
 cargo test -p wxr-conformance                               # the vocabulary, against another reading of the same API
 bash apps/visionos/build.sh && bash apps/visionos/run.sh     # the app, in the visionOS simulator   (on a Mac)
@@ -238,13 +239,19 @@ bash apps/visionos/build.sh && bash apps/visionos/run.sh     # the app, in the v
 The first compares the generator's output with its input - every declaration in the snapshot has a file, every
 member a name - because a declaration the generator cannot resolve is one it leaves out in silence. It also
 compares against a captured browser's prototypes when one is beside the IDL, which is where a name written by
-hand can be caught; `Tools/capture_webxr_prototypes.js` is what produces the dump. The second is the OpenXR
-half of the layer API against a real runtime: `xrWaitFrame` waits for a session that never becomes visible on a
-machine with no display, so a *frame* is not available - but a layer is made against an idle session, and the
-runtime takes the swapchain, hands back its images and lets go of it on release. The third is the vocabulary
+hand can be caught; `Tools/capture_webxr_prototypes.js` is what produces the dump. The second is the backend
+asked of a runtime, and it needs no headset: Monado runs a simulated head-mounted display behind a compositor
+that has nothing to present, which is enough for a session, its images, the spaces it will make and the
+capability bits it will answer for. It skips itself on a machine with no runtime at all, since a backend that
+reports `Unavailable` has answered correctly. The frame loop is the one part it does not reach, and it says so
+rather than hanging: a session is begun but never shown, and `xrWaitFrame` then waits for a frame that is not
+coming. The third is the OpenXR half of the layer API against a real runtime: `xrWaitFrame` waits for a
+session that never becomes visible on a machine with no display, so a *frame* is not available - but a layer
+is made against an idle session, and the runtime takes the swapchain, hands back its images and lets go of it
+on release. The fourth is the vocabulary
 against the other reading of the same specification: `servo-webxr-api`, a Rust implementation of the WebXR API,
 named as a dependency rather than copied, so that the names this core gives things - a session mode, an eye, a
-joint of a hand - are compared with a second reading of the sentences that define them. The fourth is the one
+joint of a hand - are compared with a second reading of the sentences that define them. The fifth is the one
 that *draws*: the app runs in the visionOS simulator, the compositor creates a layer and presents what the
 frame loop draws into it, and the picture is there to be looked at.
 
