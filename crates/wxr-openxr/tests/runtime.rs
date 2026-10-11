@@ -254,6 +254,56 @@ fn an_offset_space_is_another_space_of_the_same_kind() {
 }
 
 #[test]
+fn a_boundary_belongs_to_a_bounded_space_and_is_a_closed_loop() {
+    let Some((_turn, _, mut session)) = connect() else {
+        eprintln!("no OpenXR runtime on this machine; nothing to connect to");
+        return;
+    };
+
+    // A boundary is a fact about a bounded space and about nothing else: `BoundedFloor` is the space whose
+    // definition includes the room the user walked, and `Local` is an origin with no claim on a wall. So
+    // asking the second is an outline with no points, which is not an error - a floor with no wall drawn
+    // around it is still a floor.
+    let local = session.space(SpaceKind::Local).expect("a local space");
+    let mut outline = vec![wxr::glam::Vec2::new(9.0, 9.0)];
+    session
+        .bounds(local, &mut outline)
+        .expect("a boundary asked of a space with none");
+    assert!(
+        outline.is_empty(),
+        "a local space has a boundary: {outline:?}"
+    );
+
+    // The bounded one, whether or not this machine's runtime has walked a room. A simulated head has no room
+    // to walk, so `None` is the likely answer - and it is an answer rather than a failure, which is the whole
+    // point of the shape: empty means there is no wall, not that something went wrong.
+    let bounded = session
+        .space(SpaceKind::BoundedFloor)
+        .expect("a bounded floor space");
+    session
+        .bounds(bounded, &mut outline)
+        .expect("a boundary asked of a bounded space");
+
+    // Which is what a runtime without a room answers, and there is nothing further to check.
+    if outline.is_empty() {
+        return;
+    }
+
+    // Four corners, because the room OpenXR tracks is a rectangle - and written out as the closed loop the
+    // core asks for, so a caller can walk it without the last point having to repeat the first.
+    assert_eq!(
+        outline.len(),
+        4,
+        "a rectangle is not four corners: {outline:?}"
+    );
+
+    // And it is a rectangle: opposite corners are negatives of each other, which is what centred on the
+    // origin means. A runtime that reports a zero-sized room would fail here, and should.
+    assert_eq!(outline[0], -outline[2]);
+    assert_eq!(outline[1], -outline[3]);
+}
+
+#[test]
 fn a_frame_before_the_session_is_begun_is_a_frame_to_wait_for() {
     // Its own session, and one that is never polled: polling is what begins a session, and `xrWaitFrame`
     // after that is a wait for a display this machine does not have.

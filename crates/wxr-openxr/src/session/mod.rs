@@ -256,6 +256,14 @@ impl wxr::Session for OpenXrSession {
         self.offset_space_impl(base, offset)
     }
 
+    fn bounds(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        out: &mut Vec<wxr::glam::Vec2>,
+    ) -> Result<(), wxr::Error> {
+        self.bounds_impl(space, out)
+    }
+
     fn layer(
         &mut self,
         space: wxr::ReferenceSpace,
