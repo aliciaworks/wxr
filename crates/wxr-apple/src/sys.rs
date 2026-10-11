@@ -22,12 +22,18 @@
 //! that is expected to be *deleted* rather than corrected, and `projection` is where that swap would land.
 //!
 //! ARKit is the other half, and now almost all of it comes from the generated `objc2-ar-kit` crate - ARKit
-//! read from the SDK that has its visionOS C module. The two left here are the ones whose signature
-//! *carries* a `simd` type: both return a `simd_float4x4` by value, and `objc2`'s translator cannot express
-//! `simd` in a function yet. That by-value return is also why the types are `repr(C)` and aligned: Apple
+//! read from the SDK that has its visionOS C module. What is left here is the calls whose signature
+//! *carries* a `simd` type - each returns a `simd_float4x4` by value, and `objc2`'s translator cannot
+//! express `simd` in a function yet - which is why every one of them crosses the shim below rather than
+//! being declared here. That by-value return is also why the types are `repr(C)` and aligned: Apple
 //! writes one with SIMD stores into a slot assumed to be sixteen-byte aligned, and a Rust `[[f32; 4]; 4]`
 //! has an alignment of four - a crash waiting for a device, and the sort of thing that is invisible until
 //! it is not.
+//!
+//! The list has grown once already and will grow again the same way: a generated crate misses a call, the
+//! call is one Apple's own code uses, and the header is what says so. [`ar_skeleton_joint_get_anchor_from_joint_transform`](https://developer.apple.com/documentation/arkit/ar_skeleton_joint_get_anchor_from_joint_transform)
+//! is the most recent, and it is the one that turned hand tracking from a palm into a skeleton - see
+//! `arkit::skeleton`.
 
 use std::ffi::c_void;
 
@@ -93,6 +99,8 @@ unsafe extern "C" {
         hand_anchor: *const c_void,
         out: *mut f32,
     );
+    /// Writes the transform from a skeleton joint to the hand anchor holding it into `out`.
+    fn wxr_ar_skeleton_joint_get_anchor_from_joint_transform(joint: *const c_void, out: *mut f32);
     /// Returns a world anchor the runtime will keep at the transform passed in `transform`.
     fn wxr_ar_world_anchor_create_with_origin_from_anchor_transform(
         transform: *const f32,
@@ -192,6 +200,31 @@ pub unsafe fn ar_hand_anchor_get_origin_from_anchor_transform(
     let mut out = [0.0f32; 16];
     // SAFETY: the caller's contract is the shim's, and `out` is sixteen contiguous `f32`s.
     unsafe { wxr_ar_hand_anchor_get_origin_from_anchor_transform(hand_anchor, out.as_mut_ptr()) };
+    Float4x4(out)
+}
+
+/// Where a joint is inside the hand that holds it - the transform from the joint's space to the hand
+/// anchor's, which is the shape a skeleton is: a chain of joints each placed relative to its parent, with
+/// the wrist at the root and the anchor at the wrist's own place in the world.
+///
+/// This is the call that decides whether hand tracking exists on this platform at all. ARKit's C API does
+/// give the skeleton - `ar_hand_anchor_get_hand_skeleton` hands one over and `ar_hand_skeleton_get_joint_named`
+/// hands back a joint of it - and what it does *not* give is a Rust-readable transform, because this getter
+/// returns a `simd_float4x4` by value and that is the one signature `objc2` cannot express. So it crosses
+/// the shim like the other three, and the skeleton that would otherwise be unreadable is readable.
+///
+/// Apple documents the plain form of this call as returning the *rendering-corrected* transform, equal to
+/// the `_with_correction` form asked for `ar_transform_correction_rendered`. The hand anchor's own transform
+/// above is corrected the same way, so the two compose: a joint placed by this and a hand placed by that are
+/// in the same space, which is the property that has to hold or a drawn hand comes apart at the wrist.
+///
+/// # Safety
+///
+/// `joint` must be a live skeleton joint object from the generated crate.
+pub unsafe fn ar_skeleton_joint_get_anchor_from_joint_transform(joint: *const c_void) -> Float4x4 {
+    let mut out = [0.0f32; 16];
+    // SAFETY: the caller's contract is the shim's, and `out` is sixteen contiguous `f32`s.
+    unsafe { wxr_ar_skeleton_joint_get_anchor_from_joint_transform(joint, out.as_mut_ptr()) };
     Float4x4(out)
 }
 

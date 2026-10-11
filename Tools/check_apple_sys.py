@@ -46,7 +46,8 @@ SDK = (
 # reported as `no-oracle` rather than missed silently, so the list growing is a thing to notice.
 HEADERS = {
     "ARKit": [
-        "anchor", "data_provider", "hand_skeleton", "hand_tracking", "object", "session", "world_tracking",
+        "anchor", "data_provider", "hand_skeleton", "hand_tracking", "object", "session",
+        "skeleton_joint", "world_tracking",
     ],
     "CompositorServices": ["drawable", "view"],
 }

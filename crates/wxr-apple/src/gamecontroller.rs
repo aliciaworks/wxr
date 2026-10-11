@@ -38,7 +38,11 @@ use objc2_game_controller::{
 /// The core's [`wxr::InputId`] is a `u32` with no namespace, and ARKit's hands are numbered from zero - so
 /// the offset is what keeps the two lists from meeting. It is a constant rather than a count because the
 /// number of hands changes as they come in and out of view, and an id that moves is worse than a gap.
-const CONTROLLER_ID_BASE: u32 = 1024;
+///
+/// `pub` for the same reason it exists: `session::sources` reads a hand's id back as an index into the two
+/// hands, and that reading is only safe if this offset is the thing the two halves agree on. Two copies of
+/// this number would compile and then disagree on a device.
+pub const CONTROLLER_ID_BASE: u32 = 1024;
 
 /// The controllers this session has seen, and the engines their buzzes play on.
 pub struct GameControllers {

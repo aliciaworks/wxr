@@ -25,8 +25,8 @@ impl wxr::Session for AppleSession {
     }
 
     fn features(&self) -> wxr::Features {
-        // ARKit's world tracking is a reference space rather than a capability, and its hands are a palm with
-        // no skeleton. Surfaces it does have - the plane detection provider - and that is the one bit here.
+        // ARKit's world tracking is a reference space rather than a capability. The surfaces it does have
+        // are the providers below - one bit each, because a session can have one without the other.
         let mut features = wxr::Features::NONE;
         if self.arkit.as_ref().is_some_and(ArKit::has_planes) {
             features = features.union(wxr::Features::PLANES);
@@ -38,6 +38,13 @@ impl wxr::Session for AppleSession {
         // session can trace the room as triangles without the plane provider being up at all.
         if self.arkit.as_ref().is_some_and(ArKit::has_meshes) {
             features = features.union(wxr::Features::MESH);
+        }
+        // Hand tracking, which is the provider rather than the skeleton: a device whose hand provider came up
+        // is a device that reports hands, and whether any given joint is tracked this frame is the question
+        // `Session::hand` answers per joint. Asking for the skeleton of a hand ARKit has lost is an empty
+        // hand, which is what the bit is a warning about rather than a promise against.
+        if self.arkit.as_ref().is_some_and(ArKit::has_hands) {
+            features = features.union(wxr::Features::HAND_TRACKING);
         }
         // Haptics is the one bit here that does not come from ARKit: a controller is GameController's, and
         // whether a connected one can be felt is that framework's answer rather than the platform's.
@@ -316,56 +323,21 @@ impl wxr::Session for AppleSession {
         space: wxr::ReferenceSpace,
         out: &mut Vec<wxr::InputSource>,
     ) -> Result<(), wxr::Error> {
-        // Controllers are GameController's and hands are ARKit's, so this comes first and on its own: a
-        // session whose ARKit never came up still has controllers, and the early return below is about one
-        // framework rather than about both.
-        if self.controllers.read(out) {
-            self.inputs_changed = true;
-        }
-        let Some(arkit) = &self.arkit else {
-            return Ok(());
-        };
-        // The same space the views are expressed in, for the same reason.
-        let origin = self.space_origin(space);
+        self.inputs_impl(space, out)
+    }
 
-        // Hands are picked up and put down, and that is the set of inputs changing - one event however many
-        // hands it is about, which is the shape WebXR gives `inputsourceschange` too.
-        let hands = arkit.hands();
-        if hands.len() != self.hands_seen {
-            self.hands_seen = hands.len();
-            self.inputs_changed = true;
-        }
-
-        for (index, (handedness, transform, tracked)) in hands.into_iter().enumerate() {
-            let pose = wxr_render::pose_from_transform(origin * transform);
-            out.push(wxr::InputSource {
-                id: wxr::InputId::new(index as u32),
-                handedness,
-                // A palm ray is a tracked pointer like any other; the C surface has no gaze or screen ray to
-                // make.
-                target_ray_mode: wxr::TargetRayMode::TrackedPointer,
-                // No skeleton, and that is the C surface rather than a gap somebody chose: ARKit's hand anchors
-                // are a palm pose, and the joints are in the Swift `HandAnchor.skeleton` this crate cannot see.
-                // So there is nothing to ask for and `Session::hand` would have nothing to answer with.
-                hand: false,
-                // And nothing to buzz, because a hand does not: the controllers that can are reported beside
-                // it, from GameController rather than ARKit - see `crate::gamecontroller`.
-                haptics: false,
-                // A hand here is a place and an orientation, and that is all the C API gives - the skeleton
-                // is the Swift API's, so there is no fingertip to aim from and no pinch to read. Grip and
-                // aim are therefore the same pose, and the pose's own orientation is the palm's direction:
-                // a game that wants a ray takes its -Z, which is what every ray in this workspace is.
-                grip: pose,
-                aim: pose,
-                tracked,
-                // And no buttons at all, which is not a gap: a hand has none. The core's buttons are the
-                // intersection of the three platforms, and this is the platform where the intersection is
-                // empty - so there are no press events here either, because there is nothing to press.
-                buttons: wxr::Buttons::default(),
-                axes: wxr::Axes::default(),
-            });
-        }
-        Ok(())
+    /// A hand's skeleton, which is ARKit's joints at this frame's poses.
+    ///
+    /// A source whose [`wxr::InputSource::hand`] was false has no skeleton to answer with, and asking
+    /// anyway is an empty hand rather than an error - the core says to ask the question first, and a caller
+    /// that did not is a caller with an answer it can live with.
+    fn hand(
+        &mut self,
+        source: wxr::InputId,
+        space: wxr::ReferenceSpace,
+        out: &mut wxr::Hand,
+    ) -> Result<(), wxr::Error> {
+        self.hand_impl(source, space, out)
     }
 
     /// A buzz on a controller, which is a Core Haptics pattern played on an engine for it.

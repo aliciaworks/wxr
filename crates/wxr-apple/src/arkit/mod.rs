@@ -15,12 +15,18 @@
 //! What is *not* here is a floor: ARKit's origin is not a plane, so `LocalFloor` stays refused rather than a
 //! scene being put at eye height.
 //!
-//! **Hand tracking** is the input on this platform, and it is worth being exact about how much of it the C
-//! API gives. It gives a provider, an anchor per hand, and each anchor's place in the world - and that is
-//! all: the skeleton is not in the C API, only the enumeration of joint *names* is, so there are no joint
-//! transforms to read, no pinch to detect and no ray to derive from a fingertip. A hand here is therefore a
-//! place and an orientation, and its `aim` is its `grip` - see `session`'s `inputs`. A game that needs a
-//! pinch wants the Swift `HandAnchor.Skeleton`, which means the app, which is where gestures belong anyway.
+//! **Hand tracking** is the input on this platform, and it is a skeleton rather than a palm - which is worth
+//! saying plainly, because this backend's own documentation once said the opposite. The C API does give
+//! joint transforms: `ar_hand_anchor_get_hand_skeleton` hands over a skeleton, `ar_hand_skeleton_get_joint_named`
+//! hands back a joint of it, and that joint's `ar_skeleton_joint_get_anchor_from_joint_transform` is where it
+//! is. What made it look absent is that the transform returns a `simd_float4x4` by value, which `objc2`'s
+//! translator cannot express, so the generated crate binds the joint's index and parent and leaves the
+//! transform undeclared. [`skeleton`] is where that transform is read, through [`crate::sys`]'s shim.
+//!
+//! A hand is therefore a place, an orientation and twenty-five joints - see [`skeleton::read`]. The one
+//! thing still absent is a *pinch*: ARKit's C surface reports joint poses and not the discrete pinch state
+//! its Swift API has, so a game that wants one derives it from the thumb tip and index tip, which is what
+//! those joints are there for.
 //!
 //! **The room comes in two resolutions, and both are here.** The plane provider is the surfaces ARKit
 //! recognised - [`ArKit::planes`], with [`planes_are_supported`] as the question of whether the device can -
@@ -60,6 +66,7 @@ use wxr::glam::Mat4;
 use crate::sys;
 
 mod mesh;
+mod skeleton;
 
 use mesh::collect_mesh;
 
@@ -271,41 +278,6 @@ impl ArKit {
             Some(world) => Retained::as_ptr(&world.anchor) as *mut c_void,
             None => std::ptr::null_mut(),
         }
-    }
-
-    /// Where the hands are, as `(handedness, place in the world, tracked)`.
-    ///
-    /// Empty when there is no hand provider, when it has nothing yet, or when the query failed - all three
-    /// of which are a frame with no hands rather than a frame to stop over. Handedness comes from which
-    /// anchor it is, because the call hands over a left one and a right one and says so in its arguments.
-    pub fn hands(&self) -> Vec<(wxr::Handedness, Mat4, bool)> {
-        let Some(hands) = &self.hands else {
-            return Vec::new();
-        };
-        // SAFETY: the provider and both anchors are live, and the anchors are ours to fill.
-        let latest = unsafe {
-            ar_hand_tracking_provider_t::latest_anchors(&hands.provider, &hands.left, &hands.right)
-        };
-        if !latest {
-            return Vec::new();
-        }
-        [
-            (wxr::Handedness::Left, &hands.left),
-            (wxr::Handedness::Right, &hands.right),
-        ]
-        .into_iter()
-        .map(|(handedness, anchor)| {
-            // SAFETY: both casts are the subtype ones above; the anchor is live and the transform is the
-            // hand's place in the world.
-            let transform = unsafe {
-                sys::ar_hand_anchor_get_origin_from_anchor_transform(
-                    Retained::as_ptr(anchor).cast(),
-                )
-            };
-            let tracked = unsafe { ar_trackable_anchor_t::is_tracked(as_trackable_anchor(anchor)) };
-            (handedness, Mat4::from_cols_array(&transform.0), tracked)
-        })
-        .collect()
     }
 
     /// The transform an anchor is at, as glam's matrix.

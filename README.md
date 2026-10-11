@@ -25,10 +25,10 @@ owns one, wgpu is made to adopt it.
 
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
-| **Native API reached** - of each backend's own spec | 164/290 | 41/551 | 66/618 |
-| *as a percentage* | 57% | 7% | 11% |
-| **WebXR API reached** - of the whole API | 294/452 | 177/452 | 187/452 |
-| *as a percentage* | 65% | 39% | 41% |
+| **Native API reached** - of each backend's own spec | 164/290 | 42/551 | 70/618 |
+| *as a percentage* | 57% | 8% | 11% |
+| **WebXR API reached** - of the whole API | 294/452 | 178/452 | 199/452 |
+| *as a percentage* | 65% | 39% | 44% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
 Input, Depth Sensing, Hit Test, Lighting Estimation, Anchors, Plane Detection, the AR Module, DOM Overlays
@@ -290,9 +290,9 @@ are in it. A native item with no counterpart in the core is one no backend will 
 can reach 100% by design.
 
 The second is the direction that says whether the *unification* is done, and it has two factors. The core
-speaks 61% of WebXR's vocabulary - 276 of the 452 members across every specification - it is the vocabulary all
+speaks 62% of WebXR's vocabulary - 282 of the 452 members across every specification - it is the vocabulary all
 three backends share rather than a mirror of the spec - and of its own `Session` methods the backends define
-**86%**, **64%** and **50%**. So a backend cannot reach the whole of WebXR by implementing
+**86%**, **64%** and **52%**. So a backend cannot reach the whole of WebXR by implementing
 methods: the word has to exist in the core first. Widening the core and filling the methods are the two things
 that move this, and both are work.
 

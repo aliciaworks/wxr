@@ -50,6 +50,17 @@ void wxr_ar_hand_anchor_get_origin_from_anchor_transform(ar_hand_anchor_t anchor
     memcpy(out, &transform, sizeof(transform));
 }
 
+// Writes the transform from a skeleton joint to the hand anchor that holds it into `out`.
+//
+// The same shape as the hand anchor's own transform above, and the same reason it is here: the function
+// returns a `simd_float4x4` by value. It is also the call that decides whether this backend can offer hand
+// tracking at all - the joint transforms ARKit's *C* API hands over are what a skeleton is made of, and
+// without them the anchors would be a palm and nothing else.
+void wxr_ar_skeleton_joint_get_anchor_from_joint_transform(ar_skeleton_joint_t joint, float out[16]) {
+    simd_float4x4 transform = ar_skeleton_joint_get_anchor_from_joint_transform(joint);
+    memcpy(out, &transform, sizeof(transform));
+}
+
 // Returns a world anchor the runtime will keep at the transform passed in `in`.
 ar_world_anchor_t wxr_ar_world_anchor_create_with_origin_from_anchor_transform(const float in[16]) {
     simd_float4x4 transform;
