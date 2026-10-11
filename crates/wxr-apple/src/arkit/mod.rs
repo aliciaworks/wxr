@@ -21,9 +21,10 @@
 //! hands back a joint of it, and that joint's `ar_skeleton_joint_get_anchor_from_joint_transform` is where it
 //! is. What made it look absent is that the transform returns a `simd_float4x4` by value, which `objc2`'s
 //! translator cannot express, so the generated crate binds the joint's index and parent and leaves the
-//! transform undeclared. [`skeleton`] is where that transform is read, through [`crate::sys`]'s shim.
+//! transform undeclared. The module `skeleton` is where that transform is read, through [`crate::sys`]'s
+//! shim.
 //!
-//! A hand is therefore a place, an orientation and twenty-five joints - see [`skeleton::read`]. The one
+//! A hand is therefore a place, an orientation and twenty-five joints - see [`ArKit::hand`]. The one
 //! thing still absent is a *pinch*: ARKit's C surface reports joint poses and not the discrete pinch state
 //! its Swift API has, so a game that wants one derives it from the thumb tip and index tip, which is what
 //! those joints are there for.
