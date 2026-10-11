@@ -260,3 +260,34 @@ pub unsafe fn ar_world_anchor_get_origin_from_anchor_transform(anchor: *const c_
     unsafe { wxr_ar_world_anchor_get_origin_from_anchor_transform(anchor, out.as_mut_ptr()) };
     Float4x4(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The shape and the alignment, both of which are load-bearing rather than tidy: `simd_float4x4` is
+    /// sixty-four bytes in four SIMD registers and Apple's own code stores it into a slot it assumes is
+    /// sixteen-byte aligned, and `Float2` is the `simd_make_float2` the depth range is passed as. None of
+    /// it is checked by the compiler - a `repr(Rust)` wrapper over `[f32; 16]` would compile, link and
+    /// carry an alignment of four.
+    #[test]
+    fn a_value_crossing_the_shim_is_the_size_and_alignment_simd_gives_it() {
+        assert_eq!(std::mem::size_of::<Float4x4>(), 64);
+        assert_eq!(std::mem::align_of::<Float4x4>(), 16);
+        assert_eq!(std::mem::size_of::<Float2>(), 8);
+        assert_eq!(std::mem::align_of::<Float2>(), 8);
+    }
+
+    /// What makes every transform in this file composable: `simd_float4x4` lays its four columns out one
+    /// after another in memory, and that is what `Mat4::from_cols_array` reads. The two agree or a head
+    /// comes out transposed - a pose that looks like a rotation about the wrong axis rather than an error,
+    /// which is the kind of thing a device shows and a compiler never does.
+    #[test]
+    fn a_matrix_from_the_shim_is_column_major_the_way_glams_is() {
+        let shim = Float4x4(std::array::from_fn(|index| index as f32));
+        let matrix = wxr::glam::Mat4::from_cols_array(&shim.0);
+        assert_eq!(matrix.x_axis, wxr::glam::Vec4::new(0.0, 1.0, 2.0, 3.0));
+        assert_eq!(matrix.y_axis, wxr::glam::Vec4::new(4.0, 5.0, 6.0, 7.0));
+        assert_eq!(matrix.w_axis, wxr::glam::Vec4::new(12.0, 13.0, 14.0, 15.0));
+    }
+}

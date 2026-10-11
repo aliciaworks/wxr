@@ -119,3 +119,27 @@ impl AppleSession {
 /// Two, because that is the number of hands a person has: `ArKit::hands` fills one left anchor and one right
 /// anchor and reports them in that order, so an id is the same hand every frame.
 const HANDEDNESS: [wxr::Handedness; 2] = [wxr::Handedness::Left, wxr::Handedness::Right];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The order the ids mean, which is the order `ArKit::hands` reports and therefore the order that has
+    /// to stay the same frame to frame - the whole of what makes an id refer to one hand rather than to
+    /// whichever of them was asked about first.
+    #[test]
+    fn the_first_id_is_the_left_hand_and_the_second_is_the_right() {
+        assert_eq!(HANDEDNESS.len(), 2);
+        assert_eq!(HANDEDNESS[0], wxr::Handedness::Left);
+        assert_eq!(HANDEDNESS[1], wxr::Handedness::Right);
+    }
+
+    /// `hand_impl` decides a source is one of the hands by `index < CONTROLLER_ID_BASE` and only then by
+    /// `HANDEDNESS`'s own length, so the two ranges have to not meet: a controller numbered 1 would be read
+    /// as the right hand, and a hand numbered 1024 would be refused as a controller.
+    #[test]
+    fn the_last_hand_id_is_below_where_controllers_begin() {
+        let last_hand = wxr::InputId::new(HANDEDNESS.len() as u32 - 1);
+        assert!(last_hand.get() < CONTROLLER_ID_BASE);
+    }
+}

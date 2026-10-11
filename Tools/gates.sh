@@ -21,6 +21,11 @@ cargo fmt --all --check
 
 if [[ "$(uname)" == "Darwin" ]]; then
   step "the host half - skipped: it is Ubuntu's (an empty wxr-openxr, and examples that want its crates)"
+  # The one suite this host has that Ubuntu's does not: `wxr-apple` is `target_vendor = "apple"` and a Mac
+  # is one, so what it tests can be linked and run here rather than only cross-checked. CI's `linked` job
+  # runs the same line, with `SDKROOT` switched back from the visionOS SDK this script does not set.
+  step "test (wxr-apple)"
+  cargo test -p wxr-apple
 else
   step "test (host)"
   cargo test

@@ -289,3 +289,57 @@ fn color_format(format: MTLPixelFormat) -> wxr::ColorFormat {
         _ => wxr::ColorFormat::Unknown,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The formats a compositor is required to accept, which is the whole of the core's short list.
+    #[test]
+    fn a_pixel_format_the_core_has_a_word_for_is_that_word() {
+        assert_eq!(
+            color_format(MTLPixelFormat::BGRA8Unorm_sRGB),
+            wxr::ColorFormat::Bgra8Srgb
+        );
+        assert_eq!(
+            color_format(MTLPixelFormat::BGRA8Unorm),
+            wxr::ColorFormat::Bgra8Unorm
+        );
+        assert_eq!(
+            color_format(MTLPixelFormat::RGBA8Unorm_sRGB),
+            wxr::ColorFormat::Rgba8Srgb
+        );
+        assert_eq!(
+            color_format(MTLPixelFormat::RGBA8Unorm),
+            wxr::ColorFormat::Rgba8Unorm
+        );
+        assert_eq!(
+            color_format(MTLPixelFormat::RGBA16Float),
+            wxr::ColorFormat::Rgba16Float
+        );
+        assert_eq!(
+            color_format(MTLPixelFormat::RGB10A2Unorm),
+            wxr::ColorFormat::Rgb10a2Unorm
+        );
+    }
+
+    /// `Unknown` rather than a frame refused: a format this core has not learned is a frame the renderer
+    /// does not draw, which is the better of the two answers a backend can give - and one of these three
+    /// is the depth buffer a `CompositorServices` drawable already has, which the core has no colour word
+    /// for and must not be mistaken for one.
+    #[test]
+    fn a_pixel_format_the_core_never_heard_of_is_unknown() {
+        assert_eq!(
+            color_format(MTLPixelFormat::RGBA32Float),
+            wxr::ColorFormat::Unknown
+        );
+        assert_eq!(
+            color_format(MTLPixelFormat::Depth32Float),
+            wxr::ColorFormat::Unknown
+        );
+        assert_eq!(
+            color_format(MTLPixelFormat::BC1_RGBA),
+            wxr::ColorFormat::Unknown
+        );
+    }
+}

@@ -112,8 +112,8 @@ jobs:
           RUSTDOCFLAGS: -D warnings
 
   # The job above only *type-checks* `wxr-apple`: it cannot tell a declaration of something that exists
-  # from a declaration of something that does not, because nothing links. This one links, on the machine
-  # that has Apple's SDK - and it is not hypothetical, since it is what found that
+  # from a declaration of something that does not, because nothing links. This one links and then runs what
+  # it linked, on the machine that has Apple's SDK - and it is not hypothetical, since it is what found that
   # `ar_hand_anchor_get_origin_from_anchor_transform_with_correction` is in Apple's documentation and in no
   # SDK at all.
   linked:
@@ -149,3 +149,13 @@ jobs:
 
       - name: Link it
         run: cargo build -p wxr-apple --target aarch64-apple-visionos
+
+      # The tests are this machine's, and they are the first thing in the README's list that `wxr-apple`
+      # has: the crate is `target_vendor = "apple"` and a Mac is one, so its own tables - the joint table
+      # ARKit's names are read through, the pixel formats, the id ranges, the shim's layouts - link and run
+      # here rather than only compiling. `SDKROOT` is pointed back at macOS because the step above set it to
+      # the visionOS SDK and a build for this machine wants its own; nothing else differs from the README.
+      - name: Test it
+        run: |
+          export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
+          cargo test -p wxr-apple

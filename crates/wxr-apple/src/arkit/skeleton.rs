@@ -209,3 +209,168 @@ impl ArKit {
         Some((tracked, hand))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The same twenty-five joints, named by both vocabularies at once.
+    ///
+    /// Four of the pairs are the reason this is written out rather than derived: ARKit's `knuckle` is
+    /// WebXR's `phalanx proximal`, its `intermediate_base` is WebXR's `phalanx intermediate`, its
+    /// `intermediate_tip` is WebXR's `phalanx distal`, and its `little finger` is WebXR's `pinky`. None of
+    /// those four is a translation anything can do by string, and a hand with the middle two swapped still
+    /// draws - it draws a finger with a joint in the wrong place along it.
+    const CORRESPONDENCE: [(ar_hand_skeleton_joint_name_t, wxr::HandJoint); wxr::HandJoint::COUNT] = [
+        (ar_hand_skeleton_joint_name_t::wrist, wxr::HandJoint::Wrist),
+        (
+            ar_hand_skeleton_joint_name_t::thumb_knuckle,
+            wxr::HandJoint::ThumbMetacarpal,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::thumb_intermediate_base,
+            wxr::HandJoint::ThumbPhalanxProximal,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::thumb_intermediate_tip,
+            wxr::HandJoint::ThumbPhalanxDistal,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::thumb_tip,
+            wxr::HandJoint::ThumbTip,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::index_finger_metacarpal,
+            wxr::HandJoint::IndexFingerMetacarpal,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::index_finger_knuckle,
+            wxr::HandJoint::IndexFingerPhalanxProximal,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::index_finger_intermediate_base,
+            wxr::HandJoint::IndexFingerPhalanxIntermediate,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::index_finger_intermediate_tip,
+            wxr::HandJoint::IndexFingerPhalanxDistal,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::index_finger_tip,
+            wxr::HandJoint::IndexFingerTip,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::middle_finger_metacarpal,
+            wxr::HandJoint::MiddleFingerMetacarpal,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::middle_finger_knuckle,
+            wxr::HandJoint::MiddleFingerPhalanxProximal,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::middle_finger_intermediate_base,
+            wxr::HandJoint::MiddleFingerPhalanxIntermediate,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::middle_finger_intermediate_tip,
+            wxr::HandJoint::MiddleFingerPhalanxDistal,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::middle_finger_tip,
+            wxr::HandJoint::MiddleFingerTip,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::ring_finger_metacarpal,
+            wxr::HandJoint::RingFingerMetacarpal,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::ring_finger_knuckle,
+            wxr::HandJoint::RingFingerPhalanxProximal,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::ring_finger_intermediate_base,
+            wxr::HandJoint::RingFingerPhalanxIntermediate,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::ring_finger_intermediate_tip,
+            wxr::HandJoint::RingFingerPhalanxDistal,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::ring_finger_tip,
+            wxr::HandJoint::RingFingerTip,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::little_finger_metacarpal,
+            wxr::HandJoint::PinkyFingerMetacarpal,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::little_finger_knuckle,
+            wxr::HandJoint::PinkyFingerPhalanxProximal,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::little_finger_intermediate_base,
+            wxr::HandJoint::PinkyFingerPhalanxIntermediate,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::little_finger_intermediate_tip,
+            wxr::HandJoint::PinkyFingerPhalanxDistal,
+        ),
+        (
+            ar_hand_skeleton_joint_name_t::little_finger_tip,
+            wxr::HandJoint::PinkyFingerTip,
+        ),
+    ];
+
+    #[test]
+    fn the_table_reads_the_same_joints_the_core_names() {
+        for (index, (arkit, webxr)) in CORRESPONDENCE.into_iter().enumerate() {
+            assert_eq!(JOINTS[index], arkit, "the table's joint {index}");
+            assert_eq!(
+                wxr::HandJoint::ALL[index],
+                webxr,
+                "the core's joint {index}"
+            );
+        }
+    }
+
+    /// A canary rather than a correctness claim: `read` looks each joint up *by name*, so a SDK that
+    /// renumbers its joints would still read the right one. What this is for is the other line in `JOINTS`
+    /// comment - that ARKit happens to enumerate its first twenty-five in this same order - and for making
+    /// the insertion of a twenty-sixth joint *somewhere* a failure somebody looks at rather than a fact
+    /// nobody notices.
+    #[test]
+    fn ar_kit_numbers_the_joints_it_shares_in_the_order_the_table_reads() {
+        for (index, joint) in JOINTS.into_iter().enumerate() {
+            assert_eq!(joint.0, index as u64, "joint {index} is numbered elsewhere");
+        }
+        // The two over, which are the two the core has no name for and are dropped rather than folded in.
+        assert_eq!(
+            ar_hand_skeleton_joint_name_t::forearm_wrist.0,
+            JOINTS.len() as u64
+        );
+        assert_eq!(
+            ar_hand_skeleton_joint_name_t::forearm_arm.0,
+            JOINTS.len() as u64 + 1
+        );
+    }
+
+    #[test]
+    fn a_hand_has_as_many_joints_as_the_table_has_names() {
+        assert_eq!(wxr::HandJoint::COUNT, JOINTS.len());
+    }
+
+    /// ARKit reports no radius, so this is the whole of what makes a drawn hand a hand: a joint with a
+    /// zero radius is a point, and a hand drawn from points is a stick figure. The value is read back off
+    /// a joint rather than asserted as a constant so that the shape of the answer is what is checked.
+    #[test]
+    fn a_joint_has_a_thickness_even_though_ar_kit_gives_none() {
+        let joint = wxr::Joint {
+            pose: wxr::Pose::IDENTITY,
+            radius: RADIUS,
+        };
+        assert!(joint.radius > 0.0);
+        // An average finger is not a bowling ball: it is meant to be a joint's thickness in metres, so
+        // anything past a centimetre is a mistake rather than a judgement call.
+        assert!(joint.radius < 0.01);
+    }
+}
