@@ -233,6 +233,9 @@ fn a_controller_has_no_skeleton() {
     session.hand(sources[0].id, space, &mut hand).unwrap();
     assert!(!hand.is_tracked());
     assert_eq!(hand.joint(crate::HandJoint::Wrist), None);
+    // Asked, and answered with nothing - which is the whole difference between "no hand" and "hands not on".
+    // The first is a hand out of view; the second is a floor-level session.
+    assert_eq!(session.hand_asks(), &[sources[0].id]);
 }
 
 #[test]
@@ -414,4 +417,69 @@ fn a_shape_the_session_does_not_have_is_refused_even_with_layers() {
     // than an odd one.
     assert!(matches!(refused, Err(Error::Unsupported(_))));
     assert_eq!(session.layer_count(), 0);
+}
+
+/// The mock with hands instead of controllers, polled to `Visible` like a real session.
+fn with_hands() -> MockSession {
+    let mut session = MockBackend {
+        hands: true,
+        ..Default::default()
+    }
+    .connect((), SessionMode::ImmersiveVr)
+    .unwrap();
+    while let Some(event) = session.poll() {
+        if let Event::VisibilityChanged(Visibility::Visible) = event {
+            break;
+        }
+    }
+    session
+}
+
+#[test]
+fn a_hand_is_a_skeleton_and_a_controller_is_not() {
+    let mut session = with_hands();
+    let space = session.space(SpaceKind::LocalFloor).unwrap();
+
+    // A session with hands is a session that says it has them, which is the question a caller asks before it
+    // asks for one - and the only reason it is worth asking is that the answer can be no.
+    assert!(session.features().contains(Features::HAND_TRACKING));
+    let mut sources = Vec::new();
+    session.inputs(space, &mut sources).unwrap();
+    assert_eq!(sources.len(), 2);
+    assert!(sources.iter().all(|source| source.hand));
+
+    let mut left = Hand::default();
+    session.hand(sources[0].id, space, &mut left).unwrap();
+    let mut right = Hand::default();
+    session.hand(sources[1].id, space, &mut right).unwrap();
+    assert!(left.is_tracked() && right.is_tracked());
+
+    // Two sources, two places: a left wrist at the right wrist is one answer handed out twice, and a game
+    // drawing both hands would draw one.
+    let left_wrist = left.joint(HandJoint::Wrist).unwrap();
+    let right_wrist = right.joint(HandJoint::Wrist).unwrap();
+    assert_ne!(left_wrist.pose.position, right_wrist.pose.position);
+
+    // And a skeleton has a direction, which is what a fingertip a little way along the hand from the wrist
+    // gives it: a joint at the origin of the one next to it is a dot, not a finger.
+    let tip = left.joint(HandJoint::IndexFingerTip).unwrap();
+    assert!(tip.pose.position.z < left_wrist.pose.position.z);
+    assert!(tip.radius < left_wrist.radius, "a fingertip is thinner");
+
+    // Both were asked for, by id, and nothing else was.
+    assert_eq!(session.hand_asks(), &[sources[0].id, sources[1].id]);
+}
+
+#[test]
+fn a_session_without_hands_is_asked_nothing_about_them() {
+    // The default, and the floor: `inputs` says the sources are controllers, so the round trip never happens -
+    // which is what `hand_asks` is there to show, since a `hand` that returned an empty skeleton for a
+    // controller would look identical to one that returned nothing for a hand out of view.
+    let mut session = running();
+    let space = session.space(SpaceKind::LocalFloor).unwrap();
+    let mut sources = Vec::new();
+    session.inputs(space, &mut sources).unwrap();
+    assert!(sources.iter().all(|source| !source.hand));
+    assert!(!session.features().contains(Features::HAND_TRACKING));
+    assert!(session.hand_asks().is_empty());
 }

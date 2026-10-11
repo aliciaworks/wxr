@@ -12,7 +12,9 @@ use glam::{Quat, Vec3};
 
 use crate::feature::Features;
 use crate::frame::{Eye, FieldOfView, Frame, FrameState, View, Viewport};
-use crate::input::{Axes, Buttons, Handedness, InputId, InputSource, TargetRayMode};
+use crate::input::{
+    Axes, Buttons, Hand, HandJoint, Handedness, InputId, InputSource, Joint, TargetRayMode,
+};
 use crate::layer::{Layer, LayerImage, LayerShape};
 use crate::mesh::{Mesh, MeshKind};
 use crate::session::{
@@ -42,6 +44,14 @@ pub struct MockBackend {
     /// capabilities is the floor every backend shares, and the one the mock is by default so that a test of
     /// "a session without the feature" has a session without the feature.
     pub quad_layers: bool,
+    /// Whether the two sources are hands with skeletons behind them, which they are not by default for the
+    /// same reason the layers are not: a session without hand tracking is the floor, and a test that wants
+    /// fingers asks for them.
+    ///
+    /// A hand and a controller cannot both be true of one source, so a mock with hands makes its two sources
+    /// hands - which is also what makes two ids worth having, since the joints of the left and the right are
+    /// in different places.
+    pub hands: bool,
 }
 
 impl Default for MockBackend {
@@ -56,6 +66,7 @@ impl Default for MockBackend {
                 Visibility::VisibleBlurred,
             ],
             quad_layers: false,
+            hands: false,
         }
     }
 }
@@ -87,12 +98,14 @@ impl Backend for MockBackend {
             extent: self.extent,
             stereo: self.stereo,
             quad_layers: self.quad_layers,
+            hands: self.hands,
             spaces: 0,
             frames: 0,
             image: 0,
             layers: Vec::new(),
             pulses: Vec::new(),
             waveforms: Vec::new(),
+            hand_asks: Vec::new(),
         })
     }
 }
@@ -126,6 +139,9 @@ pub struct MockSession {
     /// renderer cache it and still look right.
     image: u32,
     quad_layers: bool,
+    /// Whether the sources are hands, which is what makes `hand` answer with something rather than with an
+    /// empty skeleton. A session without it is the floor, and the mock's default.
+    hands: bool,
     /// `None` for one that was released, so that a test can tell the difference between a layer that is gone and
     /// one that was never there - which is the difference `release_layer` exists to make.
     layers: Vec<Option<MockLayer>>,
@@ -135,6 +151,10 @@ pub struct MockSession {
     /// Every waveform asked for, as the source, how many samples, and the rate - the samples themselves are
     /// not kept, because what a test asks is whether the call happened and with what.
     waveforms: Vec<(InputId, usize, f32)>,
+    /// Every skeleton asked for, oldest first. Recorded for the same reason the vibrations are - but the other
+    /// way round: asking a session for a hand that says it has none is a call that should not have been made,
+    /// and the only way to see it is to count who was asked.
+    hand_asks: Vec<InputId>,
 }
 
 impl Session for MockSession {
@@ -154,15 +174,20 @@ impl Session for MockSession {
     }
 
     fn features(&self) -> Features {
-        // The floor is a session and nothing else; a mock told to have a quad layer says so, and that is the
-        // only capability it can have - which is what makes it a thing to test against. Haptics and meshes are
-        // the other two, and they are always there because the mock's controllers have actuators and its room
-        // has a table: a caller that branches on a bit has something to branch into on the backend it develops
+        // The floor is a session and nothing else. Two capabilities are asked for: a quad layer, and hands -
+        // both are off by default, which is what makes each a thing to test against rather than an assumption.
+        // Haptics and meshes are always there because the mock's controllers have actuators and its room has a
+        // table: a caller that branches on a bit has something to branch into on the backend it develops
         // against, which is what testing needs.
         Features::HAPTICS
             .union(Features::MESH)
             .union(if self.quad_layers {
                 Features::LAYER_QUAD
+            } else {
+                Features::NONE
+            })
+            .union(if self.hands {
+                Features::HAND_TRACKING
             } else {
                 Features::NONE
             })
@@ -373,9 +398,10 @@ impl Session for MockSession {
                 id: InputId::new(id),
                 handedness,
                 target_ray_mode: TargetRayMode::TrackedPointer,
-                // A mock controller, which is what a mock can be without inventing a skeleton: the joints are
-                // what a *hand* has, and the mock is the thing a game is developed against before either exists.
-                hand: false,
+                // A mock's two sources are what the backend was told they are: hands when it was told to have
+                // them, and controllers when it was not. A skeleton that is always there would be a mock that
+                // lets a game ship code no floor-level session has.
+                hand: self.hands,
                 // And it can buzz, because a mock with no actuator would be a mock that cannot exercise the
                 // two calls that send one - which is the whole reason the bit exists.
                 haptics: true,
@@ -390,6 +416,45 @@ impl Session for MockSession {
                 tracked: true,
                 buttons: Buttons::default(),
                 axes: Axes::default(),
+            });
+        }
+        Ok(())
+    }
+
+    fn hand(
+        &mut self,
+        source: InputId,
+        _space: ReferenceSpace,
+        out: &mut Hand,
+    ) -> Result<(), Error> {
+        // Asked for whoever said it had one, and recorded either way. A backend that asked a controller would
+        // be a backend doing a round trip for an answer it already knew, and this is the call that shows it.
+        self.hand_asks.push(source);
+        out.clear();
+        if !self.hands {
+            return Ok(());
+        }
+        // A wrist and a fingertip, two sides of a line: the smallest skeleton that has a direction, which is
+        // what a caller drawing a finger has to be able to see. The left is on the left of the right, so that
+        // two sources in one frame are two answers rather than one answer twice.
+        let x = if source.get() == 0 { -0.2 } else { 0.2 };
+        let joints = out.joints_mut();
+        for joint in [HandJoint::Wrist, HandJoint::IndexFingerTip] {
+            let ahead = if joint == HandJoint::Wrist {
+                0.0
+            } else {
+                -0.08
+            };
+            joints[joint.index()] = Some(Joint {
+                pose: Pose {
+                    position: Vec3::new(x, 1.0, ahead),
+                    orientation: Quat::IDENTITY,
+                },
+                radius: if joint == HandJoint::Wrist {
+                    0.05
+                } else {
+                    0.01
+                },
             });
         }
         Ok(())

@@ -43,6 +43,14 @@ impl MockSession {
         &self.waveforms
     }
 
+    /// Every skeleton asked for, oldest first, as the source that was asked.
+    ///
+    /// A mock answers an unasked question with nothing, so the count is the interesting half: a caller asking a
+    /// source that said it had no hand is a round trip made for an answer it already had.
+    pub fn hand_asks(&self) -> &[InputId] {
+        &self.hand_asks
+    }
+
     /// Pretend a space's origin was recentered, which is the one thing a backend that cannot recenter still
     /// has to be able to pass on.
     pub fn reset(&mut self, space: ReferenceSpace) {
