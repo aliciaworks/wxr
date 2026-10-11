@@ -13,6 +13,12 @@
 //! has WebXR and no headset behind it, so it also serves `webxr-stub.js`: an XRSystem with a head, two hands
 //! and two controllers, made here rather than borrowed from an extension. `drive.py` presses the button and
 //! reads the verdict back off the server's record.
+//!
+//! **It runs twice, and the address is the difference.** `stub.html` is a session with no binding and no
+//! pictures, which is what this backend is on a browser that will not hand an image over. `stub.html?gpu` is
+//! the same page with the stub's `XRGPUBinding` in front of it, and that is the run with an `ImageMeta`, a
+//! viewport and an array layer per eye, a `Features::DEPTH` bit and a measured depth to read back. Two runs of
+//! one page because the thing under test is a code path, and a page cannot be in two states at once.
 
 #![cfg(target_family = "wasm")]
 
@@ -23,6 +29,9 @@ use std::time::Duration;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use wxr::{Backend as _, Session as _};
+
+mod hands;
+mod images;
 
 /// How many frames to draw before saying so and stopping.
 const FRAMES: u32 = 8;
@@ -75,6 +84,17 @@ fn fail(reason: &str) {
     say(&format!("FAILED: {reason}"));
 }
 
+/// Whether this page was opened at the address that asks for the stub's WebGPU binding.
+///
+/// The driver's decision and not this page's, which is the point: the same page is served twice and the only
+/// difference between the two runs is the query string. Read here rather than passed in, because the page is
+/// loaded once and clicked once and the address does not change in between.
+fn opened_for_images() -> bool {
+    web_sys::window()
+        .and_then(|window| window.location().search().ok())
+        .is_some_and(|search| search.contains("gpu"))
+}
+
 /// What one run is holding: the session, the frame being built, and how far it has got.
 struct Board {
     session: wxr_webxr::WebXrSession,
@@ -91,6 +111,11 @@ struct Board {
     hands_said: bool,
     /// The hands, because a joint is asked of one and not of a session.
     hands: Vec<wxr::Hand>,
+    /// Whether this run asked for the binding, which is what says whether images are promised at all.
+    gpu: bool,
+    /// Whether the images have been asserted, which is once: every frame of a working run is the same answer,
+    /// and a run whose eighth frame differs from its first has already failed.
+    checked: bool,
 }
 
 /// The backend's own log lines, which are the ones that say *why*.
@@ -125,6 +150,14 @@ fn start() {
 
 async fn setup() {
     say("wxr-webxr smoke: starting");
+    say(&format!(
+        "opened at {}",
+        if opened_for_images() {
+            "the address that asks for the stub's WebGPU binding"
+        } else {
+            "the plain address, which is a session with no images to give"
+        }
+    ));
 
     // Asked here as well as in the click handler, because a browser with no XR system at all should say so
     // before it asks for a button rather than after somebody presses one. There is nothing to keep: `WebXr`
@@ -202,15 +235,24 @@ async fn setup() {
 
 /// Everything after the gesture: the session, and the loop that draws its frames.
 async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
-    let session = match backend.connect(wxr_webxr::Device { device }, wxr::SessionMode::ImmersiveVr)
-    {
+    let gpu = opened_for_images();
+    // Two modes, and the reason is a feature rather than a preference: `depth-sensing` is asked for in an
+    // immersive-ar session and only there, so a run that has a binding is the run that can measure the room.
+    // A run that does not is immersive-vr, which is the mode with nothing to measure.
+    let mode = if gpu {
+        wxr::SessionMode::ImmersiveAr
+    } else {
+        wxr::SessionMode::ImmersiveVr
+    };
+    let session = match backend.connect(wxr_webxr::Device { device }, mode) {
         Ok(session) => session,
         Err(error) => return fail(&format!("connect refused: {error}")),
     };
     say(&format!(
-        "connected, state {:?}, visibility {:?}",
+        "connected as {mode:?}, state {:?}, visibility {:?}, presentation {:?}",
         session.state(),
-        session.visibility()
+        session.visibility(),
+        session.presentation()
     ));
 
     // The loop is the browser's, because WebXR has no blocking wait: the session's animation callback puts a
@@ -226,6 +268,8 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         input_said: false,
         hands_said: false,
         hands: Vec::new(),
+        gpu,
+        checked: false,
     }));
     let ticking = board.clone();
     let interval: Rc<RefCell<Option<i32>>> = Rc::new(RefCell::new(None));
@@ -321,7 +365,7 @@ fn tick(board: &mut Board) -> Result<(), String> {
     }
     for view in board.frame.views() {
         say(&format!(
-            "  {:?} eye at ({:.3}, {:.3}, {:.3}), fov {:.3}/{:.3}/{:.3}/{:.3}, layer {} of image {}",
+            "  {:?} eye at ({:.3}, {:.3}, {:.3}), fov {:.3}/{:.3}/{:.3}/{:.3}, viewport {}x{}+{}+{}, layer {} of image {}",
             view.eye,
             view.pose.position.x,
             view.pose.position.y,
@@ -330,9 +374,19 @@ fn tick(board: &mut Board) -> Result<(), String> {
             view.fov.down,
             view.fov.left,
             view.fov.right,
+            view.viewport.width,
+            view.viewport.height,
+            view.viewport.x,
+            view.viewport.y,
             view.layer,
             view.image,
         ));
+    }
+    // The image path, asserted rather than printed, and once rather than per frame: a working run answers the
+    // same way every frame, and one that does not has already failed before this would say so twice.
+    if !board.checked && board.frame.is_render() {
+        board.checked = true;
+        images::check_images(board)?;
     }
     // The sources, which are the frame's half of input: where the hands are and how they are aimed. What they
     // *do* arrives as events above, because that is where WebXR puts it.
@@ -380,6 +434,11 @@ fn tick(board: &mut Board) -> Result<(), String> {
                 source.handedness,
                 wxr::HandJoint::COUNT,
             ));
+            // On a value rather than a count, and only where there is a binding: the stub's numbers are
+            // what a run at `?gpu` is a second run of the same page against.
+            if board.gpu {
+                hands::check_hand(&board.hands[index], source.handedness)?;
+            }
             // A buzz is a request that has been sent and nothing more: the answer is whether the platform
             // took it, not whether a motor moved, which is a thing no frame can see.
             match board

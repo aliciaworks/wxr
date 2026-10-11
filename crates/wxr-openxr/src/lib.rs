@@ -14,13 +14,24 @@
 //! session hands out images the compositor will present and nothing else. The renderer wraps them as `wgpu`
 //! textures; the core carries them and never looks inside.
 //!
-//! **Depth is not submitted, and cannot be through this crate.** A runtime takes an app's depth through
-//! `XR_KHR_composition_layer_depth`, whose `CompositionLayerDepthInfoKHR` is chained onto each projection view -
-//! and `openxr` 0.22 binds neither that structure nor any way to chain one onto a layer: `openxr-sys` has the
-//! raw struct, and the crate's builders do not reach it. Doing it means building the layer through the `sys`
-//! layer and ending the frame through it, which is a piece of work of its own rather than a line here. What it
-//! would buy is what it buys on the other two backends: a compositor that reprojects with depth instead of
-//! guessing. It is also why `set_depth_range` is the core's default no-op here rather than an override that
+//! **Depth is not submitted.** A runtime takes an app's depth through `XR_KHR_composition_layer_depth`, whose
+//! `CompositionLayerDepthInfoKHR` is chained onto each projection view - and `openxr` 0.22 binds neither that
+//! structure nor any builder that can put it there, so the chain has to be made through the `sys` layer: take
+//! the projection view this backend already builds with the safe builder, `into_raw` it, point its `next` at
+//! an `openxr-sys::CompositionLayerDepthInfoKHR` on the stack, and `from_raw` it back. That is the *small* half
+//! of the work, and it is the shape `display.rs` already has a precedent for with `XR_FB_swapchain_update_state`.
+//!
+//! The large half is elsewhere. A depth layer needs a depth image, and the swapchain this backend makes is a
+//! colour one: `COLOR_ATTACHMENT | SAMPLED`, a colour format picked off the runtime's list. Depth wants a depth
+//! format off that same list, `DEPTH_STENCIL_ATTACHMENT`, a second swapchain acquired and released in step with
+//! the first, and a `wgpu` texture of its own for the renderer to draw into. And the core has nowhere for an app
+//! to say *what* it wants submitted: [`wxr::Session::depth`] is the runtime measuring the room, which is the
+//! other direction, and [`wxr::Session::set_depth_range`] is only the two planes. So it is a question the core's
+//! vocabulary does not have an answer to yet, which is a design change across three crates rather than a patch
+//! to this one.
+//!
+//! What it would buy is what it buys on the other two backends: a compositor that reprojects with depth instead
+//! of guessing. It is also why `set_depth_range` is the core's default no-op here rather than an override that
 //! stores the planes: there is nothing to submit them with, and a field nothing reads is a field that lies.
 //!
 //! **Surfaces are not detected either, and here it is a raw API rather than a missing one.**

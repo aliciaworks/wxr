@@ -301,6 +301,30 @@ question, which looks exactly like a session that has none of those things. `vie
 because a session that draws no views is a session that visibly does nothing; the rest had not been noticed,
 and a page that had never run could not have said so.
 
+It is two runs now, and the query string is the whole of the difference. `stub.html` is a session with no
+binding and nothing to draw, which is what this backend is on a browser that will not hand an image over - and
+that answer is asserted too, not merely survived: no images, an unknown format, an extent of zero, and no depth
+sensing. A plausible size in that state would be a renderer told to draw a picture that is not there, and
+`Session::images` reads its meta off the texture precisely so that it cannot be.
+
+`stub.html?gpu` is the same page with the stub's `XRGPUBinding` in front of it, which it has to *replace*
+rather than add: Chromium ships one behind `--enable-features=WebXRWebGPUBinding`, and its constructor validates
+the session against the browser's own, so a stub session handed to it is a `TypeError` and a binding that never
+exists is a session with no images. What the stub's binding hands over is real all the same - the textures are
+made by the page's own WebGPU device, which is the one thing `wxr-webxr`'s importer asks of them. That run is
+immersive-ar rather than immersive-vr, because `depth-sensing` is asked for there and nowhere else, so it is
+the run with an `ImageMeta` of one image at a real extent and format in two array layers, a viewport the size
+of the layer each eye is in, the two eyes told apart by `View::layer`, a `Features::DEPTH` bit, and a measured
+depth whose size lines up with the colour beside it.
+
+It is also the run that answers a question counting could not: `fillPoses` and `fillJointRadii` are the
+specification's batched calls for a skeleton, and `Session::hand` now asks for them before it asks for
+twenty-five joints one at a time, falling back when a browser has neither. A hand that arrives through them is
+twenty-five matrices and no transform objects anywhere, so it needs `Pose::from_matrix` - and a matrix read the
+wrong way round still fills in twenty-five joints, it just puts all of them somewhere else. So the page asserts
+a value rather than a count: the stub's wrist is 1.55 m up and its index tip is 10.25 cm from it, and neither
+survives being transposed or scaled.
+
 What none of it proves is that any of the three has drawn a frame on a **headset**, because none of them has.
 That is the only thing left open here, and it is not a thing that can be closed without the hardware.
 

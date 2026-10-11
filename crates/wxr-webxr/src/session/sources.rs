@@ -128,8 +128,15 @@ impl WebXrSession {
         let Some(frame) = self.frame() else {
             return Ok(());
         };
-        // A joint at a time, because a joint is the call the browser has - and a joint it will not answer for is
-        // a joint that is not tracked, which is what `None` in an empty `Hand` already means.
+        // The bulk way first, on a browser that has it: `fillPoses` and `fillJointRadii` are the
+        // specification's answer to a skeleton being fifty questions, and a frame that answers them both has
+        // answered for all twenty-five joints in two calls.
+        if self.hand_in_bulk(&frame, &hand, &reference, out) {
+            return Ok(());
+        }
+        // The way every browser can be asked, a joint at a time - and the same answer over more calls. A joint
+        // it will not answer for is a joint that is not tracked, which is what `None` in an empty `Hand` already
+        // means.
         for joint in wxr::HandJoint::ALL {
             let space = hand.get(hand_joint(joint));
             if let Some(pose) = frame.get_joint_pose(&space, &reference) {
@@ -140,5 +147,62 @@ impl WebXrSession {
             }
         }
         Ok(())
+    }
+
+    /// Every joint of one hand in two calls, and whether the browser answered for all of them.
+    ///
+    /// Both or neither, and never a mixture: a [`wxr::Joint`] is a pose *and* a radius, and one of the two
+    /// half-answered is a joint the caller would have to guess the rest of. They also fail together - both
+    /// answer `false` when any one space had no pose - so there is nothing to gain from taking one without the
+    /// other.
+    ///
+    /// `false` is not a failure, it is the common case: a browser without these methods, or a hand half out of
+    /// view. A hand with one joint untracked is a hand whose joints want telling apart, which is what the
+    /// joint-at-a-time path above can do and a bulk answer cannot say.
+    fn hand_in_bulk(
+        &self,
+        frame: &XrFrame,
+        hand: &XrHand,
+        reference: &XrSpace,
+        out: &mut wxr::Hand,
+    ) -> bool {
+        let spaces = js_sys::Array::new_with_length(wxr::HandJoint::COUNT as u32);
+        for (index, joint) in wxr::HandJoint::ALL.iter().enumerate() {
+            spaces.set(index as u32, JsValue::from(hand.get(hand_joint(*joint))));
+        }
+        let matrices = js_sys::Float32Array::new_with_length((wxr::HandJoint::COUNT * 16) as u32);
+        let radii = js_sys::Float32Array::new_with_length(wxr::HandJoint::COUNT as u32);
+        // Both caught, because a method that is not there is the ordinary answer rather than the broken one -
+        // `fillPoses` is in the same specification module as the hand, but not in every browser that has hands.
+        let posed = frame
+            .fill_poses_with_f32_array(&spaces, reference, &matrices)
+            .unwrap_or(false);
+        let measured = frame
+            .fill_joint_radii_with_f32_array(&spaces, &radii)
+            .unwrap_or(false);
+        if !posed || !measured {
+            // And the joint-at-a-time path is the one below, which is where a browser without these methods
+            // ends up. Said at `debug` because it is the answer to "why is this hand slow", which is a
+            // question asked while profiling rather than one a page needs every frame.
+            log::debug!(
+                "wxr-webxr: this hand has no bulk answer, so it is asked a joint at a time"
+            );
+            return false;
+        }
+        log::debug!("wxr-webxr: a whole hand in two calls");
+        let (matrices, radii) = (matrices.to_vec(), radii.to_vec());
+        for joint in wxr::HandJoint::ALL {
+            let start = joint.index() * 16;
+            let Some(pose) = wxr::Pose::from_matrix(&matrices[start..][..16]) else {
+                // A slot the browser said it had filled and left as zeros, which is not a pose and so is a
+                // joint that is not tracked - the same answer as an empty `Hand`.
+                continue;
+            };
+            out.joints_mut()[joint.index()] = Some(wxr::Joint {
+                pose,
+                radius: radii[joint.index()],
+            });
+        }
+        true
     }
 }

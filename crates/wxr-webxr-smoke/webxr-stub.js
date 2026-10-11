@@ -8,15 +8,31 @@
 //
 // What it is good for is exactly what it has. It runs the session ladder, the reference spaces, the poses, the
 // input sources, the hand joints, the haptics and the frame loop - every call `wxr-webxr` makes on a browser
-// that has no images to give. It has no `XRGPUBinding` that means anything, so a session granted `webgpu`
-// would be a session granted a feature it cannot honour: it is not in `enabledFeatures`, and a session like
-// that is what `Presentation::Composited` with no pictures *is*. That is the honest answer and it is also the
-// branch this backend has never had anything to test.
+// that has no images to give. Without `?gpu` it has no `XRGPUBinding` that means anything, so a session granted
+// `webgpu` would be a session granted a feature it cannot honour: it is not in `enabledFeatures`, and a session
+// like that is what `Presentation::Composited` with no pictures *is*. That is the honest answer, and the run
+// that has nothing to draw is the one that proves it.
+//
+// **`?gpu` is the other answer.** The same page with the same XRSystem, plus an `XRGPUBinding` of our own that
+// hands over textures the page's WebGPU device really made - so the image path has something to read: an
+// `ImageMeta` with an extent and a format, one image, one viewport and one array layer per eye, and the room's
+// depth for a session that asked for it. The binding replaces the browser's own, which it has to: Chromium
+// ships one behind `--enable-features=WebXRWebGPUBinding` and its constructor validates the session against
+// the browser's, so a stub session handed to it is a `TypeError` and a binding that never exists is a session
+// with no images. A page that asked for the stub gets the stub, all the way down.
 //
 // It is loaded by `stub.html` and not by `index.html`, which is the whole of how it is opted into: a page that
 // asked for the stub gets it, and a page that did not gets whatever the browser really has.
 
 'use strict';
+
+/**
+ * Whether this page asked for the stub's WebGPU binding, which is all `?gpu` is.
+ *
+ * Read from the URL rather than from a global so that it is the driver's decision and not the stub's: two runs
+ * of one page, and the difference between them is the address they were opened at.
+ */
+const GPU = new URLSearchParams(globalThis.location ? globalThis.location.search : '').has('gpu');
 
 /** A rigid transform, as seven numbers: position first, then the quaternion. */
 function invert(t) {
@@ -410,6 +426,18 @@ class XRSession {
     this.onvisibilitychange = null;
     this._ended = false;
     this._frame = null;
+    // Every layer this session presents, which is what `XRGPUBinding` has to know: a sub-image is only ever
+    // for a layer of the session that made it.
+    this._layers = new Set();
+    // The room's depth, which only a session granted `depth-sensing` has and only in the run that made a
+    // binding. Left unset otherwise, and an unset `XRDepthUsage` is what a session that was never asked for
+    // depth reports - which is the honest answer rather than a guess.
+    if (GPU) {
+      this.depthUsage = 'gpu-optimized';
+      this.depthDataFormat = 'float32';
+      this.depthType = 'raw';
+      this.depthActive = true;
+    }
   }
 
   requestReferenceSpace(type) {
@@ -504,17 +532,65 @@ class XRFrame {
     const where = jointPose(joint, this.time);
     return new XRJointPose(relative(where, baseSpace.at(this.time)), joint.radius);
   }
+
+  /**
+   * Many poses at once, which is what a skeleton is asked for rather than twenty-five questions.
+   *
+   * The matrices go into the array at sixteen floats each, column-major, which is `XRRigidTransform.matrix`'s
+   * layout - and the only layout a caller can have been written against, since a filled array is numbers and
+   * nothing else. The answer is `false` when any one space had no pose, and the array is left with what could
+   * be answered: a hand with three joints tracked is a hand whose array holds three matrices, and a caller
+   * that reads all twenty-five has to be able to tell which were not there.
+   */
+  fillPoses(spaces, baseSpace, poses) {
+    if (!spaces || !baseSpace || !poses) {
+      throw new TypeError('fillPoses wants spaces, a base space and somewhere to put the matrices');
+    }
+    const origin = baseSpace.at(this.time);
+    let filled = true;
+    for (let index = 0; index < spaces.length; index++) {
+      const space = spaces[index];
+      const joint = space ? this.session._jointOf(space) : null;
+      const where = space ? (joint ? jointPose(joint, this.time) : space.at(this.time)) : null;
+      if (where === null || where === undefined) {
+        filled = false;
+        continue;
+      }
+      poses.set(matrixOf(relative(where, origin)), index * 16);
+    }
+    return filled;
+  }
+
+  /** The same question about the joints' radii, which is the other half of a hand in one call each. */
+  fillJointRadii(jointSpaces, radii) {
+    if (!jointSpaces || !radii) {
+      throw new TypeError('fillJointRadii wants joint spaces and somewhere to put the radii');
+    }
+    let filled = true;
+    for (let index = 0; index < jointSpaces.length; index++) {
+      const joint = this.session._jointOf(jointSpaces[index]);
+      if (!joint) {
+        filled = false;
+        continue;
+      }
+      radii[index] = joint.radius;
+    }
+    return filled;
+  }
 }
 
 class XRSystem {
   isSessionSupported(mode) {
-    // `inline` is real and `immersive-vr` is what this stub is for. `immersive-ar` is not, and a stub that
-    // claimed it would be a stub whose session had a world it had no way to make.
-    return Promise.resolve(mode === 'inline' || mode === 'immersive-vr');
+    // `inline` is real and `immersive-vr` is what this stub is for. `immersive-ar` exists only with `?gpu`,
+    // because an AR session is the one that asks for `depth-sensing` and this stub's depth is a measurement
+    // the binding makes: an AR session with no binding is one with nothing to measure the room with.
+    return Promise.resolve(
+      mode === 'inline' || mode === 'immersive-vr' || (GPU && mode === 'immersive-ar'),
+    );
   }
 
   requestSession(mode, options = {}) {
-    if (mode !== 'inline' && mode !== 'immersive-vr') {
+    if (mode !== 'inline' && mode !== 'immersive-vr' && !(GPU && mode === 'immersive-ar')) {
       return Promise.reject(new DOMException('the specified session configuration is not supported', 'NotSupportedError'));
     }
     // What was asked for and is here, which is the answer `enabledFeatures` has to be: a session that claims a
@@ -532,16 +608,46 @@ class XRSystem {
 /**
  * What this stub can honour, which is what it puts in `enabledFeatures`.
  *
- * `webgpu` is deliberately absent. There is no binding here that could hand over a texture, and a session
- * granted `webgpu` without one is a session whose `images()` promises a picture the compositor will never
- * show - which is the one thing this backend's `ImageMeta` exists to refuse to do.
+ * `webgpu` and `depth-sensing` are here only when the page asked for `?gpu`, and they are only ever granted to
+ * a session that asked for them - `requestSession` below grants the intersection. Without the binding there is
+ * no texture to hand over, and a session granted `webgpu` without one is a session whose `images()` promises a
+ * picture the compositor will never show, which is the one thing this backend's `ImageMeta` exists to refuse to
+ * do. With it, both are real: the binding makes the texture and `getDepthInformation` measures it.
  */
 const STUB_FEATURES = [
   'local-floor',
   'bounded-floor',
   'hand-tracking',
   'layers',
+  ...(GPU ? ['webgpu', 'depth-sensing'] : []),
 ];
+
+/**
+ * What the stub's projection layer hands over: one texture, one array layer per eye, as a stereo one is.
+ *
+ * The size is invented rather than measured, because there is no display behind this - but it is a plausible
+ * per-eye size, and what the assertions are about is the *shape* of what comes back: the extent, the format,
+ * the layer count, the viewport and the array layer, which is everything `image_meta` and `View::layer` read.
+ */
+const FRAME = { width: 1280, height: 1440, layers: 2 };
+/** The one colour format this stub makes a layer in, which is one every device has. */
+const COLOR_FORMAT = 'bgra8unorm';
+/** The depth format `wxr-webxr` asks for by name, and the only one it will take back. */
+const DEPTH_FORMAT = 'depth32float';
+/** What the room's depth is in when it is measured rather than drawn into: WebXR's `float32` is `r32float`. */
+const MEASURED_FORMAT = 'r32float';
+
+/**
+ * The texture usages the specification fixes the numbers of.
+ *
+ * Named here because `GPUTextureUsage` is a namespace object rather than a value and is not on every page, and
+ * because the numbers are the specification's and do not move: a page that cannot see the namespace still wants
+ * the same bits.
+ */
+const USAGE = typeof GPUTextureUsage === 'undefined'
+  ? { RENDER_ATTACHMENT: 0x10, TEXTURE_BINDING: 0x04 }
+  : GPUTextureUsage;
+
 
 /**
  * The joint a `getJointPose` was asked about.
@@ -561,6 +667,188 @@ XRSession.prototype._jointOf = function (space) {
   }
   return null;
 };
+
+/**
+ * The sub-image one view draws into, and the whole of the image path's shape.
+ *
+ * One texture for both eyes and a viewport the size of it, with the eye told apart by an array layer. That is
+ * what a stereo projection layer *is*, and it is what `XRSubImage.viewport` means: a sub-rectangle of the layer
+ * it belongs to, not of the texture - so two eyes have two viewports that happen to be the same rectangle of
+ * two different layers, which is `View::viewport` and `View::layer` as the core has them.
+ */
+class XRGPUSubImage {
+  constructor(layer, eye) {
+    this._layer = layer;
+    this._index = eye === 'left' ? 0 : 1;
+    // `[SameObject]` in the specification, so one and the same every time it is read.
+    this.viewport = { x: 0, y: 0, width: FRAME.width, height: FRAME.height };
+  }
+
+  get colorTexture() {
+    return this._layer.color;
+  }
+
+  get depthStencilTexture() {
+    return this._layer.depth;
+  }
+
+  // Nothing here hands one of these over, and `null` is the answer a browser with no motion vectors gives.
+  get motionVectorTexture() {
+    return null;
+  }
+
+  getViewDescriptor() {
+    return {
+      format: this._layer.format,
+      dimension: '2d',
+      baseMipLevel: 0,
+      mipLevelCount: 1,
+      // How the eye is said, and the one number this whole object is for.
+      baseArrayLayer: this._index,
+      arrayLayerCount: 1,
+    };
+  }
+}
+
+/**
+ * A projection layer, and the textures behind it.
+ *
+ * Made through the device the page handed the binding, so the textures are the browser's and belong to the same
+ * device the page's renderer has - which is the whole of what `wxr-webxr`'s importer requires to wrap one. A
+ * stub that invented a texture object instead would be a stub that describes a picture the renderer then cannot
+ * draw into, which is the failure this backend's `ImageMeta` exists to refuse.
+ */
+class XRProjectionLayer {
+  constructor(binding, format, depthFormat, usage) {
+    this.format = format;
+    this.depthFormat = depthFormat;
+    this.color = frameTexture(binding.device, format, FRAME.layers, usage);
+    this.depth = depthFormat ? frameTexture(binding.device, depthFormat, FRAME.layers, usage) : null;
+    // The room's depth, and not this layer's: the layer's is a buffer the app draws into, while the measured
+    // one is a texture the runtime fills and takes back at the end of the frame. One layer per eye, and
+    // sampled rather than rendered into, because it is read and never drawn.
+    this.measured = [0, 1].map(() =>
+      frameTexture(binding.device, MEASURED_FORMAT, 1, USAGE.TEXTURE_BINDING));
+    this.fixedFoveation = 0;
+  }
+}
+
+/** One texture of the frame's size, in the format and usage a layer asked for. */
+function frameTexture(device, format, layers, usage) {
+  return device.createTexture({
+    size: [FRAME.width, FRAME.height, layers],
+    format,
+    usage,
+    dimension: '2d',
+  });
+}
+
+/**
+ * `XRGPUBinding`, and everything about a session that has a picture.
+ *
+ * This replaces the browser's own when `?gpu` is asked for, and it has to: Chromium ships one behind
+ * `--enable-features=WebXRWebGPUBinding`, and its constructor validates the session against the browser's own -
+ * so a stub session handed to it is a `TypeError`, and a binding that never exists is a session with no images.
+ * A page that asked for the stub gets the stub, all the way down.
+ */
+class XRGPUBinding {
+  constructor(session, device) {
+    if (!(session instanceof XRSession) || !device || typeof device.createTexture !== 'function') {
+      throw new DOMException(
+        'this binding needs a session of its own and a WebGPU device',
+        'InvalidStateError',
+      );
+    }
+    this.session = session;
+    this.device = device;
+  }
+
+  get nativeProjectionScaleFactor() {
+    return 1;
+  }
+
+  /** Whether the session was configured for depth, which is the same question `getDepthInformation` asks. */
+  get usesDepthValues() {
+    return this.session.enabledFeatures.includes('depth-sensing');
+  }
+
+  getPreferredColorFormat() {
+    return COLOR_FORMAT;
+  }
+
+  createProjectionLayer(init = {}) {
+    const format = init.colorFormat || COLOR_FORMAT;
+    if (format !== COLOR_FORMAT) {
+      throw new DOMException(`this stub makes ${COLOR_FORMAT} and no other`, 'NotSupportedError');
+    }
+    if (init.depthStencilFormat !== undefined && init.depthStencilFormat !== null
+      && init.depthStencilFormat !== DEPTH_FORMAT) {
+      throw new DOMException(`this stub makes ${DEPTH_FORMAT} depth and no other`, 'NotSupportedError');
+    }
+    if (this.session._ended) {
+      throw new DOMException('the session has ended', 'InvalidStateError');
+    }
+    // The dictionary's own default, spelled out: `XRGPUProjectionLayerInit.textureUsage` is `RENDER_ATTACHMENT`,
+    // and a caller that set it gets what it asked for. `wxr-webxr` leaves it alone.
+    const usage = init.textureUsage === undefined ? USAGE.RENDER_ATTACHMENT : init.textureUsage;
+    const layer = new XRProjectionLayer(this, format, init.depthStencilFormat || null, usage);
+    this.session._layers.add(layer);
+    return layer;
+  }
+
+  getViewSubImage(layer, view) {
+    if (!(layer instanceof XRProjectionLayer) || !this.session._layers.has(layer)) {
+      throw new DOMException("that is not this session's projection layer", 'InvalidStateError');
+    }
+    if (!view || (view.eye !== 'left' && view.eye !== 'right')) {
+      throw new DOMException('that is not a view of this frame', 'InvalidStateError');
+    }
+    return new XRGPUSubImage(layer, view.eye);
+  }
+
+  /**
+   * The room's depth, which is a measurement rather than a buffer.
+   *
+   * It refuses - and `Session::depth` answers `None` - unless the session was configured for GPU depth, which
+   * is what the specification says and the only thing that makes a `None` in a session that never asked mean
+   * something. `rawValueToMeters` is `1` because `float32` is metres already; a `luminance-alpha` depth would
+   * have a scale here, and that is the whole of what this number is for.
+   */
+  getDepthInformation(view) {
+    if (!this.usesDepthValues || !view || (view.eye !== 'left' && view.eye !== 'right')) {
+      throw new DOMException('this session is not configured for GPU depth', 'InvalidStateError');
+    }
+    const layer = [...this.session._layers][0];
+    if (!layer) {
+      throw new DOMException('this session has no projection layer', 'InvalidStateError');
+    }
+    return {
+      texture: layer.measured[view.eye === 'left' ? 0 : 1],
+      width: FRAME.width,
+      height: FRAME.height,
+      rawValueToMeters: 1,
+      // Nothing in this stub moves the depth, so it is where the view already is.
+      normDepthBufferFromNormView: rigid([0, 0, 0, 0, 0, 0, 1]),
+      transform: rigid([0, 0, 0, 0, 0, 0, 1]),
+      projectionMatrix: projection(FOV[0], FOV[1], FOV[2], FOV[3], 0.1, 1000),
+      getViewDescriptor: () => ({
+        baseArrayLayer: view.eye === 'left' ? 0 : 1,
+        mipLevelCount: 1,
+        arrayLayerCount: 1,
+      }),
+    };
+  }
+}
+
+if (GPU) {
+  // Over the browser's own, for the reason in `XRGPUBinding`'s documentation above. Without `?gpu` this is
+  // left alone, so a page that did not ask keeps whatever the browser really has.
+  Object.defineProperty(globalThis, 'XRGPUBinding', {
+    value: XRGPUBinding,
+    configurable: true,
+    writable: true,
+  });
+}
 
 Object.defineProperty(navigator, 'xr', {
   value: new XRSystem(),

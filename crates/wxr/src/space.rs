@@ -1,6 +1,6 @@
 //! Where poses are measured from, and what a pose is.
 
-use glam::{Affine3A, Quat, Vec3};
+use glam::{Affine3A, Mat4, Quat, Vec3};
 
 /// Which reference space a pose is expressed in.
 ///
@@ -75,6 +75,36 @@ impl Pose {
             position: inverse * (self.position - from.position),
             orientation: (inverse * self.orientation).normalize(),
         }
+    }
+
+    /// A pose out of a column-major 4x4, which is how a runtime that fills an array rather than answering one
+    /// question at a time reports one.
+    ///
+    /// WebXR's `fillPoses` is the shape this is for: a browser hands back sixteen floats per pose in an array
+    /// the caller owns, and there is no transform object in it anywhere - so a backend that reads a skeleton
+    /// that way has a matrix and wants a place and an orientation. The layout is `glam`'s own, which is the
+    /// specification's too: the three basis vectors are the first three columns and the translation is the
+    /// fourth.
+    ///
+    /// `None` when the slice is not a matrix or the matrix is not a rigid transform, which is what an array
+    /// slot a runtime could not fill looks like - a pose is a place and a rotation, and a scale of zero is
+    /// neither. `fillPoses` says in its answer which slots were filled, so a caller that believed it never
+    /// has a slot to ask about; this is the second line of defence for the one that did not.
+    pub fn from_matrix(matrix: &[f32]) -> Option<Self> {
+        if matrix.len() < 16 {
+            return None;
+        }
+        let mut columns = [0.0f32; 16];
+        columns.copy_from_slice(&matrix[..16]);
+        let (scale, orientation, position) =
+            Mat4::from_cols_array(&columns).to_scale_rotation_translation();
+        if !scale.is_finite() || !orientation.is_finite() || !position.is_finite() {
+            return None;
+        }
+        Some(Self {
+            position,
+            orientation: orientation.normalize(),
+        })
     }
 }
 
@@ -151,5 +181,52 @@ mod tests {
         let round_trip = parent.then(child).relative_to(parent);
         assert!(round_trip.position.abs_diff_eq(child.position, 1e-4));
         assert!(round_trip.orientation.abs_diff_eq(child.orientation, 1e-4));
+    }
+
+    #[test]
+    fn a_matrix_a_runtime_filled_is_a_pose_again() {
+        let placed = Pose {
+            position: Vec3::new(0.1, 1.55, -0.3),
+            orientation: Quat::from_rotation_y(FRAC_PI_2),
+        };
+        let filled = Mat4::from(placed.transform()).to_cols_array();
+        let back = Pose::from_matrix(&filled).expect("a rigid matrix is a pose");
+        assert!(
+            back.position.abs_diff_eq(placed.position, 1e-5),
+            "{:?}",
+            back
+        );
+        assert!(
+            back.orientation.abs_diff_eq(placed.orientation, 1e-5),
+            "{:?}",
+            back
+        );
+    }
+
+    #[test]
+    fn the_translation_is_the_last_column_and_not_the_last_row() {
+        // The layout spelled out rather than derived, because deriving it is the thing under test. A reader
+        // that took a `fillPoses` array as row-major would find the height in the rotation instead of in the
+        // translation, and hand back every joint of a hand at the origin with a strange way of turning.
+        let filled = [
+            1.0, 0.0, 0.0, 0.0, //
+            0.0, 1.0, 0.0, 0.0, //
+            0.0, 0.0, 1.0, 0.0, //
+            0.1, 1.55, -0.3, 1.0,
+        ];
+        let pose = Pose::from_matrix(&filled).expect("an identity rotation is a pose");
+        assert_eq!(pose.position, Vec3::new(0.1, 1.55, -0.3));
+        assert!(pose.orientation.abs_diff_eq(Quat::IDENTITY, 1e-6));
+    }
+
+    #[test]
+    fn a_matrix_that_is_not_a_rigid_transform_is_not_a_pose() {
+        // Which is what an array slot a runtime left alone looks like, and the reason `from_matrix` is
+        // `Option` rather than a pose that is quietly somewhere else.
+        assert!(Pose::from_matrix(&[]).is_none());
+        let mut not_a_transform = [1.0f32; 16];
+        not_a_transform[5] = f32::NAN;
+        assert!(Pose::from_matrix(&not_a_transform).is_none());
+        assert!(Pose::from_matrix(&[0.0; 16]).is_none());
     }
 }

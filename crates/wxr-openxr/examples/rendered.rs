@@ -5,10 +5,11 @@
 //! eye's own projection and place, and hands the frame back. It is the same loop `wxr-apple`'s entry point
 //! runs, on the platform whose compositor takes the picture as a Vulkan image the renderer makes a texture of.
 //!
-//! What it does *not* submit is depth: the binding this crate is on cannot chain a depth layer, so the
-//! renderer makes its own depth buffer and the compositor gets colour alone - see the crate's module
-//! documentation. Everything else about the frame is the real path, which is what makes this the example that
-//! says whether the core's shape is workable rather than merely consistent.
+//! What it does *not* submit is depth: there is no second swapchain to draw a depth image into and no word in
+//! the core for saying what should be submitted with the colour, so the renderer makes its own depth buffer
+//! and the compositor gets colour alone - see the crate's module documentation. Everything else about the
+//! frame is the real path, which is what makes this the example that says whether the core's shape is
+//! workable rather than merely consistent.
 
 #[cfg(not(target_family = "wasm"))]
 mod native {

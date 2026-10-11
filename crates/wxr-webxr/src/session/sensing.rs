@@ -26,6 +26,12 @@ impl WebXrSession {
 impl WebXrSession {
     pub(super) fn depth_sensing_impl(&self) -> Option<wxr::DepthSensing> {
         let session = self.inner.borrow().session.clone()?;
+        // When it asked for any, which is what the core's question is: the four attributes below exist on the
+        // object either way, and a session that was never granted `depth-sensing` reads them back as values
+        // for a measurement it cannot make. `None` is the answer that means that.
+        if !has_feature(&session, "depth-sensing") {
+            return None;
+        }
         Some(wxr::DepthSensing {
             usage: match session.depth_usage() {
                 XrDepthUsage::CpuOptimized => wxr::DepthUsage::CpuOptimized,

@@ -7,10 +7,14 @@ browser at the page, presses the button the page is waiting for, and reads the v
 
 Four things are worth knowing about how:
 
-* **The page is `stub.html`, not `index.html`.** A desktop browser has WebXR and no headset behind it, so the
-  page is served with `webxr-stub.js` in front of it - an XRSystem with a head, two hands and two controllers,
-  made here rather than borrowed from an extension with a popup and a device catalogue. `index.html` is the
-  same page against whatever the browser really has, for a machine that has something.
+* **The page is `stub.html`, and it is opened twice.** A desktop browser has WebXR and no headset behind it, so
+  the page is served with `webxr-stub.js` in front of it - an XRSystem with a head, two hands and two
+  controllers, made here rather than borrowed from an extension with a popup and a device catalogue. The first
+  run is the plain page, which is a session with no binding and nothing to draw; the second is
+  `stub.html?gpu`, the same page with the stub's `XRGPUBinding` in front of it, which is the run that has an
+  image to read, a viewport and an array layer per eye, and a measured depth. Both have to say `done`, and a
+  failure in either is this driver's failure. `index.html` is the same page against whatever the browser really
+  has, for a machine that has something.
 * **The verdict comes back over `/log`**, the same channel the run's own log lines use. The page has exactly
   two of them, `done` and `FAILED`. Reading them off the page instead would mean a driver that could be
   reading a page that had not started yet, and a DOM that had to be asked would be a third place for the
@@ -50,6 +54,11 @@ WAITING = "waiting for a click to enter XR"
 DONE = "done"
 FAILED = "FAILED"
 
+# The two pages, and the two answers a session has to give: nothing to draw, and something to draw. The
+# question mark is not decoration - `webxr-stub.js` reads it and puts an `XRGPUBinding` in the page only for
+# the second one.
+PAGES = ("stub.html", "stub.html?gpu")
+
 
 def find_browser(explicit: str | None) -> str | None:
     """The browser to drive, or `None` if this machine has none worth driving."""
@@ -72,6 +81,18 @@ class Record(http.server.SimpleHTTPRequestHandler):
     verdict = threading.Event()
     waiting = threading.Event()
     lock = threading.Lock()
+
+    @classmethod
+    def reset(cls) -> None:
+        """Forget the last run's lines, which are the last run's.
+
+        Two pages are driven one after the other and both write here, so a verdict left over from the first
+        would be the second run's answer read off the first run's record.
+        """
+        with cls.lock:
+            cls.lines = []
+        cls.verdict.clear()
+        cls.waiting.clear()
 
     def __init__(self, *args, directory=None, **kwargs):
         """A request handler that serves the built page and records what the page posts."""
@@ -302,8 +323,16 @@ def main() -> int:
     server = socketserver.TCPServer(("127.0.0.1", 0), functools.partial(Record, directory=out))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
-        where = f"http://127.0.0.1:{server.server_address[1]}/stub.html"
-        return drive(browser, where, args.timeout)
+        origin = f"http://127.0.0.1:{server.server_address[1]}"
+        # Two runs of one page, and the query string is the whole of the difference - see the note at the top.
+        # A skip is a skip for both: a machine with no browser has not failed either of them.
+        failures = 0
+        for page in PAGES:
+            Record.reset()
+            print(f"smoke: --- {page}", flush=True)
+            if drive(browser, f"{origin}/{page}", args.timeout) != 0:
+                failures += 1
+        return failures
     finally:
         server.shutdown()
 

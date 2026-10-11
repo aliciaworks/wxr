@@ -22,9 +22,9 @@ use crate::convert::{
 };
 use crate::sys::{
     DomPointReadOnly, Event, XrBoundedReferenceSpace, XrDepthDataFormat, XrDepthType, XrDepthUsage,
-    XrEnvironmentBlendMode, XrEye, XrFrame, XrHandedness, XrInteractionMode, XrLayerLayout,
-    XrProjectionLayer, XrReferenceSpace, XrRenderStateInit, XrSession, XrView, XrgpuBinding,
-    XrgpuProjectionLayerInit, XrgpuQuadLayerInit,
+    XrEnvironmentBlendMode, XrEye, XrFrame, XrHand, XrHandedness, XrInteractionMode, XrLayerLayout,
+    XrProjectionLayer, XrReferenceSpace, XrRenderStateInit, XrSession, XrSpace, XrView,
+    XrgpuBinding, XrgpuProjectionLayerInit, XrgpuQuadLayerInit,
 };
 use crate::{depth, hit, input, planes, throws};
 
