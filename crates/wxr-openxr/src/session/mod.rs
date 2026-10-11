@@ -58,9 +58,10 @@ impl OpenXrSession {
             queue_index: native.queue_index,
         };
 
-        // SAFETY: these are a live wgpu device, and the caller keeps it alive for as long as the session -
-        // which is the contract `hal::vulkan` documents, and the reason a backend is given a device rather
-        // than making one.
+        // SAFETY: these are a live wgpu device, and the session keeps its own reference to it from here on -
+        // which is what the field in `state.rs` is for, and the reason a backend is given a device rather
+        // than making one. The check cannot be repeated here: the device is only known to be live because
+        // the caller passed it in, and the session holds it so that it stays that way.
         let (session, waiter, stream) = unsafe {
             backend
                 .instance
@@ -162,6 +163,8 @@ impl OpenXrSession {
             refresh_rate: backend.refresh_rate,
             haptics: backend.haptics,
             layers: Vec::new(),
+            // Cloned, and the last field - see its documentation for why it is both.
+            device: device.clone(),
         })
     }
 }

@@ -61,6 +61,20 @@ pub struct OpenXrSession {
     /// The layers the app made, each `None` once released. The index is the handle's id, so a release leaves a
     /// hole rather than shifting the ones after it.
     pub(super) layers: Vec<Option<Layer>>,
+    /// The wgpu objects every swapchain above was allocated through, kept so that they outlive the handles
+    /// that name their images.
+    ///
+    /// A `Device` is what a session is given rather than what it makes, and the contract is that it is alive
+    /// for as long as the session - which was only ever a comment, and a caller that dropped it early got a
+    /// use-after-free at the end rather than an error: `xrDestroySwapchain` reaches into the `VkDevice` the
+    /// images came from, and by then nothing here could keep it there. The backend keeps its own reference
+    /// instead, which is cheap - both halves are refcounted handles - and makes the contract something the
+    /// types enforce.
+    ///
+    /// Last, and that is load-bearing: fields are dropped in the order they are declared, and the swapchains
+    /// that reference this device have to be destroyed while it is still here.
+    #[allow(dead_code, reason = "held for its destructor; nothing reads it")]
+    pub(super) device: Device,
 }
 
 /// A layer the app made, and the swapchain it draws into.
