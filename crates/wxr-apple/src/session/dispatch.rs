@@ -191,22 +191,36 @@ impl wxr::Session for AppleSession {
 
         // SAFETY: the frame is live, the timing above is already read, and the drawables are read before the
         // update window closes.
-        self.drawable = unsafe {
+        let (queried, drawable) = unsafe {
             let array = cp_frame::query_drawables(self.frame);
             if array.is_null() {
-                std::ptr::null_mut()
+                (0, std::ptr::null_mut())
             } else {
                 // The array holds one drawable per display target - what the wearer sees, and a capture one
                 // for streaming - and it is the built-in one that a person is looking at.
-                (0..cp_drawable_array::count(array))
+                let count = cp_drawable_array::count(array);
+                let found = (0..count)
                     .map(|index| cp_drawable_array::drawable(array, index))
                     .find(|drawable| {
                         !drawable.is_null()
                             && cp_drawable::target(*drawable) == cp_drawable_target::built_in
                     })
-                    .unwrap_or(std::ptr::null_mut())
+                    .unwrap_or(std::ptr::null_mut());
+                (count, found)
             }
         };
+        self.drawable = drawable;
+        if queried == 0 {
+            // The header on `cp_frame_query_drawables` is exact about this case: an empty array means the
+            // frame was cancelled, and it "should be discarded and is invalid to access" - which is what
+            // makes the `end_update` in the branch below wrong here rather than merely unnecessary. The
+            // update window opened above is left to the compositor: it cancelled the frame, so there is
+            // nothing to close it on, and closing it is the access the header forbids. This is a cold
+            // start's answer - the immersive space is still coming up and the layer hands out a frame it
+            // will not serve - so the frame goes back untouched and the next one is asked for.
+            self.release();
+            return Ok(());
+        }
         if self.drawable.is_null() {
             // A frame with no drawable is discarded, but the update window it opened still has to close
             // before the frame is given back: `views` is not reached for a frame that is not rendered.
