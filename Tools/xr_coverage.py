@@ -243,6 +243,73 @@ def session_impl(crate: str) -> set:
     return set(re.findall(r"\bfn\s+(\w+)", "".join(block)))
 
 
+# Why a backend that does not name a `Session` method is not missing it.
+#
+# `session_impl` only counts what a backend writes, which is the right thing to count and the wrong thing to
+# subtract from: a trait default is not an absence. Some of them are no-ops that mean "this platform has no
+# such lever", some are the only answer that is honest on that platform, and one - `as_backend` - is
+# *already* the implementation every backend would have written. Counting those as gaps is how a list of six
+# reads as six pieces of work when none of them are.
+#
+# Keyed by backend, with `*` for the ones that are true everywhere, because the same default is right for one
+# backend and wrong for another: `planes` is a draft nothing ships in a browser and a real extension in
+# OpenXR, and `play_pcm` has nowhere to land on a pad but is Meta's extension on a runtime that took it.
+#
+# What is *not* in here is the point of the table. A method a backend does not write and whose default has no
+# reason behind it is a question, and the script prints those separately - because the difference between
+# "the default is right" and "nobody has written down why yet" is the difference between a decision and a
+# hole, and only a person can tell them apart.
+DEFAULT_IS_ENOUGH = {
+    ("*", "as_backend"): "the default already downcasts through `dyn Any`, which is what an implementation "
+    "would do; a backend that writes its own is the exception, not the rule",
+    ("*", "as_backend_mut"): "as `as_backend`: the default is the implementation",
+    ("wxr-webxr", "interaction_mode"): "only a browser is ever `ScreenSpace`, and a browser writes its own",
+    ("wxr-webxr", "meshes"): "mesh detection is a community-group draft with no browser behind it, so a "
+    "session that has found no meshes is a session whose list is empty",
+    ("wxr-webxr", "play_pcm"): "no browser has it: `GamepadHapticActuator` documents `pulse`, `playEffect` "
+    "and `reset`, and MDN has no `playPCM` page at all - the binding generated into `sys/` is a trap",
+    ("wxr-webxr", "refresh_rates"): "nothing in WebXR asks a display what it can do",
+    ("wxr-webxr", "set_refresh_rate"): "nothing in WebXR asks a display to change what it does",
+    ("wxr-openxr", "interaction_mode"): "only a browser is ever `ScreenSpace`",
+    ("wxr-openxr", "request_viewport_scale"): "OpenXR's resolution is the swapchain's to choose, and a "
+    "runtime that recommends nothing is a runtime at full resolution - which is what the request would "
+    "have been ignored into anyway",
+    ("wxr-openxr", "set_depth_range"): "deliberate, and said so where it was decided: a field nothing reads "
+    "is a field that lies, and this compositor cannot be told",
+    ("wxr-apple", "interaction_mode"): "only a browser is ever `ScreenSpace`",
+    ("wxr-apple", "bounds"): "visionOS has no bounds geometry; the room is not a polygon the runtime drew",
+    ("wxr-apple", "depth"): "`objc2-ar-kit` has no `ar_scene_depth` - the depth a drawable holds is the one "
+    "being drawn into, which is not a measurement of the room (see `Session::Depth`)",
+    ("wxr-apple", "depth_sensing"): "as `depth`: no scene-depth binding to sense with",
+    ("wxr-apple", "hit_test_source"): "`objc2-ar-kit` has no raycast; ARKit's mesh could be intersected by "
+    "hand, and a hit test the runtime does not itself support is a hit test that answers late",
+    ("wxr-apple", "hits"): "as `hit_test_source`",
+    ("wxr-apple", "layer"): "CompositorServices has no compositing layers - the drawable is the frame, and "
+    "there is no layer to make, pose, sub-image or release",
+    ("wxr-apple", "binding"): "as `layer`: a binding is for a layer the *app* draws into, and a platform "
+    "without compositing layers has nothing to draw into that is not already the frame",
+    ("wxr-apple", "layer_image"): "as `layer`",
+    ("wxr-apple", "set_layer_pose"): "as `layer`",
+    ("wxr-apple", "release_layer"): "as `layer`",
+    ("wxr-apple", "sub_image"): "as `layer`",
+    ("wxr-apple", "play_pcm"): "CoreHaptics in the visionOS 27 SDK is `CHHapticEvent`, `CHHapticPattern` "
+    "and `CHHapticPatternPlayer`, with no PCM, sample or custom-audio entry point anywhere in the headers",
+    ("wxr-apple", "refresh_rates"): "CompositorServices asks a display for nothing",
+    ("wxr-apple", "set_refresh_rate"): "CompositorServices tells a display nothing",
+    ("wxr-apple", "request_viewport_scale"): "no `viewportScale` symbol in CompositorServices, so there is "
+    "no recommended scale to hand back in the first place (`View::recommended_viewport_scale` is `None`)",
+    ("wxr-apple", "set_foveation"): "the only write is `cp_layer_renderer_configuration_set_foveation_"
+    "enabled`, on the configuration Apple describes as the one handed to the provider *while the layer is "
+    "being made*, and unlike `set_render_quality` there is no runtime counterpart - a setter that probably "
+    "does nothing is a setter that lies",
+}
+
+
+def documented_default(crate: str, method: str) -> str:
+    """Why not writing `method` is the right answer here, or `""` when nothing says it is."""
+    return DEFAULT_IS_ENOUGH.get((crate, method)) or DEFAULT_IS_ENOUGH.get(("*", method), "")
+
+
 def core_to_native() -> None:
     """Of the core's `Session` surface, how much each backend actually defines."""
     methods = core_methods()
@@ -250,10 +317,25 @@ def core_to_native() -> None:
     for crate in ["wxr-webxr", "wxr-openxr", "wxr-apple"]:
         hit = session_impl(crate)
         covered = [m for m in methods if m in hit]
+        skipped = [m for m in methods if m not in hit]
+        reasons = [m for m in skipped if documented_default(crate, m)]
+        work = [m for m in skipped if not documented_default(crate, m)]
         print(
             f"- {crate}: **{100 * len(covered) / len(methods):.0f}%**"
             f" ({len(covered)}/{len(methods)})"
         )
+        print(
+            f"    of the {len(skipped)} not written, {len(reasons)} have a reason in this file for the "
+            f"default being this platform's answer; {len(work)} do not"
+        )
+        if work:
+            print(f"    unexplained: {', '.join(work)}")
+        # A `*` entry claims *no* backend writes it, because the default is the implementation. One that
+        # does has falsified the claim, and a falsified claim is worse than no claim: it is a reader who
+        # believed it.
+        falsified = sorted(m for m in hit if ("*", m) in DEFAULT_IS_ENOUGH)
+        if falsified:
+            print(f"    written anyway, so the `*` reason is wrong: {', '.join(falsified)}")
 
 
 def webxr_interfaces(include_drafts: bool = True) -> set:
