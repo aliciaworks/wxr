@@ -61,6 +61,34 @@ pub struct OpenXrSession {
     /// The layers the app made, each `None` once released. The index is the handle's id, so a release leaves a
     /// hole rather than shifting the ones after it.
     pub(super) layers: Vec<Option<Layer>>,
+    /// The planes the runtime has found, when the runtime has a way to find any.
+    ///
+    /// `None` is a runtime without `XR_EXT_plane_detection`, and then `planes` is the core's default: a
+    /// session whose surfaces list is empty. Each one is a detector with a pass of its own in flight - see
+    /// [`super::PlaneDetector`].
+    pub(super) planes: Option<super::PlaneDetector>,
+    /// The anchors the runtime is keeping fixed, when it keeps any.
+    ///
+    /// `None` is a runtime without `XR_FB_spatial_entity`, and then anchors are `Unsupported` rather than a
+    /// handle that never answers - which is the difference between a runtime that lost the place and one
+    /// that never had it.
+    pub(super) anchors: Option<super::Anchors>,
+    /// The raycaster a hit-test source is measured out of, when the runtime has one.
+    ///
+    /// Made lazily and asynchronously - see [`super::Raycaster`] - so `Some` here means the extension was
+    /// enabled and not that a ray can be cast yet.
+    pub(super) raycast: Option<super::Raycaster>,
+    /// The runtime's own measurement of the room, when it makes one.
+    ///
+    /// Made at connect time and *started* at the first query: a provider begins producing depth the moment
+    /// it is started, and one kept running for an app that never asks would be holding a camera for nothing.
+    /// So `Some` here is "this runtime can measure the room", which is what `Features::DEPTH` means, and
+    /// whether it has begun is [`wxr::Session::depth`]'s business.
+    pub(super) depth: Option<super::EnvironmentDepth>,
+    /// What the frame in progress measured of the room, and what its values are worth - read by
+    /// [`Self::depth_impl`] and cleared at the end of the frame, because the runtime takes the image back
+    /// then. See [`super::MeasuredDepth`] for why the two are carried apart.
+    pub(super) measured: Option<super::MeasuredDepth>,
     /// The wgpu objects every swapchain above was allocated through, kept so that they outlive the handles
     /// that name their images.
     ///
@@ -124,4 +152,24 @@ pub(crate) struct LayerExtensions {
 pub(crate) struct HapticExtensions {
     pub(crate) feedback: bool,
     pub(crate) pcm: bool,
+}
+
+/// Which of the four world-modelling extensions the instance was made with.
+///
+/// All four are asked for from a runtime that lists them and no others, and all four are facilities rather
+/// than levers: an extension not enabled at `xrCreateInstance` is a set of function pointers the session
+/// does not have, so what a session can answer about the room was decided before the session existed.
+///
+/// Two of them are not one thing each, and that is worth saying because it is not visible from here:
+/// `XR_META_environment_raycast` cannot be enabled without `XR_EXT_future` (`xrCreateInstance` answers
+/// `XR_ERROR_EXTENSION_DEPENDENCY_NOT_ENABLED`), so a runtime missing the future loses the raycaster too;
+/// and `XR_FB_spatial_entity` is the one carrying anchors - the Khronos `XR_EXT_spatial_anchor` is an
+/// entity-and-context API whose pieces are not in this backend yet, and an anchor here is an `XrSpace`
+/// which is what the core's vocabulary has a place for.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct SpatialExtensions {
+    pub(crate) planes: bool,
+    pub(crate) anchors: bool,
+    pub(crate) raycast: bool,
+    pub(crate) depth: bool,
 }

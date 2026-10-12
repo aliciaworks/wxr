@@ -89,3 +89,94 @@ pub(crate) fn field_of_view(fov: xr::Fovf) -> wxr::FieldOfView {
         right: -fov.angle_right,
     }
 }
+
+/// An OpenXR *surface* pose in the core's terms, and the one place the two conventions differ.
+///
+/// OpenXR puts a surface's normal on the pose's **+Z**: a plane's extent is measured along the pose's X and
+/// Y, and a raycast hit's normal is "rotating {0, 0, 1} by this orientation". The core puts it on **+Y**,
+/// which is what WebXR and ARKit say and what a caller has been reading on every other backend. So the
+/// orientation turns and the position does not: a surface's centre is where it is whichever way the axes
+/// are named.
+///
+/// That turn is one rotation about the pose's own X, and the spec spells out exactly this conversion in
+/// `XR_MSFT_scene_understanding`:
+///
+/// > OpenXR uses an X-Y plane with +Z as the plane normal but other APIs may use an X-Z plane with +Y as
+/// > the plane normal. The X-Y plane can be converted to an X-Z plane by rotating -pi/2 radians around the
+/// > +X axis.
+///
+/// Which is what this is, written the other way round: the core's frame is OpenXR's turned by +pi/2, so that
+/// the core's +Y lands where OpenXR's +Z was. Only +pi/2 and not -pi/2, and the direction is pinned by the
+/// test below rather than by the prose - the note describes turning the plane, this turns the frame the
+/// plane is described in.
+pub(crate) fn surface(pose: wxr::Pose) -> wxr::Pose {
+    wxr::Pose {
+        position: pose.position,
+        orientation: pose.orientation * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use wxr::glam::Vec3;
+
+    use super::*;
+
+    /// How far off a direction is allowed to be, which is one part in a million and no more.
+    const SLACK: f32 = 1e-6;
+
+    /// A floor OpenXR found has its normal on +Z, and the core asks for it on +Y.
+    ///
+    /// This is the whole of what `surface` is for, and it is the test that would catch the rotation being
+    /// the wrong way round - which turns every surface the wrong way up and looks like correct code.
+    #[test]
+    fn an_openxr_surface_normal_comes_out_on_the_cores_y() {
+        let core = surface(wxr::Pose::IDENTITY);
+        assert!((core.orientation * Vec3::Y - Vec3::Z).length() < SLACK);
+    }
+
+    /// And it points *away* from the surface the same way it did: a floor's normal is still up, and a
+    /// conversion that flipped it would put every floor on the ceiling.
+    #[test]
+    fn a_surface_keeps_which_way_it_faces() {
+        // OpenXR's normal for this plane is +Z, so its core normal has to be +Z too.
+        let flipped = wxr::Pose {
+            position: wxr::glam::Vec3::ZERO,
+            orientation: Quat::from_rotation_y(std::f32::consts::PI),
+        };
+        let core = surface(flipped);
+        assert!((core.orientation * Vec3::Y - Vec3::NEG_Z).length() < SLACK);
+    }
+
+    /// A surface's centre is where it is whichever way the axes are named.
+    #[test]
+    fn a_surface_keeps_where_its_centre_is() {
+        let pose = wxr::Pose {
+            position: Vec3::new(1.0, 2.0, 3.0),
+            orientation: Quat::from_rotation_z(0.7),
+        };
+        let core = surface(pose);
+        assert_eq!(core.position, Vec3::new(1.0, 2.0, 3.0));
+        assert!(
+            (core.orientation
+                - pose.orientation * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))
+            .length()
+                < SLACK
+        );
+    }
+
+    /// The core measures a plane's extent in its own X and Z, and OpenXR measures it in its X and Y - so the
+    /// two numbers carry over as they are, which is the one thing that makes the extents worth checking.
+    #[test]
+    fn the_in_plane_x_axis_is_x_in_both() {
+        let core = surface(wxr::Pose::IDENTITY);
+        assert!((core.orientation * Vec3::X - Vec3::X).length() < SLACK);
+        // And the in-plane axes stay at right angles: the rotation is not a shear.
+        assert!(
+            (core.orientation * Vec3::X)
+                .dot(core.orientation * Vec3::Z)
+                .abs()
+                < SLACK
+        );
+    }
+}

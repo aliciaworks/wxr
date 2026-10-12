@@ -65,8 +65,11 @@ AR is the other half of what WebXR has: `Plane` and `Session::planes` are the su
 `LightEstimate` are the room's light - nine spherical-harmonic coefficients and a primary light, so a virtual
 object is lit by the room rather than by a guess. Both are asked for by
 `SessionMode::ImmersiveAr` - a runtime told the session is drawn over the world is the one that offers them -
-and both are WebXR's alone today, because OpenXR's are extensions the crate leaves as raw pointers and Apple's
-are behind a header that is not to hand.
+and what each backend has of them differs in kind. OpenXR's are extensions with no typed wrapper at all, so
+`wxr-openxr` drives them by hand over raw pointers: surfaces, anchors, where a ray lands, and the room's own
+depth map. Apple's are behind a header that is not to hand. And light estimation is WebXR's alone, because the
+OpenXR registry has no extension for it in any vendor's - no `XR_*light*` name exists at all, so there is
+nothing for that one to be written against.
 
 Which of those a session actually has is `Features` - a set of bits rather than a method per capability that
 errors when it is missing, the shape `wgpu` uses and WebXR's `enabledFeatures` uses. Until there was one, "this

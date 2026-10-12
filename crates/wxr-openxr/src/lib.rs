@@ -34,15 +34,30 @@
 //! of guessing. It is also why `set_depth_range` is the core's default no-op here rather than an override that
 //! stores the planes: there is nothing to submit them with, and a field nothing reads is a field that lies.
 //!
-//! **Surfaces are not detected either, and here it is a raw API rather than a missing one.**
-//! `XR_EXT_plane_detection` is the extension that would do it, and the crate does load its function pointers -
-//! `raw::PlaneDetectionEXT`, reachable through `instance.exts()` - but there is no typed wrapper around them:
-//! the app drives the state machine itself (begin, poll until `DONE`, read into a buffer it owns, begin again)
-//! over `openxr-sys` structs and raw pointers. That is a piece of work of its own, and an untested one, because
-//! Monado has no plane detection to test it against - so `planes` is the core's default, a session with no
-//! surfaces, until it is done. **Anchors are the same shape**: `XR_EXT_spatial_anchor` is loaded as raw
-//! function pointers like the rest of the spatial extensions, so `anchor` is the core's `Unsupported` until
-//! they are driven by hand.
+//! **Reading the room is a different extension, and it is driven by hand.** `XR_EXT_plane_detection`,
+//! `XR_FB_spatial_entity`, `XR_META_environment_raycast` and `XR_META_environment_depth` are the four that
+//! answer the core's `planes`, `anchor`, `hits` and `depth`, and `openxr` 0.22 loads all four's function
+//! pointers and wraps none of them - so each of the four is a state machine this crate drives over
+//! `openxr-sys` structs and raw pointers, in a module of its own under `session/`. Two of them need care that
+//! is not visible from the call site: `XR_META_environment_raycast` cannot be enabled without `XR_EXT_future`
+//! or `xrCreateInstance` refuses the pair, and the depth map can only be taken once between a frame's begin
+//! and its end.
+//!
+//! The honest part of that list is what a runtime that does not have one of them gets. Every extension is
+//! asked for from a runtime that lists it and no others, and a session without one answers with the core's
+//! `Unsupported`, an empty list, or `None` - so `features()` is the same fact read from the other side, and a
+//! bit that says yes where the method says no would be a promise this backend is not keeping.
+//!
+//! What is *not* on that list is light estimation. `XR_EXT_light_estimation` does not exist: the registry has
+//! no `XR_*light*` extension name at all, in any vendor's, so a runtime that measures the room's light has
+//! nothing to tell this crate with. `light` and `light_probe` are the core's defaults here for want of an
+//! extension rather than for want of the work.
+//!
+//! **Meshes are the one left undone**, and it is a choice rather than a gap: `XR_FB_triangle_mesh`,
+//! `XR_META_spatial_entity_mesh`, `XR_BD_spatial_mesh` and `XR_ML_world_mesh_detection` are all bound, all
+//! raw, and they are four different shapes - a triangle mesh with its own lifecycle, a component of a spatial
+//! entity, and two whole-room scans. Picking one is picking which headsets this backend can mesh, and it has
+//! not been picked.
 
 // Not wasm, and not Apple: this backend speaks Vulkan, and `wgpu::hal::api::Vulkan` is a type that does
 // not exist where wgpu has no Vulkan - so a macOS or visionOS build is a build where this crate is
@@ -56,8 +71,8 @@ mod input;
 mod session;
 
 pub use import::Images;
-pub use session::OpenXrSession;
-pub(crate) use session::{HapticExtensions, LayerExtensions};
+pub use session::{DepthImage, OpenXrSession};
+pub(crate) use session::{HapticExtensions, LayerExtensions, SpatialExtensions};
 
 /// The pose conversion `input` reaches by name, kept at the root so a module can say `crate::pose`.
 pub(crate) use convert::pose;
@@ -89,6 +104,10 @@ pub struct OpenXr {
     /// Which haptic extensions it was made with, fixed at the same moment and read by the capability bit and
     /// by the two output calls.
     haptics: HapticExtensions,
+    /// Which of the world-modelling extensions it was made with, fixed at the same moment. What a session
+    /// can say about the room was therefore decided before the session existed, which is the reason this is
+    /// carried rather than asked again.
+    spatial: SpatialExtensions,
 }
 
 impl OpenXr {
@@ -137,6 +156,22 @@ impl OpenXr {
         // failure.
         extensions.fb_display_refresh_rate = supported.fb_display_refresh_rate;
 
+        // The four ways a runtime can say what the room is: the surfaces it has found, the places it is
+        // keeping fixed, where a ray meets things, and how far away the walls are. Asked for the same way as
+        // every extension above - only from a runtime that lists it - and an instance the runtime refuses is
+        // worse than a session without a floor.
+        //
+        // One of them is two, in a way the name does not show: `XR_META_environment_raycast` requires
+        // `XR_EXT_future` to be enabled alongside it or `xrCreateInstance` refuses the pair outright with
+        // `XR_ERROR_EXTENSION_DEPENDENCY_NOT_ENABLED`. So they are decided together, and a runtime missing
+        // the future is a runtime without a raycaster too - which is what `spatial` below will say.
+        extensions.ext_plane_detection = supported.ext_plane_detection;
+        extensions.fb_spatial_entity = supported.fb_spatial_entity;
+        extensions.meta_environment_depth = supported.meta_environment_depth;
+        extensions.meta_environment_raycast =
+            supported.meta_environment_raycast && supported.ext_future;
+        extensions.ext_future = extensions.meta_environment_raycast;
+
         // Haptics. `XR_EXT_haptic_feedback` is the one that matters, and it is the one extension the crate
         // leaves out of its `ExtensionSet`: it knows the calls - `xrApplyHapticFeedback` is loaded with the
         // instance like every other entry point - but the set has no field naming it, so it is asked for by
@@ -158,6 +193,12 @@ impl OpenXr {
             cylinder: extensions.khr_composition_layer_cylinder,
             equirect: extensions.khr_composition_layer_equirect2,
             cube: extensions.khr_composition_layer_cube,
+        };
+        let spatial = SpatialExtensions {
+            planes: extensions.ext_plane_detection,
+            anchors: extensions.fb_spatial_entity,
+            raycast: extensions.meta_environment_raycast,
+            depth: extensions.meta_environment_depth,
         };
 
         // The loader validates this: an application with no name is not an application it will make an
@@ -203,6 +244,7 @@ impl OpenXr {
             layers,
             refresh_rate: extensions.fb_display_refresh_rate,
             haptics,
+            spatial,
         })
     }
 

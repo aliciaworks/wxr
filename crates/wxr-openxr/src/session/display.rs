@@ -100,12 +100,25 @@ impl OpenXrSession {
                 features = features.union(bit);
             }
         }
-        // A hand tracker is the skeleton, so a session that was given one has hand tracking. Everything else
-        // this backend asks for - the depth layer, surfaces - it does not get.
+        // A hand tracker is the skeleton, so a session that was given one has hand tracking.
         if let Some(hands) = &self.hands
             && hands.has_tracking()
         {
             features = features.union(wxr::Features::HAND_TRACKING);
+        }
+        // The four ways a runtime can say what the room is, each set from whether the session actually has
+        // one rather than from a flag the instance was made with. The difference matters for depth, which is
+        // built eagerly and *started* at the first query: a runtime whose provider could not be made has no
+        // measurement to offer, and one whose could has one the moment it is asked for.
+        for (have, bit) in [
+            (self.planes.is_some(), wxr::Features::PLANES),
+            (self.anchors.is_some(), wxr::Features::ANCHORS),
+            (self.raycast.is_some(), wxr::Features::HIT_TEST),
+            (self.depth.is_some(), wxr::Features::DEPTH),
+        ] {
+            if have {
+                features = features.union(bit);
+            }
         }
         // Haptics, and here the bit is the extension rather than a per-controller answer: OpenXR has no way to
         // ask whether a particular controller has an actuator, so a runtime with the extension is a session

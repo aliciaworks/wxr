@@ -302,6 +302,11 @@ impl OpenXrSession {
         self.stream
             .end(self.predicted, self.blend, &present)
             .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+
+        // The runtime takes its depth image back with the frame, so the next one has to take it again. This
+        // is the reason [`Self::depth`] takes the image on the first ask of a frame and then reads it: this
+        // line is what makes the first ask of the next frame the first ask rather than the second.
+        self.measured = None;
         Ok(())
     }
 }
@@ -314,6 +319,13 @@ impl OpenXrSession {
             && let Some(event) = hands.poll()
         {
             return Some(event);
+        }
+
+        // Making a raycaster is asynchronous and a future only moves when something polls it, so this is the
+        // one place it does - and this is the call a frame loop makes every frame anyway, which is why the
+        // future was chosen to be finished here rather than needing a call of its own.
+        if let Some(raycast) = self.raycast.as_mut() {
+            raycast.poll();
         }
 
         // Events come off the instance, one at a time. A state change is the one a frame loop acts on and a
@@ -378,6 +390,16 @@ impl OpenXrSession {
                     if visibility != self.visibility {
                         self.visibility = visibility;
                         return Some(wxr::Event::VisibilityChanged(visibility));
+                    }
+                    continue;
+                }
+                // An anchor the runtime has finished making, which is not a core event: `wxr::Event` has no
+                // way to say "the anchor you asked for exists now", because the core's shape for that is the
+                // `None` `anchor_pose` already answers until it does. This is the backend noticing, and the
+                // loop carries on rather than returning - there is nothing for the caller to do about it.
+                Ok(Some(xr::Event::SpatialAnchorCreateCompleteFB(event))) => {
+                    if let Some(anchors) = self.anchors.as_mut() {
+                        anchors.complete(event.request_id(), event.result(), event.space());
                     }
                     continue;
                 }
