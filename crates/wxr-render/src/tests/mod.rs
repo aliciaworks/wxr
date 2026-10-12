@@ -1,6 +1,23 @@
 //! What the renderer does with a session, exercised on the mock one.
 use super::*;
 
+use std::sync::{Mutex, MutexGuard};
+
+/// One GPU, one test at a time.
+///
+/// Seven of these tests make a device and read a pixel back off it, which is a submit and a wait for the
+/// GPU to finish - and they used to do it at once. On a machine whose GPU is otherwise idle that works; on one where the display server and a browser are using it too, several
+/// `PollType::Wait { timeout: None }` calls in parallel are several waits with no end on them, and the
+/// suite deadlocks somewhere inside the driver. It fails as six tests "running for over 60 seconds" with
+/// no CPU time at all, which is a hang and not a slow one, and it does not reproduce when the same binary
+/// is run on its own.
+///
+/// So they take turns, the way `wxr-openxr`'s tests already do for the same reason one level down - an
+/// OpenXR loader hands out one `XrInstance` at a time and a Vulkan driver hands out one GPU. The lock is
+/// recovered from rather than `unwrap`ed because a test that fails while holding it should not turn every
+/// later one into a failure about a lock.
+static GPU: Mutex<()> = Mutex::new(());
+
 /// The pixel at the centre of a pass that draws the near triangle first and the far one second.
 ///
 /// The depth buffer is the only reason the near one is what comes back: without it the second triangle
@@ -194,7 +211,7 @@ fn room(
 /// only checked the first case would pass for a shader that discarded everything.
 #[test]
 fn a_fragment_behind_the_room_is_not_drawn() {
-    let Some((device, queue)) = device() else {
+    let Some((_turn, device, queue)) = device() else {
         return;
     };
     let drawn = centre_pixel(&device, &queue, Depth::ZeroToOne);
@@ -246,7 +263,7 @@ impl Import for Recording {
 
 #[test]
 fn every_frame_is_wrapped_from_its_own_image() {
-    let Some((device, queue)) = device() else {
+    let Some((_turn, device, queue)) = device() else {
         return;
     };
     let mut session = wxr::mock::MockBackend::default()
@@ -292,7 +309,7 @@ fn every_frame_is_wrapped_from_its_own_image() {
 
 #[test]
 fn the_nearer_triangle_is_the_one_that_shows() {
-    let Some((device, queue)) = device() else {
+    let Some((_turn, device, queue)) = device() else {
         return;
     };
     let expected = [
@@ -357,7 +374,7 @@ impl Import for WrongDepth {
 
 #[test]
 fn a_session_depth_of_another_format_falls_back_to_a_private_one() {
-    let Some((device, queue)) = device() else {
+    let Some((_turn, device, queue)) = device() else {
         return;
     };
     let mut session = wxr::mock::MockBackend::default()
@@ -441,18 +458,24 @@ impl Import for Plain {
     }
 }
 
-/// A headless device, or `None` on a machine that has no GPU at all - a test is not the place to fail
-/// over that, and the renderer is not what would be wrong.
-fn device() -> Option<(wgpu::Device, wgpu::Queue)> {
+/// The GPU for as long as this test needs it, or `None` on a machine that has no GPU at all - a test is not
+/// the place to fail over that, and the renderer is not what would be wrong.
+///
+/// The guard is the first thing and it is why this is a tuple rather than a pair: the lock is held until
+/// the test that took it is over, because that is the whole of what serialising them means. Dropping it
+/// early would be the same race with a smaller window.
+fn device() -> Option<(MutexGuard<'static, ()>, wgpu::Device, wgpu::Queue)> {
+    let turn = GPU.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let adapter =
         pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
             .ok()?;
-    pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("wxr-render test"),
         ..Default::default()
     }))
-    .ok()
+    .ok()?;
+    Some((turn, device, queue))
 }
 
 mod frames;

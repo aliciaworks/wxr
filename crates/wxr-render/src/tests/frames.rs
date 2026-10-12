@@ -8,7 +8,7 @@ use super::*;
 
 #[test]
 fn a_frame_with_two_eyes_draws_twice_and_presents() {
-    let Some((device, queue)) = device() else {
+    let Some((_turn, device, queue)) = device() else {
         return;
     };
 
@@ -41,7 +41,7 @@ fn a_frame_with_two_eyes_draws_twice_and_presents() {
 
 #[test]
 fn a_triangle_is_drawn_with_each_eye_own_projection() {
-    let Some((device, queue)) = device() else {
+    let Some((_turn, device, queue)) = device() else {
         return;
     };
     let mut session = wxr::mock::MockBackend::default()
