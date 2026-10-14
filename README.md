@@ -255,13 +255,14 @@ line that reads the same either way:
 `aarch64-linux-android` cannot be run anywhere from here at all, because the loader wants a `JavaVM` and an
 `Activity` before `xrCreateInstance`, so that one stays compile-level in both places.
 
-Beyond the compiler, eight things are checked, and each is checked by the one that can:
+Beyond the compiler, nine things are checked, and each is checked by the one that can:
 
 ```sh
 python3 Tools/check_webxr_sys.py                            # the generated bindings, against their IDL
 cargo test -p wxr-openxr                                    # the backend, against the runtime this machine has
 cargo run -p wxr-openxr --example layers                    # a quad layer, against the runtime this machine has
 cargo run -p wxr-openxr --example rendered                  # the whole frame, drawn, against that same runtime
+cargo run -p wxr-openxr --example room                      # the four room-modelling extensions, against it
 cargo test -p wxr-conformance                               # the vocabulary, against another reading of the same API
 cargo test -p wxr-apple                                     # the Apple backend's own tables   (on a Mac)
 python3 crates/wxr-webxr-smoke/drive.py                     # the WebXR backend, in a browser

@@ -72,6 +72,7 @@ else
     cargo run -q -p wxr-openxr --example headless
     cargo run -q -p wxr-openxr --example layers
     cargo run -q -p wxr-openxr --example rendered
+    cargo run -q -p wxr-openxr --example room
   else
     step "examples (wxr-openxr) - skipped, this machine has no OpenXR runtime"
   fi
