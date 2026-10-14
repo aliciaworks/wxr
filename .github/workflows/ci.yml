@@ -136,7 +136,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-native-cargo-
       - run: cargo clippy -p wxr -p wxr-render -p wxr-openxr --all-targets -- -D warnings
-      - run: cargo test -p wxr -p wxr-render -p wxr-openxr
+      # `--nocapture`, which is not the default anywhere else in this file, because a test that skips itself
+      # is a test that passed and the two are indistinguishable in a summary line. Both suites that can skip
+      # say so on stderr and `libtest` throws the stderr of a *passing* test away, so without this the answer
+      # to "did anything actually run on this platform" is not in the log at all - which is the one question
+      # these three jobs exist to answer.
+      - run: cargo test -p wxr -p wxr-render -p wxr-openxr -- --nocapture
 
   # And the one target in the same gate that has no runner at all, which is also the one a standalone headset
   # actually runs. Android cannot be executed from here even in principle: the loader wants a `JavaVM` and an

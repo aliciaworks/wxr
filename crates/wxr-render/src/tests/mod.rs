@@ -466,15 +466,29 @@ impl Import for Plain {
 /// early would be the same race with a smaller window.
 fn device() -> Option<(MutexGuard<'static, ()>, wgpu::Device, wgpu::Queue)> {
     let turn = GPU.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    // The instance outlives the closure, as it outlived the rest of this function before there was one.
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-    let adapter =
-        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-            .ok()?;
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("wxr-render test"),
-        ..Default::default()
-    }))
-    .ok()?;
+    // In a closure so the two ways out of it are one `else` below rather than two of them, and so that the
+    // sentence at the bottom is said once however far it got.
+    let made = (|| {
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .ok()?;
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("wxr-render test"),
+            ..Default::default()
+        }))
+        .ok()
+    })();
+    // Said out loud rather than passed over in silence, which is what `wxr-openxr`'s tests do for the same
+    // reason and is the difference between a suite that means something on a machine that is not this one
+    // and a suite that only looks like it does. A test that passed because there was nothing to test it on
+    // reads exactly like a test that passed, and CI runs on machines with no GPU - so the logs are where
+    // that distinction has to be visible, and they are only visible if something says so.
+    let Some((device, queue)) = made else {
+        eprintln!("no GPU on this machine, so there is nothing to draw into");
+        return None;
+    };
     Some((turn, device, queue))
 }
 
