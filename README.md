@@ -242,11 +242,18 @@ Windows.
 
 That loop is the weakest form of the check, and the one a machine with none of those platforms can do. CI is
 not on such a machine: three of the four are Tier 1 *with host tools* and a public repository gets arm64
-runners free, so the `native` job **runs** them there instead of type-checking them. What runs is the core's
-own arithmetic - the renderer skips itself with no GPU and the backend skips itself with no XR runtime, which
-is the contract both have anywhere - and it is still the first time this code has executed on an architecture
-that is not x86-64. `aarch64-linux-android` cannot be run anywhere from here at all, because the loader wants
-a `JavaVM` and an `Activity` before `xrCreateInstance`, so that one stays compile-level in both places.
+runners free, so the `native` job **runs** them there instead of type-checking them. What that comes to
+differs by platform, and both suites say which of the two they are doing rather than leaving it to a summary
+line that reads the same either way:
+
+- On `ubuntu-24.04-arm` there is no Vulkan loader on the image at all, so the renderer skips its six device
+  tests and the OpenXR backend skips its twelve. The core's forty run.
+- On both Windows runners wgpu finds DX12's WARP software adapter, so those six draw into real textures and
+  read the pixels back - the renderer is exercised end to end on two platforms it had never run on. The
+  backend still skips, because no runner has an XR runtime.
+
+`aarch64-linux-android` cannot be run anywhere from here at all, because the loader wants a `JavaVM` and an
+`Activity` before `xrCreateInstance`, so that one stays compile-level in both places.
 
 Beyond the compiler, eight things are checked, and each is checked by the one that can:
 

@@ -5,12 +5,16 @@ use std::sync::{Mutex, MutexGuard};
 
 /// One GPU, one test at a time.
 ///
-/// Seven of these tests make a device and read a pixel back off it, which is a submit and a wait for the
-/// GPU to finish - and they used to do it at once. On a machine whose GPU is otherwise idle that works; on one where the display server and a browser are using it too, several
-/// `PollType::Wait { timeout: None }` calls in parallel are several waits with no end on them, and the
-/// suite deadlocks somewhere inside the driver. It fails as six tests "running for over 60 seconds" with
-/// no CPU time at all, which is a hang and not a slow one, and it does not reproduce when the same binary
-/// is run on its own.
+/// Six of these tests make a device, and two of those go further and read a pixel back off it - which is a
+/// submit followed by `PollType::Wait { timeout: None }`, a wait with no end on it. They used to do all of
+/// it at once. On a machine whose GPU is otherwise idle that works; on one where the display server and a
+/// browser are using it too, the suite deadlocks somewhere inside the driver, and what the hang looks like
+/// is *all six* "running for over 60 seconds" with no CPU time at all.
+///
+/// All six and not the two is the part worth keeping. The two unbounded waits are the ones with no way out
+/// of them, and the other four are stuck behind those, so a fix aimed at the wait would have been a fix for
+/// two thirds of a deadlock. It also does not reproduce when the same binary is run on its own, which is
+/// what made it look like two other things first.
 ///
 /// So they take turns, the way `wxr-openxr`'s tests already do for the same reason one level down - an
 /// OpenXR loader hands out one `XrInstance` at a time and a Vulkan driver hands out one GPU. The lock is
