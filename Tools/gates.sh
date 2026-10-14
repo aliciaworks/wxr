@@ -39,6 +39,27 @@ else
     step "clippy (wasm32) - skipped, target not installed"
   fi
 
+  # The four targets `wxr-openxr`'s `not(wasm), not(apple)` gate is a claim about: both arms of Linux, both
+  # arms of Windows, and Android, which is what a standalone headset runs. This is the *weakest* form of
+  # that check and it is the only one this machine can do - CI's `native` job runs three of the four on
+  # runners of their own, and only Android is a cross-compile there too. So a `clippy` and never a test, and
+  # skipped rather than failed when the target is not installed: "this machine cannot ask" is not "this is
+  # broken", which is what the steps around it say as well.
+  cross=()
+  for target in aarch64-unknown-linux-gnu x86_64-pc-windows-msvc aarch64-pc-windows-msvc aarch64-linux-android; do
+    if rustup target list --installed 2>/dev/null | grep -qx "$target"; then
+      cross+=("$target")
+    fi
+  done
+  if [[ ${#cross[@]} -eq 0 ]]; then
+    step "clippy (cross) - skipped, none of the four targets are installed"
+  else
+    for target in "${cross[@]}"; do
+      step "clippy ($target)"
+      cargo clippy -p wxr -p wxr-render -p wxr-openxr --all-targets --target "$target" -- -D warnings
+    done
+  fi
+
   step "doc (workspace)"
   RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 

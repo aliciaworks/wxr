@@ -35,7 +35,7 @@ Input, Depth Sensing, Hit Test, Lighting Estimation, Anchors, Plane Detection, t
 and the Gamepads module - counted member by member, with the community-group drafts left out. It is a
 *floor*: the core gives a concept its own name (`requestReferenceSpace` is `space`) and both native backends
 go through the core, so a member a backend serves can still share no name with anything in its source. The
-core itself names 282 of the 452.
+core itself names 286 of the 452.
 
 ## The core is small on purpose
 
@@ -221,13 +221,32 @@ cargo fmt --all --check
 cargo test                                                  # the host half
 cargo clippy --workspace --all-targets -- -D warnings
 cargo clippy --workspace --all-targets --target wasm32-unknown-unknown -- -D warnings
+for t in aarch64-unknown-linux-gnu x86_64-pc-windows-msvc aarch64-pc-windows-msvc aarch64-linux-android; do
+  cargo clippy -p wxr -p wxr-render -p wxr-openxr --all-targets --target "$t" -- -D warnings
+done
 cargo clippy -p wxr-apple --target aarch64-apple-visionos --all-targets -- -D warnings
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
 
 Each backend crate is empty outside its own target family - `wxr-openxr` off wasm, `wxr-webxr` off wasm the
 other way, `wxr-apple` off Apple - so a host build tests the core and the renderer and leaves the platforms to
-a cross-compiler. `.github/workflows/ci.yml` runs exactly this list.
+a cross-compiler. `.github/workflows/ci.yml` runs this list.
+
+"Off wasm" is not the whole of where `wxr-openxr` lives, and the loop above is the part of its gate that had
+never been compiled. The gate is `all(not(wasm), not(target_vendor = "apple"))`, which is a claim about
+Windows and every Linux too - so the loop is both arms of Linux, both arms of Windows, and Android, which is
+what a standalone headset actually runs. Only the three crates that are not empty on those targets are asked,
+for the reason the visionOS line is one `-p` and not `--workspace`: `wxr-conformance` pulls `servo-webxr-api`,
+whose font stack compiles C, and comparing this workspace's vocabulary with Servo's is not a question about
+Windows.
+
+That loop is the weakest form of the check, and the one a machine with none of those platforms can do. CI is
+not on such a machine: three of the four are Tier 1 *with host tools* and a public repository gets arm64
+runners free, so the `native` job **runs** them there instead of type-checking them. What runs is the core's
+own arithmetic - the renderer skips itself with no GPU and the backend skips itself with no XR runtime, which
+is the contract both have anywhere - and it is still the first time this code has executed on an architecture
+that is not x86-64. `aarch64-linux-android` cannot be run anywhere from here at all, because the loader wants
+a `JavaVM` and an `Activity` before `xrCreateInstance`, so that one stays compile-level in both places.
 
 Beyond the compiler, eight things are checked, and each is checked by the one that can:
 
@@ -360,9 +379,9 @@ are in it. A native item with no counterpart in the core is one no backend will 
 can reach 100% by design.
 
 The second is the direction that says whether the *unification* is done, and it has two factors. The core
-speaks 62% of WebXR's vocabulary - 282 of the 452 members across every specification - it is the vocabulary all
+speaks 63% of WebXR's vocabulary - 286 of the 452 members across every specification - it is the vocabulary all
 three backends share rather than a mirror of the spec - and of its own `Session` methods the backends define
-**86%**, **64%** and **52%**. So a backend cannot reach the whole of WebXR by implementing
+**86%**, **82%** and **57%**. So a backend cannot reach the whole of WebXR by implementing
 methods: the word has to exist in the core first. Widening the core and filling the methods are the two things
 that move this, and both are work.
 

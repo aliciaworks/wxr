@@ -1,9 +1,12 @@
 # The verification this workspace can do without a headset, which is what the README lists.
 #
-# The last two jobs are the ones worth explaining: each backend crate is empty outside its own target family,
-# so the only way the WebXR backend and the Apple backend are compiled at all is by cross-compiling them.
-# Both are `check`-level - no linking, no SDK - which is why they run on the same machine as the host job
-# rather than on a runner for each platform.
+# Four of the jobs are the ones worth explaining, and they are one argument four times: each backend crate is
+# empty outside its own target family, so the only way a backend is built at all is by building it for a
+# platform this runner is not. Three of the four are `clippy`-level - no linking, no SDK, and nothing that
+# runs - which is why they share the host job's machine rather than getting a runner apiece: `wasm` is the
+# WebXR backend, `apple` is the visionOS one, and `cross` is Android. `native` is the exception, and it is
+# one because it does not have to be: arm64 Linux and arm64 Windows have runners of their own and a public
+# repository gets them free, so those jobs run the tests rather than type-checking them.
 
 name: ci
 
@@ -81,6 +84,84 @@ jobs:
 
       # The whole workspace, because a host-only crate is empty here and a wasm-only one is not.
       - run: cargo clippy --workspace --all-targets --target wasm32-unknown-unknown -- -D warnings
+
+  # The other half of the same argument, for the targets that were never in it - and done the stronger way,
+  # because a public repository gets arm64 runners free. `wxr-openxr`'s dependency gate is
+  # `all(not(wasm), not(target_vendor = "apple"))`, which is a claim about Windows and every Linux, and
+  # nothing had ever compiled it for either. Both arm64 targets are Tier 1 *with host tools* - `rustup` and
+  # `cargo` run on those machines themselves - so this is not a cross-compile and there is no reason to
+  # type-check what can be executed.
+  #
+  # `x86_64-pc-windows-msvc` is in the matrix because it is the Windows that actually has XR runtimes on it,
+  # and checking the rare arm of a platform while leaving the common one out would be a strange thing to do.
+  #
+  # Three crates and not `--workspace`, which is the shape the visionOS job has and for a reason of the same
+  # kind: these are the ones that are not empty here. `wxr-conformance` is the one that is, and it is not a
+  # near miss - it pulls `servo-webxr-api`, whose font stack compiles C, and comparing this workspace's
+  # vocabulary with Servo's is not a question about Windows. It also means the tests below cannot be held up
+  # by a C toolchain that has nothing to do with what is being tested.
+  #
+  # Most of what runs skips: a runner has no GPU for `wxr-render` and no XR runtime for `wxr-openxr`, and
+  # both say so rather than failing, which is the same contract they have on the host. What does run is the
+  # core's own arithmetic, on architectures that had never executed a line of it.
+  native:
+    name: ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    # Thirty minutes is generous for three crates and a test run, and it is here because this workspace has
+    # already produced one test that hangs rather than fails - see `wxr-render`'s test lock - and a hang on a
+    # runner is six hours of nothing without a bound on it.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04-arm
+          - windows-latest
+          - windows-11-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      # The key names the architecture as well as the OS, because this matrix has two Windows in it and the
+      # two do not share a build output - but they do share the registry and the git checkouts, which is all
+      # this caches, so the two restore the same archive and clone wgpu once between them.
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-native-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-native-cargo-
+      - run: cargo clippy -p wxr -p wxr-render -p wxr-openxr --all-targets -- -D warnings
+      - run: cargo test -p wxr -p wxr-render -p wxr-openxr
+
+  # And the one target in the same gate that has no runner at all, which is also the one a standalone headset
+  # actually runs. Android cannot be executed from here even in principle: the loader wants a `JavaVM` and an
+  # `Activity` before `xrCreateInstance`, which is why `wxr-openxr`'s own comment says `()` is the answer
+  # "everywhere but Android". So this one is compile-level, and it earns the runner by being the target
+  # nothing else in this file would notice rotting.
+  cross:
+    name: aarch64-linux-android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+          components: clippy
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cross-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cross-cargo-
+      - run: cargo clippy -p wxr -p wxr-render -p wxr-openxr --all-targets --target aarch64-linux-android -- -D warnings
 
   apple:
     name: visionos
