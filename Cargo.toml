@@ -18,6 +18,22 @@ members = [
 [workspace.package]
 edition = "2024"
 version = "0.1.0"
+# The oldest rustc this is claimed to build with, and the floor edition 2024 itself sets: `cargo msrv` puts
+# `wxr` at 1.85.1, which is that edition's first release. It is a *claim*, and a claim nobody builds against
+# is the kind this repository has been removing rather than adding, so CI holds a job on exactly this
+# version - see the `msrv` job, which is what keeps the number honest.
+#
+# Only `wxr` inherits it, and that is decided crate by crate rather than once here:
+#
+# * `wxr-render` and `wxr-openxr` pull `wgpu`, whose own `ordered-float` wants 1.90 today. A rust-version on
+#   them would be both false and - under this workspace's resolver v3, which is rust-version aware - a
+#   constraint on versions they cannot downgrade past, since `wgpu` is pinned to a git revision rather than a
+#   version range. Their MSRV is `wgpu`'s to move, and it moves without anything here being wrong.
+# * `wxr-webxr` measures 1.85.1, but only on a host where it is an empty crate: everything it has is under
+#   `cfg(target_family = "wasm")`, and there it takes `wxr-render` and so `wgpu`. The version that would be
+#   declared is the one for the target it does nothing on.
+# * The rest have not been measured, and a number nobody measured is a guess wearing a field's clothing.
+rust-version = "1.85"
 
 [workspace.dependencies]
 # A pose is not a bevy transform or an OpenXR `XrPosef`; it is a position and an orientation, and the crates

@@ -259,3 +259,33 @@ jobs:
         run: |
           export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
           cargo test -p wxr-apple
+
+  # `wxr`'s `rust-version` says 1.85, and a field nobody builds against is a number rather than a claim -
+  # which is the distinction the rest of this file is about, so it is checked the same way. This is the job
+  # that makes the field honest: it installs exactly that rustc and asks whether the crate still builds.
+  #
+  # It is `wxr` alone, and that is the point rather than a limit on ambition. The other crates do not carry
+  # a `rust-version` at all - `wxr-render` and `wxr-openxr` take `wgpu` from a pinned git revision, whose own
+  # `ordered-float` wants 1.90 today, so their floor is `wgpu`'s to move and a number here would be out of
+  # date before the next dependency bump; `wxr-webxr` measures 1.85 but only where it is an empty crate,
+  # since everything it has lives under `cfg(target_family = "wasm")` and there it takes `wgpu` too. One
+  # crate with a version that is checked is worth more than four with versions that are not.
+  #
+  # `--locked`, because the claim is about the graph in the lock and not whichever versions resolve today.
+  msrv:
+    name: msrv
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.85.1
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-msrv-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-msrv-cargo-
+      - name: Build wxr with the version it claims
+        run: cargo check -p wxr --locked
