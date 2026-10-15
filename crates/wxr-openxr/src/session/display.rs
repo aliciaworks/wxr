@@ -38,6 +38,9 @@ impl OpenXrSession {
         };
         // The typed crate makes a profile and keeps the swapchain state that carries it private, so this is the
         // one raw structure in this backend. Zeroed is the whole of what it starts as: empty flags, no chain.
+        // SAFETY: this is a plain C structure - integers, an enum and two handles - so every bit pattern its
+        // fields can hold is a valid one, which is the condition `zeroed` needs and the reason it is not UB
+        // here. The fields are filled in below before the structure is handed to anything.
         let mut state: openxr_sys::SwapchainStateFoveationFB = unsafe { std::mem::zeroed() };
         state.ty = openxr_sys::StructureType::SWAPCHAIN_STATE_FOVEATION_FB;
         state.profile = profile.as_raw();
