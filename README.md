@@ -21,14 +21,15 @@ An XR core. One vocabulary for a session, and a backend per platform that fills 
 Nothing above the renderer names a graphics API, and the XR layer never makes a device: where the platform
 owns one, wgpu is made to adopt it.
 
-**Two numbers, and both are mechanical** - `python3 Tools/xr_coverage.py`:
+**Two numbers, and both are mechanical** - `python3 Tools/xr_coverage.py`, which answers the visionOS
+column only on a Mac, since that one counts the SDK's own headers rather than anything in the repository:
 
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
-| **Native API reached** - of each backend's own spec | 164/290 | 42/551 | 70/618 |
-| *as a percentage* | 57% | 8% | 11% |
-| **WebXR API reached** - of the whole API | 294/452 | 178/452 | 199/452 |
-| *as a percentage* | 65% | 39% | 44% |
+| **Native API reached** - of each backend's own spec | 166/290 | 67/551 | 79/618 |
+| *as a percentage* | 57% | 12% | 13% |
+| **WebXR API reached** - of the whole API | 296/452 | 224/452 | 220/452 |
+| *as a percentage* | 65% | 50% | 49% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
 Input, Depth Sensing, Hit Test, Lighting Estimation, Anchors, Plane Detection, the AR Module, DOM Overlays
