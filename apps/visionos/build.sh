@@ -12,18 +12,32 @@
 #   ./build.sh --skip-rust  # relink only, after a Swift edit
 #
 # Environment overrides:
-#   WXR_SIM_SDK   full path to the XRSimulator SDK (default: Xcode 27's)
+#   WXR_SIM_SDK   full path to the XRSimulator SDK (default: the selected Xcode's)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Xcode is not on PATH by default and every tool below needs it.
-export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+# Xcode is not on PATH by default and every tool below needs it. What is asked for is `xcode-select -p`
+# rather than a path of this script's own choosing: the selected Xcode is a beta, or on another volume, or
+# not in /Applications at all, and the one assumption that survives all three is that `xcode-select` knows.
+export DEVELOPER_DIR="${DEVELOPER_DIR:-$(xcode-select -p)}"
 
-# `xcrun --sdk xros-simulator` does not resolve to this SDK, so the full path is used.
-SIM_SDK="${WXR_SIM_SDK:-$DEVELOPER_DIR/Platforms/XRSimulator.platform/Developer/SDKs/XRSimulator27.0.sdk}"
+# The SDK is asked for rather than named. Its directory holds `XRSimulator.sdk` and a versioned symlink
+# beside it, and which version is installed is a property of the Xcode above rather than of this script -
+# naming one here is what made this unrunnable on a machine whose Xcode had moved on. `xrsimulator` is the
+# spelling that resolves; `xros-simulator`, which the first version of this comment claimed did not, is not.
+SIM_SDK="${WXR_SIM_SDK:-$(xcrun --sdk xrsimulator --show-sdk-path)}"
+
+# The target triple carries the deployment target, and a deployment target the installed SDK has never heard
+# of is a link error rather than a warning - so it is read back out of the path that was just resolved, which
+# keeps the two the same number the way they were when both were written by hand.
+XROS_VERSION="$(basename "$SIM_SDK" | sed -nE 's/^XRSimulator([0-9]+(\.[0-9]+)?)\.sdk$/\1/p')"
+if [[ -z "$XROS_VERSION" ]]; then
+  echo "error: cannot read an OS version out of $SIM_SDK; set WXR_SIM_SDK to a path that carries one" >&2
+  exit 1
+fi
 
 RUST_TARGET="aarch64-apple-visionos-sim"
 RUST_LIB_DIR="$REPO_ROOT/target/$RUST_TARGET/debug"
@@ -64,7 +78,7 @@ echo "==> compiling the CompositorServices shim"
 SHIM_OBJ="$OUT_DIR/wxr_compositor_shim.o"
 xcrun clang -c "$SCRIPT_DIR/../../crates/wxr-apple/wxr_compositor_shim.c" \
   -isysroot "$SIM_SDK" \
-  -target "arm64-apple-xros27.0-simulator" \
+  -target "arm64-apple-xros${XROS_VERSION}-simulator" \
   -O2 \
   -Wno-deprecated-declarations \
   -o "$SHIM_OBJ"
@@ -76,7 +90,7 @@ xcrun clang -c "$SCRIPT_DIR/../../crates/wxr-apple/wxr_compositor_shim.c" \
 echo "==> compiling and linking $APP_NAME"
 xcrun swiftc \
   -sdk "$SIM_SDK" \
-  -target "arm64-apple-xros27.0-simulator" \
+  -target "arm64-apple-xros${XROS_VERSION}-simulator" \
   -swift-version 5 \
   -parse-as-library \
   -O \
