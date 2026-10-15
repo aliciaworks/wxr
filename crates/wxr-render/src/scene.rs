@@ -26,64 +26,12 @@ use wxr::glam::Mat4;
 
 use crate::projection::{Depth, perspective};
 
-/// The shader, inline because it is a page and a build script for a page is a build script.
-///
-/// `textureLoad` rather than `textureSample`: the depth a runtime hands over is `r32float` or `r16uint`, and
-/// neither is a filterable format - so the texel is found by hand, which is honest about what the buffer is.
-const SHADER: &str = r#"
-struct Camera {
-    view_projection: mat4x4<f32>,
-};
+// The shader is a page of WGSL in a crate that is Rust, and it is the part of this module whose length
+// has nothing to do with anything else here - which is the size rule's own argument for a split rather
+// than a longer file. What it says about `textureLoad` is on it, where it is read.
+mod shader;
 
-/// What the room's depth means: a transform from normalized view coordinates into the depth buffer's, and
-/// what one value in it is worth in metres. `enabled` is 0 for a session with no depth to test against.
-struct Occlusion {
-    norm_depth_from_view: mat4x4<f32>,
-    raw_value_to_meters: f32,
-    enabled: u32,
-    _pad: vec2<u32>,
-};
-
-struct Vertex {
-    @builtin(position) position: vec4<f32>,
-    @location(0) colour: vec3<f32>,
-    /// Normalized view coordinates: 0..1, top-left, which is what the depth transform wants.
-    @location(1) view: vec2<f32>,
-    /// How far the vertex is in front of the eye, in metres - which is what a clip position's `w` is.
-    @location(2) distance: f32,
-};
-
-@group(0) @binding(0) var<uniform> camera: Camera;
-@group(0) @binding(1) var real_depth: texture_2d<f32>;
-@group(0) @binding(2) var<uniform> occlusion: Occlusion;
-
-@vertex
-fn vertex(@location(0) position: vec3<f32>, @location(1) colour: vec3<f32>) -> Vertex {
-    var out: Vertex;
-    let clip = camera.view_projection * vec4(position, 1.0);
-    out.position = clip;
-    out.colour = colour;
-    out.distance = clip.w;
-    out.view = clip.xy / clip.w * vec2(0.5, -0.5) + vec2(0.5, 0.5);
-    return out;
-}
-
-@fragment
-fn fragment(in: Vertex) -> @location(0) vec4<f32> {
-    if (occlusion.enabled == 1u) {
-        let view = (occlusion.norm_depth_from_view * vec4(in.view, 0.0, 1.0)).xy;
-        let size = vec2<f32>(textureDimensions(real_depth));
-        let texel = vec2<i32>(clamp(view * size, vec2<f32>(0.0), size - vec2<f32>(1.0)));
-        let real = textureLoad(real_depth, texel, 0).r * occlusion.raw_value_to_meters;
-        // A fragment farther away than what the room actually is in that direction is behind the room. A
-        // buffer that says nothing (`0`) says nothing rather than hiding the whole scene behind the eye.
-        if (real > 0.0 && in.distance > real) {
-            discard;
-        }
-    }
-    return vec4(in.colour, 1.0);
-}
-"#;
+use shader::SHADER;
 
 /// A triangle in front of the origin and the same shape behind it, as `[x, y, z, r, g, b]` per vertex.
 ///
@@ -101,37 +49,83 @@ pub const TRIANGLES: [[f32; 6]; 6] = [
 /// The colour of the near triangle, which is what a picture of this scene should show where they overlap.
 pub const NEAR: [f32; 3] = [0.25, 0.55, 1.0];
 
-/// The room's depth, in the terms the shader tests against it: where the buffer is, and what it is worth.
+/// The room's depth, in the terms the shader tests against it: where the buffer is, and what its values are.
+///
+/// Kept as a tag plus all three numbers rather than as one, because the two encodings do not share their
+/// arguments: a linear buffer has a scale and no planes, a window one has planes and no scale. Carrying both
+/// is not redundancy, it is the shape the uniform is - and a reader who sees `near_z` filled in on a linear
+/// buffer can see at once that this is the unused half rather than a second meaning.
 #[derive(Clone, Copy, Debug)]
 pub struct Occlusion {
     norm_depth_from_view: Mat4,
-    raw_value_to_meters: f32,
+    /// What the shader's `kind` is: 1 linear, 2 window, 3 unknown.
+    kind: u32,
+    linear_scale: f32,
+    near_z: f32,
+    far_z: f32,
 }
 
 impl Occlusion {
     /// The room as a session measured it.
     ///
     /// The transform is `DepthInfo`'s: normalized view coordinates into the depth buffer's own, which is where
-    /// a fragment's place on the screen becomes a place in the buffer. The scale is what one raw value in the
-    /// buffer is worth.
+    /// a fragment's place on the screen becomes a place in the buffer. The rest is [`wxr::DepthEncoding`],
+    /// translated rather than interpreted - what the encoding says goes in, and the arithmetic is the
+    /// shader's, once, in `metres`, rather than split between here and there.
     pub fn from(info: wxr::DepthInfo) -> Self {
+        let (kind, linear_scale, near_z, far_z) = match info.encoding {
+            wxr::DepthEncoding::Linear { to_meters } => (1, to_meters, 0.0, 0.0),
+            wxr::DepthEncoding::Window { near_z, far_z } => (2, 0.0, near_z, far_z),
+            wxr::DepthEncoding::Unknown => (3, 0.0, 0.0, 0.0),
+        };
         Self {
             norm_depth_from_view: Mat4::from(info.norm_depth_buffer_from_norm_view.transform()),
-            raw_value_to_meters: info.raw_value_to_meters,
+            kind,
+            linear_scale,
+            near_z,
+            far_z,
         }
     }
 }
 
 /// The same, as the uniform the shader reads. Laid out by hand, because a uniform's layout is the shader's
 /// and a mismatch is a picture that is wrong rather than a build that fails.
+///
+/// The field order is the shader's and not this file's taste: `kind` and `enabled` come first because they
+/// are what the shader branches on, the three numbers follow as the arguments whichever branch takes, and the
+/// padding is there because a uniform buffer is laid out in 16-byte blocks and this comes to 96 with it and
+/// 92 without.
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct OcclusionUniform {
     norm_depth_from_view: [[f32; 4]; 4],
-    raw_value_to_meters: f32,
+    kind: u32,
     enabled: u32,
-    /// Uniform buffers are laid out in 16-byte blocks; the two fields above are 8 bytes into one.
+    linear_scale: f32,
+    near_z: f32,
+    far_z: f32,
+    _spare: u32,
     _pad: [u32; 2],
+}
+
+impl OcclusionUniform {
+    /// The uniform for a session with no measured room, which is what the stand-in texture is bound beside.
+    ///
+    /// `enabled` 0 is the whole answer, and the three numbers are set anyway rather than left as whatever
+    /// memory the struct was built from - a uniform that reads a stale `near_z` on a path that does not use
+    /// it is still a uniform that read it.
+    fn off() -> Self {
+        Self {
+            norm_depth_from_view: Mat4::IDENTITY.to_cols_array_2d(),
+            kind: 0,
+            enabled: 0,
+            linear_scale: 1.0,
+            near_z: 0.0,
+            far_z: 0.0,
+            _spare: 0,
+            _pad: [0; 2],
+        }
+    }
 }
 
 /// Everything a scene needs that is the same for every eye.
@@ -322,24 +316,25 @@ impl crate::Draw for Scene {
             * crate::projection::view(view.pose);
         queue.write_buffer(&self.camera, 0, bytemuck_cast(&camera));
 
-        // The room's depth for this view, or the one-texel stand-in and a 0 that says to draw everything.
+        // The room's depth for this view, or the one-texel stand-in and an `enabled` of 0 that draws
+        // everything. The two are different absences - no measurement, and a measurement that does not say -
+        // and they land on the same branch below only because both mean the same thing to a fragment.
         let (uniform, depth) = match occlusion {
             Some((texture, occlusion)) => (
                 OcclusionUniform {
                     norm_depth_from_view: occlusion.norm_depth_from_view.to_cols_array_2d(),
-                    raw_value_to_meters: occlusion.raw_value_to_meters,
+                    kind: occlusion.kind,
                     enabled: 1,
+                    linear_scale: occlusion.linear_scale,
+                    near_z: occlusion.near_z,
+                    far_z: occlusion.far_z,
+                    _spare: 0,
                     _pad: [0; 2],
                 },
                 texture.create_view(&wgpu::TextureViewDescriptor::default()),
             ),
             None => (
-                OcclusionUniform {
-                    norm_depth_from_view: Mat4::IDENTITY.to_cols_array_2d(),
-                    raw_value_to_meters: 1.0,
-                    enabled: 0,
-                    _pad: [0; 2],
-                },
+                OcclusionUniform::off(),
                 self.no_depth
                     .create_view(&wgpu::TextureViewDescriptor::default()),
             ),
@@ -423,8 +418,20 @@ mod tests {
 
     #[test]
     fn the_occlusion_uniform_is_what_the_shader_says_it_is() {
-        // The shader's `Occlusion` is 64 bytes of matrix, a float, a uint, and a two-uint pad - and a mismatch
-        // is a picture that is wrong rather than a build that fails, so it is pinned here.
-        assert_eq!(std::mem::size_of::<OcclusionUniform>(), 64 + 4 + 4 + 8);
+        // The shader's `Occlusion` is 64 bytes of matrix, then `kind` and `enabled` and the three numbers
+        // the two encodings take - six 4-byte fields - and a spare plus a two-uint pad to carry it to the
+        // next 16-byte block. A mismatch is a picture that is wrong rather than a build that fails, so it is
+        // pinned here, and the field *order* is the shader's too: `kind` before the numbers it selects.
+        assert_eq!(std::mem::size_of::<OcclusionUniform>(), 64 + 6 * 4 + 8);
+        assert_eq!(
+            std::mem::offset_of!(OcclusionUniform, kind),
+            64,
+            "the shader branches on `kind` immediately after the matrix"
+        );
+        assert_eq!(
+            std::mem::offset_of!(OcclusionUniform, _pad),
+            88,
+            "the pad starts on an 8-byte boundary, which is what a vec2 needs"
+        );
     }
 }

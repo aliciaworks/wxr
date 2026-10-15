@@ -419,9 +419,12 @@ that move this, and both are work.
   app's choice of how to get the compositor's device into wgpu, which `AppleBackend::device` documents.
 - **A real scene.** `wxr-render` draws two triangles with a depth buffer and a fixed near and far: enough
   for `Depth` to be load-bearing - the nearer one wins whichever order they are drawn in, in both conventions,
-  and that is read back off the GPU in a test - and not a scene. Lighting, textures, instancing and a tone map
-  are a renderer's business and this one is a seam. What is missing in the same tier is *submitting* the depth
-  to the compositor: all three runtimes can take it and none of this does.
+  and that is read back off the GPU in a test - and not a scene. So is the *room's* depth, in both the ways a
+  buffer can carry a distance: a scale, and the two planes OpenXR's window depth is a projection between. No
+  machine here has `XR_META_environment_depth`, so those planes are synthetic and the one assumption they rest
+  on is stated where the encoding is defined. Lighting, textures, instancing and a tone map are a renderer's
+  business and this one is a seam. What is missing in the same tier is *submitting* the depth to the
+  compositor: all three runtimes can take it and none of this does.
 - **Input beyond the intersection.** The buttons and axes are the intersection of the three platforms and
   nothing more, so a thumbstick's click, a touchpad's position, and a gesture a platform recognises for itself
   are all outside it. What the core has widened to - the hand skeleton, foveation, haptics - it did one concept

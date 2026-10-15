@@ -163,8 +163,8 @@ mod native {
             if let Some((image, info)) = session.depth(0) {
                 if seen.depth == 0 {
                     println!(
-                        "depth: {}x{} px, one raw value worth {} m, image {image:?}",
-                        info.size.width, info.size.height, info.raw_value_to_meters
+                        "depth: {}x{} px, {:?}, image {image:?}",
+                        info.size.width, info.size.height, info.encoding
                     );
                 }
                 seen.depth += 1;

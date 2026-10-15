@@ -23,7 +23,12 @@ pub fn information(binding: &XrgpuBinding, view: &XrView) -> Option<(JsValue, wx
         information.texture(),
         wxr::DepthInfo {
             size: wxr::Extent2d::new(information.width(), information.height()),
-            raw_value_to_meters: information.raw_value_to_meters(),
+            // One scalar and one multiply, which is what the specification says this is: the buffer's values
+            // are distances, up to `rawValueToMeters`. WebXR has no equivalent of OpenXR's two planes, and
+            // this backend would have nothing to report for a `Window` encoding.
+            encoding: wxr::DepthEncoding::Linear {
+                to_meters: information.raw_value_to_meters(),
+            },
             // The transform is an `XRRigidTransform`, the same shape a view's pose comes in.
             norm_depth_buffer_from_norm_view: crate::transform(
                 information.norm_depth_buffer_from_norm_view(),

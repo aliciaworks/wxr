@@ -14,12 +14,16 @@
 //! is carried separately: one belongs to the session and one belongs to the frame.
 //!
 //! **What OpenXR does not give, and this file does not invent.** The extension hands back a D16 buffer of
-//! *window* depth plus the near and far planes it was rendered with. WebXR's depth sensing hands back a
-//! `rawValueToMeters` scalar and a `normDepthBufferFromNormView` transform, and neither has an OpenXR
-//! counterpart - the first because window depth is a hyperbolic function of distance and no single
-//! multiplier turns it into metres, and the second because what it would carry is a projection, which is not
-//! rigid. See [`EnvironmentDepth::info`] for what goes in those two slots instead and exactly what each is
-//! worth.
+//! *window* depth plus the near and far planes it was rendered with, and WebXR's depth sensing hands back a
+//! `rawValueToMeters` scalar and a `normDepthBufferFromNormView` transform. Neither of the two platforms can
+//! answer in the other's terms, and the core says so rather than hiding it: [`wxr::DepthEncoding`] is the two
+//! encodings as a choice, so a consumer has to see which one it got before it can turn a number into a
+//! distance. The planes this file has always been given and now reports - see [`EnvironmentDepth::info`],
+//! which also names the one assumption no machine here can check.
+//!
+//! The transform still has no counterpart, and that one is not a gap: what WebXR's carries beyond a pose is a
+//! projection along `z`, and a rigid pose cannot carry a projection at all. What it would say is instead what
+//! the encoding says.
 
 use super::*;
 
@@ -266,9 +270,9 @@ impl EnvironmentDepth {
             return None;
         }
         let index = image.swapchain_index as usize;
-        // The two planes are what would turn a sample of this buffer into a distance, and the core has
-        // nowhere for them - so they are said out loud once rather than dropped. Once, because they are the
-        // same every frame and a log line per frame is not information.
+        // The two planes are what turns a sample of this buffer into a distance, and they are now carried
+        // into `DepthInfo` rather than dropped - so this line is a statement of what the measurement *is*,
+        // once, because it is the same every frame and a log line per frame is not information.
         if !self.logged {
             self.logged = true;
             log::info!(
@@ -291,48 +295,59 @@ impl EnvironmentDepth {
                 image: *source,
                 ..self.depth
             },
-            info: self.info(),
+            info: self.info(image.near_z, image.far_z),
         })
     }
 
-    /// What this frame's buffer means, in the core's terms.
+    /// What this frame's buffer means, in the core's terms, from the two planes the runtime reported with it.
     ///
-    /// And this is where the two WebXR attributes have no OpenXR counterpart, so both are worth being exact
-    /// about rather than filled in with a plausible number.
+    /// This used to answer with `raw_value_to_meters: 0.0` - a number that meant "nothing" because the core
+    /// had no slot for anything else - and the reasoning was sound for the wrong reason: window depth *is* a
+    /// hyperbolic function of distance, so no scalar exists, and any positive number here would have made a
+    /// consumer compare a fraction against a distance and hide the wrong half of the scene. What the reasoning
+    /// got wrong was that the two planes are unavailable. They are not: `XrEnvironmentDepthImageMETA` reports
+    /// `nearZ` and `farZ` with every acquire, and this backend was reading them, logging them once, and
+    /// throwing them away because [`wxr::DepthInfo`] had nowhere to put them.
     ///
-    /// **`raw_value_to_meters` is `0.0`, and that is the honest answer rather than a placeholder.** In
-    /// WebXR it turns a raw value into a distance with one multiply, which works because WebXR's raw depth
-    /// is linear. OpenXR's buffer is not: `XR_META_environment_depth` hands back `VK_FORMAT_D16_UNORM`
-    /// values which are the *window depth* of the projection it was rendered with, and the spec points at
-    /// `XR_KHR_composition_layer_depth` for what that means - "the homogeneous transform from view space z
-    /// to window space depth" given as a matrix over `minDepth`/`maxDepth`/`nearZ`/`farZ`. A hyperbolic
-    /// function of distance has no single multiplier, and what is worse, this extension gives only the two
-    /// planes and not the window-space ends, so the matrix cannot be reconstructed here either. Any positive
-    /// number in this field would make a consumer compare a *fraction* against a *distance* and discard
-    /// fragments on the wrong answer - a picture that is wrong in a way nobody would guess at - and the
-    /// renderer's own occlusion shader is written for exactly this case: it tests `real > 0.0` first and
-    /// treats a buffer that multiplies to nothing as one that says nothing. So this is the buffer that does
-    /// not occlude, which is the same picture a runtime without depth produces, rather than the wrong one.
+    /// So they are put there, as [`wxr::DepthEncoding::Window`], and what it means for a consumer is written
+    /// out in that type's own note rather than here - including the one trap, that `far_z < near_z` is an
+    /// infinite frustum rather than a reversed one, which the extension says and which nothing in this file
+    /// has to decide.
     ///
-    /// What is *not* available, and would be the thing to change if depth ever matters here, is the near and
-    /// far planes: a caller that un-projects through them gets the distance exactly, and the core's
-    /// [`wxr::DepthInfo`] has nowhere for them - which is why they are said out loud once in
-    /// [`Self::acquire`] instead of dropped on the floor.
+    /// **What is still missing, and this is now the only gap:** `XR_KHR_composition_layer_depth` states the
+    /// whole thing as a projection **matrix** - its own words are "the homogeneous transform from view space
+    /// `z` to window space depth" - over four numbers, `minDepth`/`maxDepth`/`nearZ`/`farZ`, and this
+    /// extension reports only the last two. The first two are "the window space depths that correspond to the
+    /// near and far frustum planes, respectively" - so they are 0 and 1 for any buffer whose near plane sits
+    /// at zero, which is what a depth attachment is unless something clamped it, and this extension gives no
+    /// way to say otherwise.
+    /// [`wxr::DepthEncoding::Window`] is therefore written with 0 and 1 taken as given, and that assumption is
+    /// the one thing here that no machine in this workspace can check: nothing that runs on it has this
+    /// extension. It is documented at the type so that a reader meets it before believing a distance.
     ///
     /// `norm_depth_buffer_from_norm_view` is the transform from normalized view coordinates into the buffer's.
     /// The buffer is registered to the view - it was rendered from this eye's pose with this eye's field of
     /// view and covers the whole texture - so normalized buffer `x` and `y` *are* normalized view `x` and
     /// `y`, and identity is the exact answer for both. What WebXR's transform carries beyond that is a
-    /// projection along `z`, and a rigid pose cannot carry a projection at all; that is what
-    /// `raw_value_to_meters` above is about.
+    /// projection along `z`, and a rigid pose cannot carry a projection at all; that is what the encoding
+    /// above is about.
     ///
     /// The eye's field of view and pose arrive with the measurement and are not reported: the core's
     /// [`wxr::DepthInfo`] has no slot for them, and a renderer that wants to un-project asks the session's
     /// views for theirs, which are the same two.
-    fn info(&self) -> wxr::DepthInfo {
+    ///
+    /// And a `near_z` the runtime never filled in is not a plane, so it is [`wxr::DepthEncoding::Unknown`]
+    /// rather than a frustum at zero - which is the one case where this still answers with nothing, and the
+    /// picture is then the one a session without depth produces.
+    fn info(&self, near_z: f32, far_z: f32) -> wxr::DepthInfo {
+        let encoding = if near_z > 0.0 {
+            wxr::DepthEncoding::Window { near_z, far_z }
+        } else {
+            wxr::DepthEncoding::Unknown
+        };
         wxr::DepthInfo {
             size: self.depth.extent,
-            raw_value_to_meters: 0.0,
+            encoding,
             norm_depth_buffer_from_norm_view: wxr::Pose::IDENTITY,
         }
     }

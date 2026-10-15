@@ -126,16 +126,23 @@ pub(super) fn check_images(board: &mut Board) -> Result<(), String> {
             info.size, meta.extent
         ));
     }
-    // `float32` is metres already, so a scale that is not one is a scale somebody made up.
-    if (info.raw_value_to_meters - 1.0).abs() > 1e-6 {
-        return Err(format!(
-            "{} m per raw unit, and float32 is metres",
-            info.raw_value_to_meters
-        ));
+    // `float32` is metres already, so a scale that is not one is a scale somebody made up - and this is
+    // WebXR's own buffer, which is the linear encoding: anything else here would be a session that measured
+    // the room and would not say what its numbers meant, which is what `Unknown` is for.
+    let to_meters = match info.encoding {
+        wxr::DepthEncoding::Linear { to_meters } => to_meters,
+        encoding => {
+            return Err(format!(
+                "float32 depth came back as {encoding:?}, and a browser's is a linear buffer"
+            ));
+        }
+    };
+    if (to_meters - 1.0).abs() > 1e-6 {
+        return Err(format!("{to_meters} m per raw unit, and float32 is metres"));
     }
     say(&format!(
-        "depth: {:?} at {} m per raw unit, from {:?}",
-        info.size, info.raw_value_to_meters, info.norm_depth_buffer_from_norm_view.position,
+        "depth: {:?} at {to_meters} m per raw unit, from {:?}",
+        info.size, info.norm_depth_buffer_from_norm_view.position,
     ));
     Ok(())
 }

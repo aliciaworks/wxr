@@ -155,91 +155,6 @@ fn centre_pixel(device: &wgpu::Device, queue: &wgpu::Queue, depth: Depth) -> [u8
     centre_pixel_with(device, queue, depth, None)
 }
 
-/// A room of one distance, as a one-texel depth buffer.
-///
-/// A shader that reads a depth buffer needs nothing more than a value and the metadata that says what it is
-/// worth - and `raw_value_to_meters` is 1, so the value *is* the distance in metres. A one-texel buffer is
-/// therefore a room that is the same distance in every direction, which is all a test needs.
-fn room(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    metres: f32,
-) -> (wgpu::Texture, scene::Occlusion) {
-    let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("test room"),
-        size: wgpu::Extent3d {
-            width: 1,
-            height: 1,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::R32Float,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[],
-    });
-    queue.write_texture(
-        wgpu::TexelCopyTextureInfo {
-            texture: &texture,
-            mip_level: 0,
-            origin: wgpu::Origin3d::ZERO,
-            aspect: wgpu::TextureAspect::All,
-        },
-        &metres.to_le_bytes(),
-        wgpu::TexelCopyBufferLayout {
-            offset: 0,
-            bytes_per_row: Some(4),
-            rows_per_image: Some(1),
-        },
-        wgpu::Extent3d {
-            width: 1,
-            height: 1,
-            depth_or_array_layers: 1,
-        },
-    );
-    let info = wxr::DepthInfo {
-        size: wxr::Extent2d::new(1, 1),
-        raw_value_to_meters: 1.0,
-        norm_depth_buffer_from_norm_view: wxr::Pose::IDENTITY,
-    };
-    (texture, scene::Occlusion::from(info))
-}
-
-/// The room's depth is what makes a fragment behind it disappear, and this is the test that says the shader
-/// does it rather than that it compiles.
-///
-/// The scene's triangles are 1 m and 2.5 m in front of the eye, so a room at half a metre is in front of both
-/// and a room at five metres is behind them - and the picture has to differ from the one without a room in the
-/// first case and be exactly it in the second. That "exactly" is the half worth having: an occlusion test that
-/// only checked the first case would pass for a shader that discarded everything.
-#[test]
-fn a_fragment_behind_the_room_is_not_drawn() {
-    let Some((_turn, device, queue)) = device() else {
-        return;
-    };
-    let drawn = centre_pixel(&device, &queue, Depth::ZeroToOne);
-
-    let blocked = centre_pixel_with(
-        &device,
-        &queue,
-        Depth::ZeroToOne,
-        Some(room(&device, &queue, 0.5)),
-    );
-    assert_ne!(
-        blocked, drawn,
-        "a room in front of everything hides the scene"
-    );
-
-    let behind = centre_pixel_with(
-        &device,
-        &queue,
-        Depth::ZeroToOne,
-        Some(room(&device, &queue, 5.0)),
-    );
-    assert_eq!(behind, drawn, "a room behind everything changes nothing");
-}
-
 /// An importer that remembers the images it was asked to wrap.
 ///
 /// Which is how a test can tell a renderer that wraps *this* frame's texture from one that kept the first
@@ -497,3 +412,4 @@ fn device() -> Option<(MutexGuard<'static, ()>, wgpu::Device, wgpu::Queue)> {
 }
 
 mod frames;
+mod occlusion;
