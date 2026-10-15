@@ -411,5 +411,52 @@ fn device() -> Option<(MutexGuard<'static, ()>, wgpu::Device, wgpu::Queue)> {
     Some((turn, device, queue))
 }
 
+/// Every colour format the renderer knows, and the one it does not.
+///
+/// This is a pure mapping with no device behind it, which is why it is the one test here that wants no GPU:
+/// an image whose format this renderer cannot name is a frame it does not draw, which is better than one
+/// drawn in the wrong colour space - so `None` is an answer and not a gap, and both halves of that are
+/// asserted. The sRGB pairs are the ones worth spelling out: `Rgba8Srgb` and `Bgra8Srgb` differ in which
+/// channel comes last, and a mapping that swapped them would produce a picture in the wrong colour with
+/// nothing else about it wrong.
+#[test]
+fn every_colour_format_maps_and_the_unknown_one_does_not() {
+    let known = [
+        (
+            wxr::ColorFormat::Rgba8Srgb,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+        ),
+        (
+            wxr::ColorFormat::Rgba8Unorm,
+            wgpu::TextureFormat::Rgba8Unorm,
+        ),
+        (
+            wxr::ColorFormat::Bgra8Srgb,
+            wgpu::TextureFormat::Bgra8UnormSrgb,
+        ),
+        (
+            wxr::ColorFormat::Bgra8Unorm,
+            wgpu::TextureFormat::Bgra8Unorm,
+        ),
+        (
+            wxr::ColorFormat::Rgba16Float,
+            wgpu::TextureFormat::Rgba16Float,
+        ),
+        (
+            wxr::ColorFormat::Rgb10a2Unorm,
+            wgpu::TextureFormat::Rgb10a2Unorm,
+        ),
+    ];
+    for (format, expected) in known {
+        assert_eq!(texture_format(format), Some(expected), "{format:?}");
+    }
+    assert_eq!(
+        texture_format(wxr::ColorFormat::Unknown),
+        None,
+        "a format this renderer has not learned is a frame it does not draw",
+    );
+}
+
 mod frames;
+mod layers;
 mod occlusion;
