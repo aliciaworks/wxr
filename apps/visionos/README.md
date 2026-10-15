@@ -61,7 +61,8 @@ draws and presents every frame.
 ## Why a C shim (Rust changes)
 
 The app is Swift, but driving the loop needed fixes in `crates/wxr-apple` and one line in `wxr-render`.
-Each was a real failure observed in the simulator, in the order they appeared:
+Each was a real failure observed in the simulator, in the order they appeared. The names below are the
+files as they stood then; `session.rs` has since been split into `crates/wxr-apple/src/session/`.
 
 1. **`ffi.rs` — device limits.** `request_device` used wgpu's default limits, which exceed the simulator
    Metal device's (`max_inter_stage_shader_variables` 16 > the device's 15). `request_device` now asks for
@@ -101,5 +102,3 @@ file. The rest of the Apple surface is unchanged.
 * The rendered triangles sit behind the SwiftUI window, so on a fresh launch you see the clear colour and
   the part of the near triangle below the window. Closing the window (or opening the space fully) shows the
   whole scene.
-* `session.rs` is 700 lines, over the repository's temporary 500-line rule — it was already 687 at commit
-  `18d70f2`; the added lines are the reordering above. The check script already flags four other files.
