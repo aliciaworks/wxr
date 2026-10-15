@@ -16,6 +16,15 @@ step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 step "size (temporary rule: nothing over 500 lines)"
 python3 Tools/check_file_sizes.py
 
+# The README is where anyone starts, and its shell blocks name crates, examples and scripts by path. A name
+# that is not there wastes the reader's time before the command can teach them anything, and nothing else
+# notices: `gates.sh` runs those commands, but a command run here is not a command a reader can run there,
+# and a path that stopped existing when a file moved is the kind of rot that survives a green build. This is
+# existence only, not behaviour - that is what the rest of this file is for - and it is offline and instant,
+# so it belongs beside the size rule rather than after the toolchain.
+step "the paths the README names"
+python3 Tools/check_readme_paths.py
+
 # The generator fails quietly: a declaration it cannot resolve is one it leaves out, with no error at
 # generation time - which is how `XRRigidTransform` once lost its constructor arguments and `XRDOMOverlayInit`
 # its whole file. So the output is compared with the input here rather than taken on trust, and with the

@@ -61,6 +61,12 @@ jobs:
       - name: The generated WebXR bindings
         run: python3 Tools/check_webxr_sys.py
 
+      # The README's shell blocks name crates, examples and scripts by path, and a name that stopped
+      # existing when a file moved survives a green build - `gates.sh` runs those commands, but a command
+      # run here is not a command a reader can run there. Existence only, offline, and instant.
+      - name: The paths the README names
+        run: python3 Tools/check_readme_paths.py
+
       # `wxr-apple` is only *compiled* in the visionos job, and that job has no Apple to link or run
       # against either - so a wrong `extern "C"` signature would reach a device unnoticed. What any machine
       # can do is compare each declaration against Apple's own prototype, out of an SDK mirror, WebKit's
