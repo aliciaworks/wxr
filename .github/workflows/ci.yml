@@ -53,6 +53,14 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
+      # `wxr-webxr`'s `sys/` is generated, and a generator that cannot resolve a declaration leaves it out
+      # with no error at all - which cost `XRRigidTransform` its constructor arguments and `XRDOMOverlayInit`
+      # its whole file before it was ever run by anything. This compares the output with the input, member by
+      # member, and the prototype snapshot beside the IDL with what a real browser exposes. Offline, stdlib
+      # only, and until now listed as a check that no machine was making.
+      - name: The generated WebXR bindings
+        run: python3 Tools/check_webxr_sys.py
+
       # `wxr-apple` is only *compiled* in the visionos job, and that job has no Apple to link or run
       # against either - so a wrong `extern "C"` signature would reach a device unnoticed. What any machine
       # can do is compare each declaration against Apple's own prototype, out of an SDK mirror, WebKit's

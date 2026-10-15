@@ -16,6 +16,14 @@ step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 step "size (temporary rule: nothing over 500 lines)"
 python3 Tools/check_file_sizes.py
 
+# The generator fails quietly: a declaration it cannot resolve is one it leaves out, with no error at
+# generation time - which is how `XRRigidTransform` once lost its constructor arguments and `XRDOMOverlayInit`
+# its whole file. So the output is compared with the input here rather than taken on trust, and with the
+# prototype snapshot beside the IDL for the half that asks whether a browser has the names at all. Offline
+# and fast enough not to be a gate worth naming: it is the first of the README's ten checks either way.
+step "bindings (wxr-webxr), against the IDL they came from"
+python3 Tools/check_webxr_sys.py
+
 step "fmt"
 cargo fmt --all --check
 
