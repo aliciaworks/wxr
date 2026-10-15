@@ -255,18 +255,19 @@ line that reads the same either way:
 `aarch64-linux-android` cannot be run anywhere from here at all, because the loader wants a `JavaVM` and an
 `Activity` before `xrCreateInstance`, so that one stays compile-level in both places.
 
-Beyond the compiler, nine things are checked, and each is checked by the one that can:
+Beyond the compiler, ten things are checked, and each is checked by the one that can:
 
 ```sh
 python3 Tools/check_webxr_sys.py                            # the generated bindings, against their IDL
 cargo test -p wxr-openxr                                    # the backend, against the runtime this machine has
+cargo test -p wxr-render                                    # the renderer's own arithmetic, read back off the GPU   (needs a GPU)
 cargo run -p wxr-openxr --example layers                    # a quad layer, against the runtime this machine has
 cargo run -p wxr-openxr --example rendered                  # the whole frame, drawn, against that same runtime
 cargo run -p wxr-openxr --example room                      # the four room-modelling extensions, against it
 cargo test -p wxr-conformance                               # the vocabulary, against another reading of the same API
 cargo test -p wxr-apple                                     # the Apple backend's own tables   (on a Mac)
-python3 crates/wxr-webxr-smoke/drive.py                     # the WebXR backend, in a browser
 bash apps/visionos/build.sh && bash apps/visionos/run.sh     # the app, in the visionOS simulator   (on a Mac)
+python3 crates/wxr-webxr-smoke/drive.py                     # the WebXR backend, in a browser
 ```
 
 The first compares the generator's output with its input - every declaration in the snapshot has a file, every
@@ -281,23 +282,34 @@ to say it could not: a session begun on a machine with no display is a session t
 `xrWaitFrame` answers such a frame with nothing to draw. OpenXR wants that frame begun and ended all the same,
 so the backend opens and closes it with no layers in it - the caller was told `Wait` and so never reaches
 `Session::end` - because leaving the pair open makes the *next* `xrWaitFrame` wait for a frame that is not
-coming. That is the loop `examples/headless.rs` runs to the end. The third is the OpenXR half of the layer API
+coming. That is the loop `examples/headless.rs` runs to the end. The third is the renderer's own arithmetic, and
+the only one of these that reads the *picture* back rather than a number: `wxr-render` builds a projection
+out of a field of view and asks for the angles it came from, puts a view matrix where the camera is, and
+draws a scene against a one-texel depth buffer whose contents are stated - then reads the centre pixel to
+see whether the fragment behind the room survived, which is the only way a shader can be checked at all.
+It wants an adapter and no runtime, so a software rasterizer is enough - which is what Windows CI has - and
+where there is none it says `no GPU on this machine` rather than counting a test that ran against nothing.
+The fourth is the OpenXR half of the layer API
 against a real runtime: on a machine with no display a frame comes back with nothing to draw, so a *layer* is
 not available there - but a layer is made against an idle session, and the runtime takes the swapchain, hands
-back its images and lets go of it on release. The fourth is the one that draws all of the above and is new:
+back its images and lets go of it on release. The fifth is the one that draws all of the above and is new:
 `examples/rendered.rs` imports the compositor's images as `wgpu` textures, draws into them with each eye's own
 projection and place, and hands the frame back - four hundred of them, on the same runtime that shows nothing.
 It is the check that would have caught the two bugs the last two commits are about, and it could not run
-before either of them. The fifth is the vocabulary
+before either of them. The sixth is `examples/room.rs`, the four extensions that model a room driven through
+that same loop - a surface, an anchor, where a ray lands, and the room's depth, each made, asked what it has,
+and reported as what it answered - where a runtime with none of them says `no` four times instead of failing.
+It earned its place on its first run, which is where a frame that was ended without first asking it for its
+views turned up: the loader reports that as a validation failure. The seventh is the vocabulary
 against the other reading of the same specification: `servo-webxr-api`, a Rust implementation of the WebXR API,
 named as a dependency rather than copied, so that the names this core gives things - a session mode, an eye, a
-joint of a hand - are compared with a second reading of the sentences that define them. The sixth is the
+joint of a hand - are compared with a second reading of the sentences that define them. The eighth is the
 Apple backend's own tables, and it is new: `wxr-apple` had no tests at all before it. What is checked is the
 joint table that reads ARKit's twenty-seven names as WebXR's twenty-five, the pixel formats, the two id
 ranges a hand and a controller are numbered from, and the size and alignment of the values that cross the
 shim. None of it needs a runtime - the crate is `target_vendor = "apple"`, and a Mac is one - so it links and
 runs on the same machine that links it, and everywhere else it is empty for the reason the crate is. The
-seventh is the one that *draws*: the app runs in the visionOS simulator, the compositor creates a layer and
+ninth is the one that *draws*: the app runs in the visionOS simulator, the compositor creates a layer and
 presents what the frame loop draws into it, and the picture is there to be looked at.
 
 What the simulator reports on that last one is a single **mono** view, and that is the simulator rather than a
@@ -309,7 +321,7 @@ gap here: Apple's header says so, under `cp_drawable_get_view_count` in `drawabl
 So the two-eye arithmetic is exercised on the mock rather than there, and the one-eye path it takes instead is
 the one the code already has a word for (`Eye::Mono`) and a compositor already hands it.
 
-The eighth is the WebXR backend, in a browser, and it is the one with the shortest way to a wrong answer: a
+The tenth is the WebXR backend, in a browser, and it is the one with the shortest way to a wrong answer: a
 desktop browser has `navigator.xr` and no headset behind it, so `immersive-vr` there is `false` and a page that
 believes it has a device is a page that has not asked. The usual fix is the Immersive Web Emulator, which is an
 extension with a popup, a device catalogue, and a race between two content scripts over which of them dispatches
