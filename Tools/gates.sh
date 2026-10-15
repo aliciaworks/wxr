@@ -114,6 +114,25 @@ if rustup target list --installed 2>/dev/null | grep -qx aarch64-apple-visionos;
   RUSTDOCFLAGS="-D warnings" cargo doc -p wxr-apple --target aarch64-apple-visionos --no-deps
   step "build (visionOS) - CI's linked job, locally"
   cargo build -p wxr-apple --target aarch64-apple-visionos
+
+  # A static archive is not an application, and CI's `linked` job never says otherwise: it links
+  # `wxr-apple` and runs its tests, and never compiles `WxrApp.swift`, the C shim, or the two together. This
+  # is the only thing that does, so it is the only thing that can notice the Swift half is wrong. It wants
+  # the *simulator* SDK and target rather than the device ones above - a different SDK, a different triple,
+  # a different archive path - so it is asked for on its own terms and skipped when the machine has the
+  # device target and not the simulator's, which is a machine that can do the three steps above and not this.
+  #
+  # `run.sh` beside it is deliberately not here. It boots a simulator, installs the bundle and leaves an app
+  # running, which is the one thing on this list a loop should not do to a machine somebody is working on -
+  # and what it proves, that a picture was drawn, is not what its exit code reports. The README calls that
+  # half "the picture there to be looked at", and a gate cannot look. It is a check to make by hand.
+  if rustup target list --installed 2>/dev/null | grep -qx aarch64-apple-visionos-sim \
+    && xcrun --sdk xrsimulator --show-sdk-path > /dev/null 2>&1; then
+    step "app (visionOS simulator)"
+    bash apps/visionos/build.sh
+  else
+    step "app (visionOS simulator) - skipped, no simulator target or no simulator SDK"
+  fi
 else
   step "the Apple half - skipped, aarch64-apple-visionos not installed"
 fi
