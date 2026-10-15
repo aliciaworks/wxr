@@ -160,6 +160,21 @@ fn a_world_modelling_bit_is_the_same_fact_as_its_method() {
             "one ray met {} surfaces, and the extension has no way to say that",
             hits.len()
         );
+
+        // And a released source takes the same direction the released anchor took: the slot is this
+        // backend's, so what changes is one it answers rather than one it cannot. The handle is still the
+        // handle this session handed out - it stops being an error either way - and `hits` on it is empty
+        // because the ray is no longer measured from anywhere, which is what a caller is told.
+        session.release_hit_test_source(source);
+        assert!(
+            session.hits(source, space, &mut hits).is_ok(),
+            "hits() on a released source refused instead of answering nothing"
+        );
+        assert!(
+            hits.is_empty(),
+            "a released source went on reporting {} surfaces",
+            hits.len()
+        );
     }
 
     // Depth is `Option` even where it exists, because the provider is made at connect and *started* at the

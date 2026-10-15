@@ -173,14 +173,15 @@ mod native {
             session.end(&mut frame)?;
         }
 
-        // The anchor is given back and the source is not, and the difference is the core's rather than this
-        // backend's: `Session` has `release_anchor` and no counterpart for a hit-test source, so a source is
-        // dropped and this backend never learns. WebXR has `XRHitTestSource.cancel` for the same job, which
-        // is what the gap is - see the coverage list, where `cancel` is one of the members the core has no
-        // word for. Saying so here rather than pretending is why this comment is longer than the call it
-        // replaces.
+        // Both are given back. The anchor's runtime object is destroyed by dropping it; the hit-test
+        // source has no runtime object at all on this backend - the raycaster is session-wide and takes
+        // the ray with each call - so `release_hit_test_source` is the slot the ray was measured from
+        // being cleared, and the two lines below are what WebXR does with `XRHitTestSource.cancel`.
         if let Some(anchor) = anchor {
             session.release_anchor(anchor);
+        }
+        if let Some(source) = source {
+            session.release_hit_test_source(source);
         }
 
         println!();

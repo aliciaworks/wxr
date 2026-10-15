@@ -699,6 +699,7 @@ ALIASES = {
     "getHitTestResultsForTransientInput": "fn hits",
     "createAnchor": "fn anchor",
     "delete": "fn release_anchor",
+    "cancel": "fn release_hit_test_source",
     "detectedPlanes": "fn planes",
     "planeSpace": "fn planes",
     "getDepthInformation": "fn depth",

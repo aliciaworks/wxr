@@ -234,6 +234,21 @@ impl OpenXrSession {
         Ok(wxr::HitTestSource::new(id))
     }
 
+    /// Let a source of hits go: the entry that says which space the ray is measured from.
+    pub(super) fn release_hit_test_source_impl(&mut self, source: wxr::HitTestSource) {
+        let Some(raycast) = self.raycast.as_mut() else {
+            return;
+        };
+        // Taken in place rather than taken out of the list, because the id *is* the position - pulling one
+        // out would hand every source after it somebody else's ray, and the caller's handle would still go
+        // on saying its own number. OpenXR has nothing to undo here either: the raycaster is session-wide
+        // and has no per-source object, so this emptied entry is all of it, and what a caller sees is
+        // `hits` coming back empty because this session says so.
+        if let Some(slot) = raycast.sources.get_mut(source.id() as usize) {
+            *slot = None;
+        }
+    }
+
     /// Where one source's ray landed this frame, in the space given.
     pub(super) fn hits_impl(
         &mut self,

@@ -418,6 +418,16 @@ pub trait Session: Any {
         Ok(())
     }
 
+    /// Let a source of hits go, which is WebXR's `XRHitTestSource.cancel`.
+    ///
+    /// A source is a handle this session holds until the session ends, so one nothing will be asked about
+    /// again has nothing left to give, and the answer is the one a released anchor gives: `hits` is an
+    /// empty list rather than an error, because the handle is still the handle this session handed out.
+    /// What is behind it differs - WebXR has a `cancel()` to call and a promise still in flight to keep
+    /// cancelled when it lands; OpenXR's raycaster has no per-source object at all, the ray and its
+    /// filters going with each call, so there is only this backend's own slot to clear.
+    fn release_hit_test_source(&mut self, _source: HitTestSource) {}
+
     /// Ask for a probe of the room's light, which is WebXR's `requestLightProbe`.
     ///
     /// A handle the way a hit-test source is, and for the same reason: a runtime makes one asynchronously. The

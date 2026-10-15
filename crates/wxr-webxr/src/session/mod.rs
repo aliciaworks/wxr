@@ -396,6 +396,10 @@ impl wxr::Session for WebXrSession {
         self.hits_impl(source, space, out)
     }
 
+    fn release_hit_test_source(&mut self, source: wxr::HitTestSource) {
+        self.release_hit_test_source_impl(source)
+    }
+
     fn light_probe(&mut self) -> Result<wxr::LightProbe, wxr::Error> {
         self.light_probe_impl()
     }

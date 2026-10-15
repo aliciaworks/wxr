@@ -17,12 +17,38 @@ use crate::sys::{
 #[derive(Default)]
 pub struct Slot {
     source: Option<XrHitTestSource>,
+    /// Set by [`Slot::cancel`], so an answer arriving afterwards fills nothing. A source let go while its
+    /// request was still a promise would otherwise come back from having been released, which is the one
+    /// way this slot can be wrong - the handle is still in the caller's hand either way.
+    cancelled: bool,
 }
 
 impl Slot {
-    /// The source, if the browser has answered.
+    /// The source, if the browser has answered and nobody has let it go.
     pub fn source(&self) -> Option<XrHitTestSource> {
         self.source.clone()
+    }
+
+    /// Tell the browser this source is done - `XRHitTestSource.cancel` - and forget it.
+    ///
+    /// Both halves are needed. An answered source would otherwise be one the browser keeps reporting for
+    /// the rest of the session, and an unanswered one must not be filled in when its promise lands - so the
+    /// flag outlives the promise, which is what makes a release at any moment the same release.
+    pub fn cancel(&mut self) {
+        self.cancelled = true;
+        if let Some(source) = self.source.take() {
+            source.cancel();
+        }
+    }
+
+    /// Take the browser's answer, unless the source was let go while its request was in flight - in which
+    /// case it is cancelled here rather than kept, since no caller will ever ask for it.
+    pub fn fill(&mut self, source: XrHitTestSource) {
+        if self.cancelled {
+            source.cancel();
+        } else {
+            self.source = Some(source);
+        }
     }
 }
 
@@ -36,7 +62,7 @@ pub fn request(session: &XrSession, space: &XrReferenceSpace, slot: Rc<RefCell<S
         if let Ok(source) = JsFuture::from(promise).await
             && let Ok(source) = source.dyn_into::<XrHitTestSource>()
         {
-            slot.borrow_mut().source = Some(source);
+            slot.borrow_mut().fill(source);
         }
     });
 }

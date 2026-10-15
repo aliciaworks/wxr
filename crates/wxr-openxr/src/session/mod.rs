@@ -408,6 +408,16 @@ impl wxr::Session for OpenXrSession {
         self.hits_impl(source, space, out)
     }
 
+    /// Let a source of hits go, which on this backend is the slot the source's ray is measured from.
+    ///
+    /// There is nothing to destroy: `XR_META_environment_raycast` has one raycaster for the whole session
+    /// and takes the ray and its filters with every call, so a source here has no runtime object behind it
+    /// at all - only the space it was made from, which is what clearing the entry drops. The entry has to
+    /// stay where it is rather than come out, because the id is its position.
+    fn release_hit_test_source(&mut self, source: wxr::HitTestSource) {
+        self.release_hit_test_source_impl(source)
+    }
+
     /// What the runtime measured of the room, which is `XR_META_environment_depth`'s depth map.
     ///
     /// OpenXR's depth is a buffer the *runtime* fills and the app reads - the direction every other

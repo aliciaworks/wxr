@@ -95,6 +95,19 @@ impl WebXrSession {
         self.hit_sources.push(slot);
         Ok(wxr::HitTestSource::new((self.hit_sources.len() - 1) as u32))
     }
+
+    /// Let a source of hits go, which is `XRHitTestSource.cancel` and nothing more on this side.
+    ///
+    /// The slot stays where it is rather than coming out, because the id *is* its position in the list:
+    /// pulling one out would hand every source after it somebody else's ray while their handles went on
+    /// saying their own numbers. So the entry survives and the source inside it does not, which is what
+    /// [`hit::Slot::cancel`] is for.
+    pub(super) fn release_hit_test_source_impl(&mut self, source: wxr::HitTestSource) {
+        let Some(slot) = self.hit_sources.get(source.id() as usize) else {
+            return;
+        };
+        slot.borrow_mut().cancel();
+    }
 }
 
 impl WebXrSession {
