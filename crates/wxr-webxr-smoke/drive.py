@@ -29,6 +29,11 @@ Four things are worth knowing about how:
   exits 77, which is what a skip has always been, and it can be pointed at with `WXR_BROWSER`.
 """
 
+# The `X | None` annotations below are `type.__or__`, which Python answered only from 3.10, and `gates.sh` runs
+# this file with whatever `python3` is on the PATH - which on a Mac without Homebrew's is /usr/bin/python3, still
+# 3.9. Deferring their evaluation is what `__future__` is for, and nothing here reads an annotation at runtime.
+from __future__ import annotations
+
 import argparse
 import functools
 import http.server

@@ -20,6 +20,12 @@ compiles, passes the first check, and fails only at runtime, in a browser, with 
     python3 Tools/check_webxr_sys.py
 """
 
+# The annotations below are `X | None`, which `type.__or__` did not answer until 3.10 - and `gates.sh` calls
+# `python3` off the PATH it happens to have, where a Mac without Homebrew's resolves to /usr/bin/python3,
+# which is still 3.9. A `TypeError` in a check is a check that does not run, so the evaluation is deferred;
+# nothing here reads an annotation at runtime. `check_apple_sys.py` beside it has always done the same.
+from __future__ import annotations
+
 import glob
 import json
 import re
