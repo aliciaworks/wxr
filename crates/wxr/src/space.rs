@@ -98,7 +98,16 @@ impl Pose {
         columns.copy_from_slice(&matrix[..16]);
         let (scale, orientation, position) =
             Mat4::from_cols_array(&columns).to_scale_rotation_translation();
-        if !scale.is_finite() || !orientation.is_finite() || !position.is_finite() {
+        // A pose is a place and a rotation and nothing else, so a matrix with a scale in it is a matrix from
+        // some other program - a scene node with a non-uniform scale is the usual way one arrives. The
+        // rotation part of it is still a rotation, which is what makes accepting it tempting and wrong: the
+        // joints would land at the right angles and the wrong distances, which is a hand in the wrong place
+        // rather than a hand that failed to read. The tolerance is for the float error a runtime's own
+        // multiplication leaves behind, not for a transform that means it.
+        if !scale.abs_diff_eq(Vec3::ONE, 1e-3) {
+            return None;
+        }
+        if !orientation.is_finite() || !position.is_finite() {
             return None;
         }
         Some(Self {
@@ -228,5 +237,36 @@ mod tests {
         not_a_transform[5] = f32::NAN;
         assert!(Pose::from_matrix(&not_a_transform).is_none());
         assert!(Pose::from_matrix(&[0.0; 16]).is_none());
+
+        // A scale is a transform and not a pose: the rotation survives the decomposition, so a matrix with
+        // one in it is accepted by a reader that only checks the rotation - and every joint it fills in is
+        // then at the right angle and the wrong distance. An array a runtime left alone is zero, and a scene
+        // node handed to `fillPoses` by mistake is the other way this happens.
+        let mut scaled = Mat4::from(
+            Pose {
+                position: Vec3::new(0.1, 1.55, -0.3),
+                orientation: Quat::from_rotation_y(FRAC_PI_2),
+            }
+            .transform(),
+        )
+        .to_cols_array();
+        for axis in 0..3 {
+            scaled[axis * 4] *= 2.0;
+            scaled[axis * 4 + 1] *= 2.0;
+            scaled[axis * 4 + 2] *= 2.0;
+        }
+        assert!(
+            Pose::from_matrix(&scaled).is_none(),
+            "a uniform scale is not a rigid transform"
+        );
+
+        // A reflection keeps the scale at one per axis in magnitude and turns the basis inside out, so the
+        // quaternion that comes back is a rotation that is not the one the matrix says.
+        let mut reflected = Mat4::IDENTITY.to_cols_array();
+        reflected[0] = -1.0;
+        assert!(
+            Pose::from_matrix(&reflected).is_none(),
+            "a mirror is not a pose"
+        );
     }
 }
