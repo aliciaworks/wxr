@@ -39,8 +39,9 @@ impl OpenXrSession {
         out.predicted_display_time =
             Duration::from_nanos(state.predicted_display_time.as_nanos().max(0) as u64);
         out.views_mut().clear();
-        // A frame the app never asks views of must not submit the layer in the space the last frame
-        // happened to use - the views are gone, so the space is no longer true either.
+        // A frame the app never asks views of must not submit the views the last frame located, nor a
+        // projection layer in the space that frame used: both are about an image that is already gone.
+        self.located.clear();
         self.view_space = None;
 
         if out.state != wxr::FrameState::Render {
@@ -209,15 +210,19 @@ impl OpenXrSession {
         // The same space the eyes were located in. The first space an app made was not necessarily the one
         // it asked for its views in, and a projection layer whose space disagrees with its view poses is a
         // scene at the wrong place - which is invisible until someone offsets a space and then very visible.
-        // With no views this frame there is nothing to place, and any valid space will do.
-        let space = self
-            .view_space
-            .and_then(|id| self.spaces.get(id))
-            .or_else(|| self.spaces.first())
-            .unwrap_or(&self.view);
-        let layer = xr::CompositionLayerProjection::new()
-            .space(space)
-            .views(&views);
+        //
+        // A frame with no views has no projection layer at all: a projection layer is required to have a
+        // view, and an app that submitted one with none is a validation error rather than a black frame.
+        let projection = (!views.is_empty()).then(|| {
+            let space = self
+                .view_space
+                .and_then(|id| self.spaces.get(id))
+                .or_else(|| self.spaces.first())
+                .unwrap_or(&self.view);
+            xr::CompositionLayerProjection::new()
+                .space(space)
+                .views(&views)
+        });
 
         // The app's layers, in the order they were made. Which struct one becomes is the extension it came
         // from: a quad is a rectangle at a pose, a cylinder is wrapped around one, an equirect is a sphere, and
@@ -309,7 +314,9 @@ impl OpenXrSession {
         // and a panel that arrived behind it would be a panel nobody sees.
         let mut present: Vec<&xr::CompositionLayerBase<'_, xr::Vulkan>> =
             Vec::with_capacity(1 + built.len());
-        present.push(&layer);
+        if let Some(layer) = &projection {
+            present.push(layer);
+        }
         for layer in &built {
             present.push(layer.base());
         }
