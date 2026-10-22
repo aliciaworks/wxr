@@ -408,16 +408,10 @@ that move this, and both are work.
 
 ## What is not decided yet
 
-- **WebXR's images.** The import path is already in wgpu - `Device::create_texture_from_webgpu_handle`, the
-  counterpart of the `texture_from_raw` the other two backends wrap their compositors' images with - and what
-  is missing is one field a session needs before any of it can be used: a WebGPU-compatible session wants a
-  device from an adapter requested with `xrCompatible: true`, and wgpu's public adapter options have no such
-  option: it has been proposed upstream and has not landed, for being a breaking change to a public struct.
-  That is the whole of what stands between this backend and a picture.
-- **The Apple app.** The Rust half of its entry point is `wxr_apple::entry::run`: connect, pick a space, and
-  run frames until the space closes, with a callback for the app's own work. What is left is the SwiftUI file
-  around it, its `Info.plist` - `NSWorldSensingUsageDescription` is what ARKit refuses without - and the
-  app's choice of how to get the compositor's device into wgpu, which `AppleBackend::device` documents.
+- **Hardware.** Every backend has run somewhere - OpenXR against a runtime, WebXR in a browser, Apple in the
+  visionOS simulator - and none of them has run on a headset. The simulator is mono, and a runtime on a
+  desktop is a runtime on a desktop; what a display does with two eyes, a real compositor and a real pose is
+  the one answer no machine here can give.
 - **A real scene.** `wxr-render` draws two triangles with a depth buffer and a fixed near and far: enough
   for `Depth` to be load-bearing - the nearer one wins whichever order they are drawn in, in both conventions,
   and that is read back off the GPU in a test - and not a scene. So is the *room's* depth, in both the ways a
@@ -426,6 +420,9 @@ that move this, and both are work.
   on is stated where the encoding is defined. Lighting, textures, instancing and a tone map are a renderer's
   business and this one is a seam. What is missing in the same tier is *submitting* the depth to the
   compositor: all three runtimes can take it and none of this does.
+- **The `Scene` arm.** `Presentation::Scene` is the other half of what a session can be - the platform draws
+  the scene and the app says what is in it - and no backend takes it. RealityKit is the platform that would,
+  and taking it would mean an app that describes a scene rather than one that draws into an image.
 - **Input beyond the intersection.** The buttons and axes are the intersection of the three platforms and
   nothing more, so a thumbstick's click, a touchpad's position, and a gesture a platform recognises for itself
   are all outside it. What the core has widened to - the hand skeleton, foveation, haptics - it did one concept
