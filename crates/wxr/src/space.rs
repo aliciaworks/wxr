@@ -96,8 +96,8 @@ impl Pose {
         }
         let mut columns = [0.0f32; 16];
         columns.copy_from_slice(&matrix[..16]);
-        let (scale, orientation, position) =
-            Mat4::from_cols_array(&columns).to_scale_rotation_translation();
+        let matrix = Mat4::from_cols_array(&columns);
+        let (scale, orientation, position) = matrix.to_scale_rotation_translation();
         // A pose is a place and a rotation and nothing else, so a matrix with a scale in it is a matrix from
         // some other program - a scene node with a non-uniform scale is the usual way one arrives. The
         // rotation part of it is still a rotation, which is what makes accepting it tempting and wrong: the
@@ -110,9 +110,18 @@ impl Pose {
         if !orientation.is_finite() || !position.is_finite() {
             return None;
         }
+        let orientation = orientation.normalize();
+        // Three unit axes are not a rotation: a skew keeps every column the length it was, and the
+        // decomposition answers with a quaternion that is the nearest rotation rather than the one in the
+        // matrix. Put that rotation back together and compare the whole thing - which also checks the last
+        // row, the one a decomposition of the basis never looks at.
+        let rigid = Mat4::from_scale_rotation_translation(Vec3::ONE, orientation, position);
+        if !matrix.abs_diff_eq(rigid, 1e-3) {
+            return None;
+        }
         Some(Self {
             position,
-            orientation: orientation.normalize(),
+            orientation,
         })
     }
 }
@@ -267,6 +276,17 @@ mod tests {
         assert!(
             Pose::from_matrix(&reflected).is_none(),
             "a mirror is not a pose"
+        );
+
+        // And a skew is the case three lengths cannot see: every column is still a unit vector, and none of
+        // them is at a right angle to the others. A check on the decomposition's scale calls this one a pose,
+        // then hands back a rotation the matrix does not describe.
+        let mut skewed = Mat4::IDENTITY.to_cols_array();
+        skewed[4] = 0.5;
+        skewed[5] = 3.0f32.sqrt() / 2.0;
+        assert!(
+            Pose::from_matrix(&skewed).is_none(),
+            "three unit axes that are not orthogonal are not a rotation"
         );
     }
 }
