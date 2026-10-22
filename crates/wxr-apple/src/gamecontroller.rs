@@ -58,6 +58,9 @@ struct Known {
     /// pattern is played *on* an engine, and an engine dropped between two pulses is the thing that was asked
     /// to buzz, dropped.
     engine: Option<Retained<CHHapticEngine>>,
+    /// Whether it was connected the last time the framework was asked. Kept so that a controller going away
+    /// is a change too: a list that only noticed arrivals would leave the app holding a source that is gone.
+    connected: bool,
 }
 
 impl GameControllers {
@@ -65,15 +68,17 @@ impl GameControllers {
         Self { known: Vec::new() }
     }
 
-    /// Every controller connected right now, as the core's sources, and whether a new one appeared.
+    /// Every controller connected right now, as the core's sources, and whether the set changed.
     ///
     /// The ids are the order the session first saw them in, which is what makes one stable while a controller
     /// stays connected: `GCController` hands back the same object every frame, so identity is what the list is
-    /// keyed on and there is no second name to invent.
+    /// keyed on and there is no second name to invent. A controller that goes away keeps its entry, and its id
+    /// stays spent even if it never comes back - handing the number to a different controller would make a
+    /// press that came from somewhere else look like the same one.
     pub fn read(&mut self, out: &mut Vec<wxr::InputSource>) -> bool {
         // SAFETY: the framework is live, and this is its own list of what is connected to it.
         let connected = unsafe { GCController::controllers() }.to_vec();
-        let before = self.known.len();
+        let mut changed = false;
         for controller in &connected {
             if !self
                 .known
@@ -85,13 +90,20 @@ impl GameControllers {
                     controller: controller.clone(),
                     id,
                     engine: None,
+                    connected: true,
                 });
+                changed = true;
             }
         }
-        for known in &self.known {
+        for known in &mut self.known {
+            let here = connected.contains(&known.controller);
+            if known.connected != here {
+                known.connected = here;
+                changed = true;
+            }
             // A controller that has gone away is not reported, and its id stays spent: handing it to a
             // different controller would make a press that came from somewhere else look like the same one.
-            if !connected.contains(&known.controller) {
+            if !here {
                 continue;
             }
             // SAFETY: a controller from the framework's own list, and its profile and its haptics are the
@@ -119,7 +131,7 @@ impl GameControllers {
                 axes: axes(profile.as_deref()),
             });
         }
-        self.known.len() != before
+        changed
     }
 
     /// Whether any connected controller has an actuator to send to, which is the capability bit.
