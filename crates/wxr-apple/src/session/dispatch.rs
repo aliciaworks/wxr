@@ -225,16 +225,11 @@ impl wxr::Session for AppleSession {
         let Some(arkit) = &self.arkit else {
             return Ok(());
         };
-        // ARKit reports planes in the session's own origin, which is this backend's `Local`; a caller
-        // asking for another space gets them brought over, the same way the views are.
-        let origin = self.space_origin(space);
-        let (_, orientation, position) = origin.to_scale_rotation_translation();
-        let origin = wxr::Pose {
-            position,
-            orientation,
-        };
+        // ARKit reports planes in the session's own origin, which is this backend's `Local`; a caller asking
+        // for another space gets them brought over, the same way the views are.
+        let space_from_world = wxr_render::pose_from_transform(self.space_from_world(space));
         out.extend(arkit.planes().into_iter().map(|mut plane| {
-            plane.pose = plane.pose.relative_to(origin);
+            plane.pose = space_from_world.then(plane.pose);
             plane
         }));
         Ok(())
@@ -254,14 +249,9 @@ impl wxr::Session for AppleSession {
         // The same space the planes are brought to, and for the same reason: ARKit traces in the session's
         // own origin, which is this backend's `Local`, so a caller asking for another space gets the meshes
         // brought over rather than a refusal.
-        let origin = self.space_origin(space);
-        let (_, orientation, position) = origin.to_scale_rotation_translation();
-        let origin = wxr::Pose {
-            position,
-            orientation,
-        };
+        let space_from_world = wxr_render::pose_from_transform(self.space_from_world(space));
         out.extend(arkit.meshes().into_iter().map(|mut mesh| {
-            mesh.pose = mesh.pose.relative_to(origin);
+            mesh.pose = space_from_world.then(mesh.pose);
             mesh
         }));
         Ok(())
@@ -304,8 +294,8 @@ impl wxr::Session for AppleSession {
         pose: wxr::Pose,
     ) -> Result<wxr::Anchor, wxr::Error> {
         // The anchor's place is asked for in `space`; ARKit takes one in the session's origin, which this
-        // backend's `Local` is - so the space's origin is composed in front, the way a view is.
-        let world_from_anchor = self.space_origin(space) * Mat4::from(pose.transform());
+        // backend's `Local` is - so the space's own transform is composed in front.
+        let world_from_anchor = self.world_from_space(space) * Mat4::from(pose.transform());
         self.arkit
             .as_mut()
             .and_then(|arkit| arkit.add_anchor(world_from_anchor))
@@ -323,18 +313,9 @@ impl wxr::Session for AppleSession {
         let Some(world) = arkit.anchor_pose(anchor) else {
             return Ok(None);
         };
-        let (_, orientation, position) = world.to_scale_rotation_translation();
-        let origin = self.space_origin(space);
-        let (_, origin_orientation, origin_position) = origin.to_scale_rotation_translation();
+        let space_from_world = wxr_render::pose_from_transform(self.space_from_world(space));
         Ok(Some(
-            wxr::Pose {
-                position,
-                orientation,
-            }
-            .relative_to(wxr::Pose {
-                position: origin_position,
-                orientation: origin_orientation,
-            }),
+            space_from_world.then(wxr_render::pose_from_transform(world)),
         ))
     }
 

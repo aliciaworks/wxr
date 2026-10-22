@@ -41,8 +41,9 @@ impl AppleSession {
         let Some(arkit) = &self.arkit else {
             return Ok(());
         };
-        // The same space the views are expressed in, for the same reason.
-        let origin = self.space_origin(space);
+        // ARKit reports a hand in its world, which is `Local`; a caller in another space gets the palm brought
+        // over, the same way a view is.
+        let space_from_world = self.space_from_world(space);
 
         let hands = arkit.hands();
         if hands.len() != self.hands_seen {
@@ -51,7 +52,7 @@ impl AppleSession {
         }
 
         for (index, (handedness, transform, tracked)) in hands.into_iter().enumerate() {
-            let pose = wxr_render::pose_from_transform(origin * transform);
+            let pose = wxr_render::pose_from_transform(space_from_world * transform);
             out.push(wxr::InputSource {
                 id: wxr::InputId::new(index as u32),
                 handedness,
@@ -110,8 +111,8 @@ impl AppleSession {
         };
         // The same space the palm beside it was brought to, so that a joint and the hand it is on land in
         // the same place - which is the property that has to hold, or a drawn hand comes apart at the wrist.
-        let origin = self.space_origin(space);
-        if let Some((_tracked, hand)) = arkit.hand(*handedness, origin) {
+        let space_from_world = self.space_from_world(space);
+        if let Some((_tracked, hand)) = arkit.hand(*handedness, space_from_world) {
             *out = hand;
         }
         Ok(())

@@ -203,12 +203,13 @@ impl AppleSession {
         wxr_render::Depth::Reverse
     }
 
-    /// The transform from device space into the space the caller asked for.
+    /// The device's pose in the space the caller asked for, which is what a view is built from.
     ///
     /// ARKit's origin is the `Local` space and device space is identity otherwise, and a space made by
     /// `offset_space` is that one seen from a pose inside it - so this is where an offset becomes a transform,
-    /// and there is exactly one place it has to be right.
-    fn space_origin(&self, space: wxr::ReferenceSpace) -> Mat4 {
+    /// and there is exactly one place it has to be right. `Local` is the world, not the head: the device's
+    /// pose in it is the device's world pose, which cancels the device's place in an eye's own transform.
+    fn device_in_space(&self, space: wxr::ReferenceSpace) -> Mat4 {
         let base = match (space.kind, self.origin) {
             (wxr::SpaceKind::Local, Some(origin)) => origin,
             _ => Mat4::IDENTITY,
@@ -219,6 +220,16 @@ impl AppleSession {
             .copied()
             .unwrap_or_default();
         Mat4::from(offset.transform()).inverse() * base
+    }
+
+    /// `space` seen from ARKit's world, which is where a plane, a mesh, a hand and an anchor are reported.
+    fn space_from_world(&self, space: wxr::ReferenceSpace) -> Mat4 {
+        spaces::space_from_world(self.device_in_space(space), self.origin)
+    }
+
+    /// ARKit's world seen from `space`, which is where an anchor asked for in it has to go.
+    fn world_from_space(&self, space: wxr::ReferenceSpace) -> Mat4 {
+        spaces::world_from_space(self.device_in_space(space), self.origin)
     }
 
     /// What the layer is doing, as the two things a session can be: here or not, and shown or not.
@@ -274,6 +285,7 @@ impl AppleSession {
 mod dispatch;
 mod frame;
 mod sources;
+mod spaces;
 
 /// A Metal pixel format in the core's terms.
 ///

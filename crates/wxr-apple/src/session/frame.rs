@@ -128,10 +128,10 @@ impl AppleSession {
         if self.drawable.is_null() {
             return Ok(());
         }
-        // The space itself, and then the head in it: the eye transforms are already relative to the wearer, so
-        // the viewer is the space's own origin and the eyes hang off it.
-        let origin = self.space_origin(space);
-        out.viewer = wxr_render::pose_from_transform(origin);
+        // The head in the space, and then each eye around it: the compositor's eye transforms are already
+        // relative to the wearer, so the viewer is the device and an eye is `head * device_from_eye`.
+        let head = self.device_in_space(space);
+        out.viewer = wxr_render::pose_from_transform(head);
 
         // SAFETY: the drawable is this frame's and is live until `end`. Every index below is below the view
         // count just read, and the texture map lives as long as the view it came from.
@@ -143,7 +143,7 @@ impl AppleSession {
                     let map = cp_view::view_texture_map(view);
                     (
                         // `device from view`: the eye's own place in device space. It is a pose already, so
-                        // nothing inverts it - the world-from-eye transform is `origin * this`.
+                        // nothing inverts it - the eye-in-space transform is `head * this`.
                         Mat4::from_cols_array(&sys::cp_view_get_transform(view).0),
                         // A mixed-reality layer refuses `cp_view_get_tangents` and wants the projection
                         // matrix instead; the four openings are read back out of it for `fov` below.
@@ -175,7 +175,7 @@ impl AppleSession {
                 } else {
                     wxr::Eye::Right
                 },
-                pose: wxr_render::pose_from_transform(origin * device_from_eye),
+                pose: wxr_render::pose_from_transform(head * device_from_eye),
                 fov: wxr_render::angles(projection),
                 viewport: wxr::Viewport {
                     x: viewport.originX.max(0.0) as u32,

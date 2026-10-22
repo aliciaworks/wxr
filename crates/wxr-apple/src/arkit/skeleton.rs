@@ -100,7 +100,7 @@ const RADIUS: f32 = 0.008;
 /// # Safety
 ///
 /// `anchor` must be a live hand anchor from the generated crate.
-pub(super) unsafe fn read(anchor: &ar_hand_anchor_t, origin_from_hand: Mat4) -> wxr::Hand {
+pub(super) unsafe fn read(anchor: &ar_hand_anchor_t, space_from_hand: Mat4) -> wxr::Hand {
     let mut hand = wxr::Hand::default();
     // SAFETY: the anchor is live; the skeleton is the anchor's own and is retained by the `Retained` below.
     let Some(skeleton) = (unsafe { ar_hand_anchor_t::hand_skeleton(anchor) }) else {
@@ -122,7 +122,7 @@ pub(super) unsafe fn read(anchor: &ar_hand_anchor_t, origin_from_hand: Mat4) -> 
             )
         };
         let pose = wxr_render::pose_from_transform(
-            origin_from_hand * Mat4::from_cols_array(&joint_from_anchor.0),
+            space_from_hand * Mat4::from_cols_array(&joint_from_anchor.0),
         );
         hand.joints_mut()[joint.index()] = Some(wxr::Joint {
             pose,
@@ -177,13 +177,17 @@ impl ArKit {
         .collect()
     }
 
-    /// One hand's skeleton, in `origin`'s space - the same transform `inputs` brings a palm across, so a
-    /// joint and the palm it belongs to land in the same place.
+    /// One hand's skeleton, in `space_from_world`'s space - the same transform `inputs` brings a palm across,
+    /// so a joint and the palm it belongs to land in the same place.
     ///
     /// `handedness` is which hand, and an [`wxr::Handedness::Unknown`] is a source that is not a hand at
     /// all: no answer rather than an arbitrary one, because guessing which of two hands a caller meant
     /// would put the wrong fingers in it.
-    pub fn hand(&self, handedness: wxr::Handedness, origin: Mat4) -> Option<(bool, wxr::Hand)> {
+    pub fn hand(
+        &self,
+        handedness: wxr::Handedness,
+        space_from_world: Mat4,
+    ) -> Option<(bool, wxr::Hand)> {
         let hands = self.hands.as_ref()?;
         // SAFETY: the provider and both anchors are live, and the anchors are ours to fill. This is the
         // same query `hands` makes, repeated rather than cached: the anchors ARKit fills are the ones the
@@ -205,7 +209,12 @@ impl ArKit {
         };
         let tracked = unsafe { ar_trackable_anchor_t::is_tracked(as_trackable_anchor(anchor)) };
         // SAFETY: the anchor is the live one the provider just filled.
-        let hand = unsafe { read(anchor, origin * Mat4::from_cols_array(&transform.0)) };
+        let hand = unsafe {
+            read(
+                anchor,
+                space_from_world * Mat4::from_cols_array(&transform.0),
+            )
+        };
         Some((tracked, hand))
     }
 }

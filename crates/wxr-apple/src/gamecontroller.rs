@@ -155,6 +155,13 @@ impl GameControllers {
         let Some(known) = self.known.iter_mut().find(|known| known.id == id) else {
             return Err(wxr::Error::Unsupported("haptics on this source".into()));
         };
+        // The entry outlives the connection, because its id has to stay spent - but a controller that has
+        // gone away is not one there is anything left to buzz.
+        if !known.connected {
+            return Err(wxr::Error::Unsupported(
+                "haptics on a controller that is gone".into(),
+            ));
+        }
         let engine = match &mut known.engine {
             Some(engine) => &*engine,
             None => {
