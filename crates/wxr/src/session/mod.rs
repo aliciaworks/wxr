@@ -296,10 +296,14 @@ pub trait Session: Any {
 
     /// Fill in what the user is holding, in the space given.
     ///
+    /// The vector is emptied first, because it is the caller's and a frame loop keeps one: what it holds
+    /// when this returns is this frame's sources and not the session's history.
+    ///
     /// Empty by default, because a backend that has no inputs yet - a runtime with no controllers bound, a
     /// scene being watched rather than played - is a backend with nothing to report rather than one that
     /// failed.
-    fn inputs(&mut self, _space: ReferenceSpace, _out: &mut Vec<InputSource>) -> Result<(), Error> {
+    fn inputs(&mut self, _space: ReferenceSpace, out: &mut Vec<InputSource>) -> Result<(), Error> {
+        out.clear();
         Ok(())
     }
 

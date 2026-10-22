@@ -10,6 +10,9 @@ impl WebXrSession {
         space: wxr::ReferenceSpace,
         out: &mut Vec<wxr::InputSource>,
     ) -> Result<(), wxr::Error> {
+        // What is held now, not what was held last frame: the caller's vector is the one a frame loop
+        // keeps, and every other list the session fills starts with the same line.
+        out.clear();
         let Some(reference) = self
             .spaces
             .get(space.id() as usize)

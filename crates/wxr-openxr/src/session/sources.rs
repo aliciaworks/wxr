@@ -11,6 +11,9 @@ impl OpenXrSession {
         space: wxr::ReferenceSpace,
         out: &mut Vec<wxr::InputSource>,
     ) -> Result<(), wxr::Error> {
+        // Before the early return below: a session with no input extension has an empty list to report, not
+        // whatever the caller was holding when it asked.
+        out.clear();
         let Some(hands) = self.hands.as_mut() else {
             return Ok(());
         };
