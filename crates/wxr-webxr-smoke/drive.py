@@ -25,8 +25,10 @@ Four things are worth knowing about how:
   `Input` domain and dispatches a mouse press at the button. The protocol is spoken over the browser's
   `--remote-debugging-pipe`, which is NUL-terminated JSON on file descriptors 3 and 4: no WebSocket to
   hand-roll, no client library to have, and nothing listening on a port.
-* **No browser is a skip, not a failure.** A machine with no Chromium has not disproved the backend, so that
-  exits 77, which is what a skip has always been, and it can be pointed at with `WXR_BROWSER`.
+* **No browser, no wasm-bindgen, and a browser that will not start are skips rather than failures.** A
+  machine with no Chromium has not disproved the backend, neither has one with no `wasm-bindgen` to bind the
+  page with, and neither has one whose Chromium exits before it has opened anything: all exit 77, which is
+  what a skip has always been. A browser can be pointed at with `WXR_BROWSER`.
 """
 
 # The `X | None` annotations below are `type.__or__`, which Python answered only from 3.10, and `gates.sh` runs
@@ -54,6 +56,15 @@ import serve  # noqa: E402  - beside this file, and its `build` is the half this
 # The browser to look for, in the order a Linux desktop is likely to have one. `WXR_BROWSER` overrides.
 BROWSERS = ("chromium", "google-chrome", "chromium-browser", "chrome")
 
+# And the ones a Mac has, which are app bundles rather than executables on the PATH: `which` never finds a
+# cask's browser, and the two in `/Applications` are where a machine without Homebrew's `chromium` link has
+# one. Read in the same order, and only the executable inside the bundle is worth asking about.
+MACOS_BROWSERS = (
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+)
+
 # What the page says when it is waiting, which is when it is safe to press.
 WAITING = "waiting for a click to enter XR"
 DONE = "done"
@@ -70,9 +81,36 @@ def find_browser(explicit: str | None) -> str | None:
     if explicit:
         return explicit
     for name in BROWSERS:
-        if shutil.which(name):
-            return name
+        if path := shutil.which(name):
+            return path
+    for path in MACOS_BROWSERS:
+        path = os.path.expanduser(path)
+        if os.access(path, os.X_OK):
+            return path
     return None
+
+
+class Unlaunchable(RuntimeError):
+    """A browser that was there and exited before it answered for its targets.
+
+    A Chromium on the PATH is not the same as a Chromium that runs: an install can be broken, or refuse to
+    start in the environment a test runs in. That has not disproved the backend either, so it is a skip like
+    no browser at all - but it is a different sentence, and a run that says which is worth reading.
+    """
+
+
+def stop(process: subprocess.Popen) -> None:
+    """End a browser this driver started, and never one it did not.
+
+    By pid and never by name: this browser is not the only one this machine may have, and a driver that killed
+    the ones it did not start is a driver with a grudge.
+    """
+    process.terminate()
+    try:
+        process.wait(15)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(15)
 
 
 class Record(http.server.SimpleHTTPRequestHandler):
@@ -219,19 +257,36 @@ def open_page(browser: str, url: str) -> tuple[subprocess.Popen, Pipe, str]:
     pipe = Pipe(from_browser_r, to_browser_w)
 
     deadline = time.monotonic() + 60
-    while True:
-        targets = pipe.call("Target.getTargets", {}, None, deadline)
-        if targets is None:
-            raise RuntimeError("the browser never answered for its targets")
-        pages = [t for t in targets["result"]["targetInfos"] if t["type"] == "page"]
-        if pages:
-            break
-        time.sleep(0.25)
-    attached = pipe.call(
-        "Target.attachToTarget", {"targetId": pages[0]["targetId"], "flatten": True}, None, deadline
-    )
-    if attached is None or "result" not in attached:
-        raise RuntimeError("the browser refused to be attached to")
+    try:
+        while True:
+            targets = pipe.call("Target.getTargets", {}, None, deadline)
+            if targets is None:
+                if process.poll() is not None:
+                    raise Unlaunchable(
+                        f"{browser} exited with {process.returncode} before it answered for its targets"
+                    )
+                raise RuntimeError("the browser never answered for its targets")
+            pages = [t for t in targets["result"]["targetInfos"] if t["type"] == "page"]
+            # A target exists before its navigation commits, and a profile is allowed to have opened a page of
+            # its own; the URL is the one thing that says which of them this run is about. `pages[0]` would be a
+            # guess, and the run it guessed wrong about would evaluate in `about:blank`.
+            matching = [t for t in pages if t["url"] == url]
+            if matching:
+                page = matching[0]
+                break
+            if time.monotonic() > deadline:
+                shown = ", ".join(t["url"] or "about:blank" for t in pages) or "none"
+                raise RuntimeError(f"the browser never opened {url} (pages: {shown})")
+            time.sleep(0.25)
+        attached = pipe.call(
+            "Target.attachToTarget", {"targetId": page["targetId"], "flatten": True}, None, deadline
+        )
+        if attached is None or "result" not in attached:
+            raise RuntimeError("the browser refused to be attached to")
+    except BaseException:
+        # `drive` has not been handed the process yet, so it cannot be the one to end it.
+        stop(process)
+        raise
     return process, pipe, attached["result"]["sessionId"]
 
 
@@ -287,19 +342,15 @@ def drive(browser: str, url: str, seconds: float) -> int:
             print(f"smoke: no verdict after {seconds:.0f}s", flush=True)
             return 1
         return 0 if any(line == DONE for line in lines) else 1
+    except Unlaunchable as error:
+        print(f"smoke: {error}; set WXR_BROWSER", flush=True)
+        return 77  # EX_SKIP: a browser that will not start has not disproved the backend either.
     except RuntimeError as error:
         print(f"smoke: {error}", flush=True)
         return 1
     finally:
         if process is not None:
-            # By pid and never by name: this browser is not the only one this machine may have, and a driver
-            # that killed the ones it did not start is a driver with a grudge.
-            process.terminate()
-            try:
-                process.wait(15)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(15)
+            stop(process)
 
 
 def main() -> int:
@@ -315,9 +366,17 @@ def main() -> int:
         print("smoke: no Chromium to drive; set WXR_BROWSER", flush=True)
         return 77  # EX_SKIP: a machine with no browser has not failed, it has skipped.
 
+    # The wasm alone cannot be loaded by a page - `wasm-bindgen` writes the JavaScript beside it - so a
+    # machine with the target and no CLI has the same problem as one with no browser, and the same answer.
+    if not args.no_build:
+        bindgen = shutil.which("wasm-bindgen") or os.path.expanduser("~/.cargo/bin/wasm-bindgen")
+        if not os.access(bindgen, os.X_OK):
+            print("smoke: no wasm-bindgen to build the page with; set PATH or install it", flush=True)
+            return 77
+
     root = os.path.abspath(args.root)
     out = (
-        os.path.join(root, serve.TARGET, "release", "smoke")
+        os.path.join(root, "target", serve.TARGET, "release", "smoke")
         if args.no_build
         else serve.build(root)
     )
@@ -335,7 +394,11 @@ def main() -> int:
         for page in PAGES:
             Record.reset()
             print(f"smoke: --- {page}", flush=True)
-            if drive(browser, f"{origin}/{page}", args.timeout) != 0:
+            result = drive(browser, f"{origin}/{page}", args.timeout)
+            if result == 77:
+                # The browser that was there would not start, so there is no second page to try either.
+                return 77
+            if result != 0:
                 failures += 1
         return failures
     finally:

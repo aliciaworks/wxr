@@ -37,7 +37,30 @@ step "fmt"
 cargo fmt --all --check
 
 if [[ "$(uname)" == "Darwin" ]]; then
-  step "the host half - skipped: it is Ubuntu's (an empty wxr-openxr, and examples that want its crates)"
+  # The workspace-wide steps below are Ubuntu's, because `wxr-openxr` is empty on Apple and its examples
+  # want crates that only exist off it. The core, the renderer and the vocabulary are not Ubuntu's: they are
+  # a Mac's too, and a developer's loop here used to run none of them and call the rest skipped. The three
+  # `-p`s are the crates that are not empty on this host; `--workspace` would ask for the OpenXR backend and
+  # get nothing to check, which is not a failure and is not a test either.
+  step "test (host, the crates that are not empty on Apple)"
+  cargo test -p wxr -p wxr-render -p wxr-conformance
+
+  step "clippy (host, the crates that are not empty on Apple)"
+  cargo clippy -p wxr -p wxr-render -p wxr-conformance --all-targets -- -D warnings
+
+  step "doc (host, the crates that are not empty on Apple)"
+  RUSTDOCFLAGS="-D warnings" cargo doc -p wxr -p wxr-render -p wxr-conformance --no-deps
+
+  # wasm is not a host, but it is a target this machine can build: `wxr-webxr` is empty everywhere else, so
+  # a Mac with the target installed checks it the same way Ubuntu does. CI's `wasm` job is the authority;
+  # this is the loop.
+  if rustup target list --installed 2>/dev/null | grep -qx wasm32-unknown-unknown; then
+    step "clippy (wasm32)"
+    cargo clippy --workspace --all-targets --target wasm32-unknown-unknown -- -D warnings
+  else
+    step "clippy (wasm32) - skipped, target not installed"
+  fi
+
   # The one suite this host has that Ubuntu's does not: `wxr-apple` is `target_vendor = "apple"` and a Mac
   # is one, so what it tests can be linked and run here rather than only cross-checked. CI's `linked` job
   # runs the same line, with `SDKROOT` switched back from the visionOS SDK this script does not set.
@@ -94,26 +117,29 @@ else
     step "examples (wxr-openxr) - skipped, this machine has no OpenXR runtime"
   fi
 
-  # The third backend is the one that runs in a browser, so this is the only host that can run it. It needs a
-  # wasm toolchain, and it needs Chromium - and a machine with neither has not disproved anything, so the
-  # driver says 77 and this passes on. `serve.py` beside it builds the page, and `webxr-stub.js` beside that is
-  # the WebXR the page is given, because a desktop browser has WebXR and no headset behind it.
-  if rustup target list --installed 2>/dev/null | grep -qx wasm32-unknown-unknown && command -v chromium > /dev/null; then
-    step "smoke (wxr-webxr)"
-    # 77 is what the driver answers when it has nothing to drive, which is a skip and not a failure - and
-    # `set -e` would make the two indistinguishable, so the code is looked at rather than the exit alone.
-    set +e
-    PATH="$HOME/.cargo/bin:$PATH" python3 crates/wxr-webxr-smoke/drive.py
-    smoke=$?
-    set -e
-    if [[ $smoke -eq 77 ]]; then
-      step "smoke (wxr-webxr) - skipped, no browser worth driving"
-    elif [[ $smoke -ne 0 ]]; then
-      exit $smoke
-    fi
-  else
-    step "smoke (wxr-webxr) - skipped, no wasm32 target or no chromium"
+fi
+
+# The third backend is the one that runs in a browser, so this is the one check whose host is a browser
+# rather than an OS - and both hosts here can have one. It needs a wasm toolchain, `wasm-bindgen`, and a
+# Chromium, and a machine missing any of them has not disproved anything: this asks the driver rather than
+# deciding for it, and the driver answers 77 for the two it can see for itself. `serve.py` beside it builds
+# the page, and `webxr-stub.js` beside that is the WebXR the page is given, because a desktop browser has
+# WebXR and no headset behind it.
+if rustup target list --installed 2>/dev/null | grep -qx wasm32-unknown-unknown; then
+  step "smoke (wxr-webxr)"
+  # 77 is what the driver answers when it has nothing to drive, which is a skip and not a failure - and
+  # `set -e` would make the two indistinguishable, so the code is looked at rather than the exit alone.
+  set +e
+  PATH="$HOME/.cargo/bin:$PATH" python3 crates/wxr-webxr-smoke/drive.py
+  smoke=$?
+  set -e
+  if [[ $smoke -eq 77 ]]; then
+    step "smoke (wxr-webxr) - skipped, no browser or no wasm-bindgen"
+  elif [[ $smoke -ne 0 ]]; then
+    exit $smoke
   fi
+else
+  step "smoke (wxr-webxr) - skipped, no wasm32 target"
 fi
 
 if rustup target list --installed 2>/dev/null | grep -qx aarch64-apple-visionos; then
