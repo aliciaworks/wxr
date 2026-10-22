@@ -371,7 +371,10 @@ impl Import for Plain {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            // `COPY_SRC` as well as the attachment bit, so that a test that keeps this texture can read the
+            // picture back out of it - a compositor's own texture would not carry it, which is why the
+            // layer test has an importer of its own.
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         }))
     }

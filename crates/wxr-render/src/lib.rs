@@ -337,6 +337,18 @@ impl Renderer {
                 // renderer that does can say so.
                 ..Default::default()
             });
+            // Where in the layer this eye goes. It is the whole layer on the backends that give an eye an
+            // array layer of its own, which is all of them today - but the core's `View` says a viewport is a
+            // sub-rectangle, a runtime that pools two eyes into one texture gives one, and a pass that drew
+            // across the whole layer would put the second eye on top of the first.
+            pass.set_viewport(
+                view.viewport.x as f32,
+                view.viewport.y as f32,
+                view.viewport.width as f32,
+                view.viewport.height as f32,
+                0.0,
+                1.0,
+            );
             if let Some(scene) = &self.scene {
                 scene.draw(device, queue, view, occlusion.as_ref(), &mut pass);
             }
