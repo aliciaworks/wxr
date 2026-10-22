@@ -156,6 +156,7 @@ impl OpenXrSession {
             offsets: Vec::new(),
             view,
             located: Vec::new(),
+            view_space: None,
             state: wxr::State::Ready,
             visibility: wxr::Visibility::Hidden,
             openxr_state: xr::SessionState::IDLE,

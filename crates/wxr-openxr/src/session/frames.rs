@@ -39,6 +39,9 @@ impl OpenXrSession {
         out.predicted_display_time =
             Duration::from_nanos(state.predicted_display_time.as_nanos().max(0) as u64);
         out.views_mut().clear();
+        // A frame the app never asks views of must not submit the layer in the space the last frame
+        // happened to use - the views are gone, so the space is no longer true either.
+        self.view_space = None;
 
         if out.state != wxr::FrameState::Render {
             // The runtime asked for a frame it does not want drawn, and OpenXR's frame loop is still a loop:
@@ -147,7 +150,10 @@ impl OpenXrSession {
                 recommended_viewport_scale: None,
             });
         }
+        // The layer is submitted after this, and the runtime reads the poses above relative to the space
+        // they were located in - which is not always the first space the app made.
         self.located = located;
+        self.view_space = Some(space.id() as usize);
         Ok(())
     }
 }
@@ -200,8 +206,17 @@ impl OpenXrSession {
                     )
             })
             .collect();
+        // The same space the eyes were located in. The first space an app made was not necessarily the one
+        // it asked for its views in, and a projection layer whose space disagrees with its view poses is a
+        // scene at the wrong place - which is invisible until someone offsets a space and then very visible.
+        // With no views this frame there is nothing to place, and any valid space will do.
+        let space = self
+            .view_space
+            .and_then(|id| self.spaces.get(id))
+            .or_else(|| self.spaces.first())
+            .unwrap_or(&self.view);
         let layer = xr::CompositionLayerProjection::new()
-            .space(&self.spaces[0])
+            .space(space)
             .views(&views);
 
         // The app's layers, in the order they were made. Which struct one becomes is the extension it came

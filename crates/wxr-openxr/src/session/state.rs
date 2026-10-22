@@ -38,6 +38,11 @@ pub struct OpenXrSession {
     /// built from them, and they cannot be recovered from the core's view type without a round trip that
     /// would have to be exact to be honest.
     pub(super) located: Vec<xr::View>,
+    /// The space those views were located in, as its index in `spaces`, which is the space the projection
+    /// layer has to name: the runtime reads the view poses relative to it, so a layer that named any other
+    /// space would put the scene somewhere the eyes are not. An index rather than a handle because a
+    /// `Space` is not `Clone`, and the vector is append-only.
+    pub(super) view_space: Option<usize>,
     /// The lifecycle and the visibility the core speaks, derived from OpenXR's own ladder below.
     pub(super) state: wxr::State,
     pub(super) visibility: wxr::Visibility,
