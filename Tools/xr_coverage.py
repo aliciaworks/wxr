@@ -283,6 +283,11 @@ DEFAULT_IS_ENOUGH = {
     "same measurement under another name, and it has the same non-existent extension behind it",
     ("wxr-openxr", "set_depth_range"): "deliberate, and said so where it was decided: a field nothing reads "
     "is a field that lies, and this compositor cannot be told",
+    ("wxr-openxr", "meshes"): "four vendor extensions are bound and all raw - `XR_FB_triangle_mesh`, "
+    "`XR_META_spatial_entity_mesh`, `XR_BD_spatial_mesh` and `XR_ML_world_mesh_detection` - and they are "
+    "four different shapes: a triangle mesh with its own lifecycle, a component of a spatial entity, and two "
+    "whole-room scans. Picking one is picking which headsets this backend can mesh, and it has not been "
+    "picked (the same choice, said at length, in `crates/wxr-openxr/src/lib.rs`)",
     ("wxr-apple", "interaction_mode"): "only a browser is ever `ScreenSpace`",
     ("wxr-apple", "bounds"): "visionOS has no bounds geometry; the room is not a polygon the runtime drew",
     ("wxr-apple", "depth"): "`objc2-ar-kit` has no `ar_scene_depth` - the depth a drawable holds is the one "
