@@ -28,6 +28,10 @@ impl AppleSession {
         space: wxr::ReferenceSpace,
         out: &mut Vec<wxr::InputSource>,
     ) -> Result<(), wxr::Error> {
+        // What is here now, not what was here last frame: the caller's vector is the one a frame loop keeps,
+        // and the other backends empty it for the same reason. A list that grows by two hands a frame is a
+        // list that is mostly hands that have been put down.
+        out.clear();
         // Controllers are GameController's and hands are ARKit's, so this comes first and on its own: a
         // session whose ARKit never came up still has controllers, and the early return below is about one
         // framework rather than about both.

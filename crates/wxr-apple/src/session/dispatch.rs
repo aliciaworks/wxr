@@ -220,6 +220,8 @@ impl wxr::Session for AppleSession {
         space: wxr::ReferenceSpace,
         out: &mut Vec<wxr::Plane>,
     ) -> Result<(), wxr::Error> {
+        // As `inputs`: the surfaces this frame, not the ones from every frame before it.
+        out.clear();
         let Some(arkit) = &self.arkit else {
             return Ok(());
         };
@@ -243,6 +245,9 @@ impl wxr::Session for AppleSession {
         space: wxr::ReferenceSpace,
         out: &mut Vec<wxr::Mesh>,
     ) -> Result<(), wxr::Error> {
+        // And the same for the room's triangles: a mesh copied from this frame is the only one that is still
+        // where ARKit says it is.
+        out.clear();
         let Some(arkit) = &self.arkit else {
             return Ok(());
         };
