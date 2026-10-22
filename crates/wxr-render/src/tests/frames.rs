@@ -73,3 +73,55 @@ fn a_triangle_is_drawn_with_each_eye_own_projection() {
         .expect("the frame draws");
     assert_eq!(drawn, 2);
 }
+
+/// A session at the rung where it can draw, with images of a given shape.
+fn session_at(extent: wxr::Extent2d, stereo: bool) -> wxr::mock::MockSession {
+    let mut session = wxr::mock::MockBackend {
+        extent,
+        stereo,
+        ..Default::default()
+    }
+    .connect((), wxr::SessionMode::ImmersiveVr)
+    .expect("the mock connects");
+    while let Some(event) = session.poll() {
+        if matches!(
+            event,
+            wxr::Event::VisibilityChanged(wxr::Visibility::Visible)
+        ) {
+            break;
+        }
+    }
+    session
+}
+
+#[test]
+fn a_depth_buffer_follows_the_image_it_is_attached_to() {
+    let Some((_turn, device, queue)) = device() else {
+        return;
+    };
+    let mut renderer = Renderer::with_scene(
+        &device,
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+        [0.0, 0.0, 0.0, 1.0],
+        Depth::ZeroToOne,
+    );
+    let mut frame = wxr::Frame::default();
+
+    // The cache is per image and an image keeps its index while its shape changes. A browser resizing its
+    // canvas does exactly this: one image, a new extent. One layer then two is the other half of the same
+    // problem - the second eye asks for a depth layer the first buffer never had, and the pass refuses a
+    // view of it before the size is even considered. A renderer that kept the first buffer would fail both.
+    for (extent, stereo) in [
+        (wxr::Extent2d::new(64, 64), false),
+        (wxr::Extent2d::new(64, 64), true),
+        (wxr::Extent2d::new(32, 48), true),
+    ] {
+        let mut session = session_at(extent, stereo);
+        let space = session.space(wxr::SpaceKind::LocalFloor).expect("a floor");
+        session.begin(Duration::ZERO, &mut frame).expect("a frame");
+        session.views(space, &mut frame).expect("views");
+        renderer
+            .draw(&device, &queue, &mut session, &Plain, &mut frame)
+            .unwrap_or_else(|error| panic!("{extent:?}, stereo {stereo}: {error}"));
+    }
+}

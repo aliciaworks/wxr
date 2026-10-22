@@ -168,6 +168,17 @@ pub trait Draw {
     );
 }
 
+/// A private depth buffer and the shape it was made for.
+///
+/// The shape is kept because the image it has to match can change under it: a browser resizes its canvas,
+/// and a session that reports a new extent is still one image. A buffer from the old shape is not a stale
+/// picture, it is an attachment a pass is refused for.
+struct OwnDepth {
+    texture: wgpu::Texture,
+    extent: wxr::Extent2d,
+    layers: u32,
+}
+
 /// Draws a frame into whatever the session says the picture goes into.
 pub struct Renderer {
     /// The colour every eye starts as. A scene draws on top of it.
@@ -176,8 +187,8 @@ pub struct Renderer {
     /// able to do while the thing being drawn is still being written.
     scene: Option<Box<dyn Draw>>,
     /// One private depth buffer per image, made on first use - the same shape as the image it tests against,
-    /// and what a session with no depth of its own gets.
-    depth_textures: Vec<Option<wgpu::Texture>>,
+    /// and what a session with no depth of its own gets. Remade when that image changes shape.
+    depth_textures: Vec<Option<OwnDepth>>,
     /// The session's depth for the view being drawn, kept only as long as the view is: a compositor's depth
     /// belongs to the frame it came with, like its colour does.
     session_depth: Option<wgpu::Texture>,
@@ -258,7 +269,8 @@ impl Renderer {
             return Ok(0);
         }
         let meta = session.images();
-        self.depth_textures.resize(session.image_count(), None);
+        self.depth_textures
+            .resize_with(session.image_count(), || None);
         let clear_depth = depth_state(self.depth).clear;
 
         let mut drawn = 0;
@@ -430,21 +442,27 @@ impl Renderer {
         self.private_depth(device, meta, index)
     }
 
-    /// The renderer's own depth buffer for an image, made once: the same extent and the same layers as the
-    /// colour image, so that a view's array layer means the same thing in both.
+    /// The renderer's own depth buffer for an image, made once per shape: the same extent and the same layers
+    /// as the colour image, so that a view's array layer means the same thing in both.
     fn private_depth(
         &mut self,
         device: &wgpu::Device,
         meta: wxr::ImageMeta,
         index: usize,
     ) -> Option<&wgpu::Texture> {
-        if self.depth_textures.get(index).is_none_or(Option::is_none) {
+        let layers = meta.layers.max(1);
+        let same_shape = self
+            .depth_textures
+            .get(index)
+            .and_then(Option::as_ref)
+            .is_some_and(|own| own.extent == meta.extent && own.layers == layers);
+        if !same_shape {
             let texture = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("wxr depth"),
                 size: wgpu::Extent3d {
                     width: meta.extent.width,
                     height: meta.extent.height,
-                    depth_or_array_layers: meta.layers.max(1),
+                    depth_or_array_layers: layers,
                 },
                 mip_level_count: 1,
                 sample_count: 1,
@@ -453,9 +471,13 @@ impl Renderer {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 view_formats: &[],
             });
-            *self.depth_textures.get_mut(index)? = Some(texture);
+            *self.depth_textures.get_mut(index)? = Some(OwnDepth {
+                texture,
+                extent: meta.extent,
+                layers,
+            });
         }
-        self.depth_textures[index].as_ref()
+        self.depth_textures[index].as_ref().map(|own| &own.texture)
     }
 }
 
