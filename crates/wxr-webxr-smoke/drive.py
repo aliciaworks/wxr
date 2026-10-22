@@ -79,7 +79,9 @@ PAGES = ("stub.html", "stub.html?gpu")
 def find_browser(explicit: str | None) -> str | None:
     """The browser to drive, or `None` if this machine has none worth driving."""
     if explicit:
-        return explicit
+        # `WXR_BROWSER` is allowed to be a name as well as a path, like the ones looked for below, and a
+        # name or path that is not executable is not a browser - `main` says which of the two happened.
+        return shutil.which(explicit)
     for name in BROWSERS:
         if path := shutil.which(name):
             return path
@@ -345,6 +347,11 @@ def drive(browser: str, url: str, seconds: float) -> int:
     except Unlaunchable as error:
         print(f"smoke: {error}; set WXR_BROWSER", flush=True)
         return 77  # EX_SKIP: a browser that will not start has not disproved the backend either.
+    except OSError as error:
+        # A path that exists and will not execute is not the machine having no browser: it is the browser
+        # failing, and a traceback here would bury the sentence that says so.
+        print(f"smoke: could not launch {browser}: {error}", flush=True)
+        return 1
     except RuntimeError as error:
         print(f"smoke: {error}", flush=True)
         return 1
@@ -363,6 +370,14 @@ def main() -> int:
 
     browser = find_browser(args.browser)
     if browser is None:
+        if args.browser:
+            # A name that was asked for and is not there is a typo or a half-installed browser, and the
+            # person who set it wants to know, not to be told the machine has no browser.
+            print(
+                f"smoke: WXR_BROWSER is {args.browser}, which is not an executable browser",
+                flush=True,
+            )
+            return 1
         print("smoke: no Chromium to drive; set WXR_BROWSER", flush=True)
         return 77  # EX_SKIP: a machine with no browser has not failed, it has skipped.
 
