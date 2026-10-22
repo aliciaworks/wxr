@@ -84,15 +84,71 @@ impl OpenXrSession {
             return Ok(());
         };
 
-        // Centred on the space's origin, and walked anticlockwise seen from above so that the winding matches
-        // the outline WebXR hands over for the same room.
-        let half = (bounds.width * 0.5, bounds.height * 0.5);
-        out.extend([
-            wxr::glam::Vec2::new(-half.0, -half.1),
-            wxr::glam::Vec2::new(half.0, -half.1),
-            wxr::glam::Vec2::new(half.0, half.1),
-            wxr::glam::Vec2::new(-half.0, half.1),
-        ]);
+        // The runtime's rectangle is in `STAGE`, which is the base kind an offset space is made from. The
+        // core asks for the boundary in the space it was handed, so the corners are taken back through the
+        // pose that made that space - otherwise an app that offset its floor would get the room's rectangle
+        // drawn as if the offset had never happened.
+        let inside = self
+            .offsets
+            .get(space.id() as usize)
+            .copied()
+            .unwrap_or_default();
+        out.extend(corners(inside, bounds.width, bounds.height));
         Ok(())
+    }
+}
+
+/// The four corners of a `width` by `height` rectangle, in `space`.
+///
+/// The runtime says `STAGE`'s boundary by its size, centred on `STAGE`'s origin; `space` is an offset of
+/// that origin, so a corner is `space` taken back to `STAGE` before it is read. Walked anticlockwise seen
+/// from above, which is the winding WebXR hands over for the same room.
+fn corners(space: wxr::Pose, width: f32, height: f32) -> [wxr::glam::Vec2; 4] {
+    let back = space.transform().inverse();
+    let half = (width * 0.5, height * 0.5);
+    [
+        (-half.0, -half.1),
+        (half.0, -half.1),
+        (half.0, half.1),
+        (-half.0, half.1),
+    ]
+    .map(|(x, z)| {
+        let point = back.transform_point3(wxr::glam::Vec3::new(x, 0.0, z));
+        wxr::glam::Vec2::new(point.x, point.z)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wxr::glam::{Quat, Vec2, Vec3};
+
+    #[test]
+    fn a_plain_floor_keeps_the_runtime_corners() {
+        // The common case is the base space itself, and then there is nothing to undo: a four by two room
+        // is its four corners and no arithmetic worth getting wrong.
+        let got = corners(wxr::Pose::IDENTITY, 4.0, 2.0);
+        assert_eq!(
+            got,
+            [
+                Vec2::new(-2.0, -1.0),
+                Vec2::new(2.0, -1.0),
+                Vec2::new(2.0, 1.0),
+                Vec2::new(-2.0, 1.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_offset_floor_moves_the_boundary_with_it() {
+        // A space a metre along `x` is where the wearer put it; the room has not moved, so the room's
+        // corner a metre behind that origin is at -2 and not at -1.
+        let space = wxr::Pose {
+            position: Vec3::new(1.0, 0.0, 0.0),
+            orientation: Quat::IDENTITY,
+        };
+        let got = corners(space, 2.0, 2.0);
+        assert!(got[0].abs_diff_eq(Vec2::new(-2.0, -1.0), 1e-6));
+        assert!(got[1].abs_diff_eq(Vec2::new(0.0, -1.0), 1e-6));
     }
 }
