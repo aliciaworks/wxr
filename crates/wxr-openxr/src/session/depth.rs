@@ -241,9 +241,10 @@ impl EnvironmentDepth {
         let acquire_info = openxr_sys::EnvironmentDepthImageAcquireInfoMETA {
             ty: openxr_sys::StructureType::ENVIRONMENT_DEPTH_IMAGE_ACQUIRE_INFO_META,
             next: std::ptr::null(),
-            // The reference frame the returned poses come back in: the first space the app made, which is
-            // the one the projection layer is drawn in. The core has no slot for a depth query's space, so
-            // this is the backend's own choice and it is the one that matches what the frame shows.
+            // The reference frame the returned poses come back in: the space the frame's views were
+            // located in, which is the caller's to choose. The first space the app made was never
+            // necessarily that. The core has no slot for a depth query's space, so what matches the
+            // frame's picture is the answer.
             space: base_space,
             display_time: time,
         };
@@ -373,9 +374,14 @@ impl OpenXrSession {
             if !depth.start() {
                 return None;
             }
-            // The space the projection layer is drawn in, which is the first one the app made. Taken as the
-            // raw handle because the depth provider and this backend's list of spaces are separate things.
-            let base = self.spaces.first()?.as_raw();
+            // The space the projection layer is drawn in, which is the one the views were located in - the
+            // first one the app made was never necessarily that. Taken as the raw handle because the depth
+            // provider and this backend's list of spaces are separate things.
+            let base = self
+                .view_space
+                .and_then(|id| self.spaces.get(id))
+                .or_else(|| self.spaces.first())?
+                .as_raw();
             self.measured = depth.acquire(base, self.predicted);
         }
         let measured = self.measured.as_ref()?;
