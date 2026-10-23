@@ -79,14 +79,15 @@ pub(crate) fn pose(pose: xr::Posef) -> wxr::Pose {
 
 /// An OpenXR field of view in the core's terms.
 ///
-/// OpenXR gives the four directions as angles from the centre, with up and right positive; the core keeps
-/// them as the four openings, which is what a projection is built from.
+/// OpenXR gives the four directions as signed angles from the centre: for a symmetric field `angleRight`
+/// and `angleUp` are positive, and `angleLeft` and `angleDown` are their negatives. The core keeps the four
+/// openings as positive magnitudes, which is what a projection is built from.
 pub(crate) fn field_of_view(fov: xr::Fovf) -> wxr::FieldOfView {
     wxr::FieldOfView {
         up: fov.angle_up,
         down: -fov.angle_down,
-        left: fov.angle_left,
-        right: -fov.angle_right,
+        left: -fov.angle_left,
+        right: fov.angle_right,
     }
 }
 
@@ -124,6 +125,23 @@ mod tests {
 
     /// How far off a direction is allowed to be, which is one part in a million and no more.
     const SLACK: f32 = 1e-6;
+
+    /// OpenXR's left and down are negative; the core's are the magnitudes of the openings. Getting one of
+    /// the pair backwards gives a projection whose width is a difference rather than a sum - and a symmetric
+    /// field, where the two tangents cancel, no projection at all.
+    #[test]
+    fn an_openxr_field_of_view_is_four_positive_openings() {
+        let core = field_of_view(xr::Fovf {
+            angle_left: -0.6,
+            angle_right: 0.4,
+            angle_up: 0.3,
+            angle_down: -0.2,
+        });
+        assert!((core.left - 0.6).abs() < SLACK);
+        assert!((core.right - 0.4).abs() < SLACK);
+        assert!((core.up - 0.3).abs() < SLACK);
+        assert!((core.down - 0.2).abs() < SLACK);
+    }
 
     /// A floor OpenXR found has its normal on +Z, and the core asks for it on +Y.
     ///
