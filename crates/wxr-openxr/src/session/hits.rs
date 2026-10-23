@@ -302,6 +302,15 @@ impl OpenXrSession {
         let Ok(location) = aim.locate(base, self.predicted) else {
             return Ok(());
         };
+        // A ray is an origin and a direction, and each half has its own bit. A source the runtime has not
+        // actively tracked in both is a source whose ray would be cast from the last place it was seen, or
+        // from the identity - and either is a hit at a place the user is no longer pointing.
+        let flags = location.location_flags;
+        if !flags.contains(xr::SpaceLocationFlags::POSITION_TRACKED)
+            || !flags.contains(xr::SpaceLocationFlags::ORIENTATION_TRACKED)
+        {
+            return Ok(());
+        }
         // The ray is out of the source space's own `-Z`, which is the aim every space in OpenXR has and the
         // ray the core says it asks for. The pose is in `base`, which is what the hit has to come back in
         // too - so the ray is built in `base` rather than cast in one frame and moved into another.

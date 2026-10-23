@@ -424,9 +424,13 @@ impl Hands {
             // OpenXR's list is WebXR's with a palm in front of it, so every joint is one further along -
             // and the palm is dropped, because a palm is not a joint of anything.
             let location = &joints[joint.index() + 1];
-            if location
-                .location_flags
-                .contains(xr::SpaceLocationFlags::POSITION_TRACKED)
+            // A joint is a place and a direction as much as a controller is, and the runtime marks the two
+            // halves separately. Writing one from a joint whose other half is not tracked would make a `Joint`
+            // that says more than the runtime did - so it is the pair or nothing, exactly as `read` treats a
+            // hand's grip and aim.
+            let flags = location.location_flags;
+            if flags.contains(xr::SpaceLocationFlags::POSITION_TRACKED)
+                && flags.contains(xr::SpaceLocationFlags::ORIENTATION_TRACKED)
             {
                 out.joints_mut()[slot] = Some(wxr::Joint {
                     pose: crate::pose(location.pose),
