@@ -114,6 +114,12 @@ impl OpenXrSession {
         let Some(reference) = self.spaces.get(space.id() as usize) else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
+        // `FATAL` is terminal - the spec says the detector must not be used again - and a pass that ended in
+        // it can leave `running` true or hand back `ERROR` later. Both would otherwise begin a second pass
+        // on a detector the runtime has already given up on.
+        if detector.fatal {
+            return Ok(());
+        }
         let time = self.predicted;
 
         if !detector.running {
