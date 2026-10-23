@@ -237,6 +237,9 @@ impl Session for MockSession {
     }
 
     fn inputs(&mut self, _space: ReferenceSpace, out: &mut Vec<InputSource>) -> Result<(), Error> {
+        // The caller's vector is the frame loop's, so it holds the last frame's sources until this says
+        // otherwise - and two sources a frame is a list that is mostly the past.
+        out.clear();
         // Two controllers, because a mock's job is to be *a* session rather than a plausible one - and because
         // two is what makes an id worth having: an event has to be able to say which.
         for (id, handedness, x) in [

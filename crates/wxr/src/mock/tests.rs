@@ -71,6 +71,19 @@ fn the_escape_hatch_hands_back_the_backends_own_type() {
 }
 
 #[test]
+fn inputs_replace_the_last_frame_rather_than_pile_up() {
+    // The vector is the caller's, and a frame loop keeps one across frames - so what `inputs` leaves in it is
+    // this frame's sources and not this frame's plus every frame before it.
+    let mut session = running();
+    let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+    let mut sources = Vec::new();
+    session.inputs(space, &mut sources).unwrap();
+    let first = sources.clone();
+    session.inputs(space, &mut sources).unwrap();
+    assert_eq!(sources, first, "the second frame's two, not four");
+}
+
+#[test]
 fn a_press_is_a_start_an_end_and_a_selection() {
     let mut session = running();
     let space = session.space(SpaceKind::LocalFloor).expect("a floor");
