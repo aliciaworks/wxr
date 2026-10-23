@@ -113,7 +113,7 @@ impl OpenXrSession {
         let Some(reference) = self.spaces.get(space.id() as usize) else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
-        let (_, located) = self
+        let (state, located) = self
             .session
             .locate_views(
                 xr::ViewConfigurationType::PRIMARY_STEREO,
@@ -121,6 +121,16 @@ impl OpenXrSession {
                 reference,
             )
             .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+        // A view is a place and a direction, and `xrLocateViews` reports the two halves' validity
+        // separately. The Rust binding zeroes an invalid half, so reading a view anyway would put an eye at
+        // the origin with an identity orientation rather than leaving the frame without one. Both valid is a
+        // full pose; anything less is a frame the runtime cannot say where the eyes are, which is a frame
+        // with no views - and `end` then submits no projection layer rather than one at a made-up pose.
+        if !state.contains(xr::ViewStateFlags::POSITION_VALID)
+            || !state.contains(xr::ViewStateFlags::ORIENTATION_VALID)
+        {
+            return Ok(());
+        }
         if located.len() != 2 {
             return Err(wxr::Error::Present(
                 "the runtime located an odd number of views".into(),
@@ -128,8 +138,11 @@ impl OpenXrSession {
         }
 
         // The head, in the same space the views are in - the eyes are placed around it, and a scene that wants
-        // the camera on the wearer rather than on an eye asks for it.
-        if let Ok(location) = self.view.locate(reference, self.predicted) {
+        // the camera on the wearer rather than on an eye asks for it. It is checked the same way: a runtime
+        // that will not stand behind the head's pose leaves the frame's viewer at its reset identity.
+        if let Ok(location) = self.view.locate(reference, self.predicted)
+            && is_located(location.location_flags)
+        {
             out.viewer = pose(location.pose);
         }
 
