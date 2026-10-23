@@ -6,6 +6,17 @@ use super::*;
 
 impl WebXrSession {
     pub(super) fn poll_impl(&mut self) -> Option<wxr::Event> {
+        // An ended session stays ended. `Lost` is the last thing it says - the session object may still be
+        // sitting in `inner` for the browser to finish tearing down, and reading it as a live session on the
+        // next poll would put the lifecycle back on `Ready` after it had already said it was gone.
+        if self.state == wxr::State::Ended {
+            if !self.lost {
+                self.lost = true;
+                return Some(wxr::Event::Lost);
+            }
+            return None;
+        }
+
         // Taken out of the slot as it is read: a session that has arrived moves into the session, and a poll
         // that left it there would find it again every time - and ask the browser for another animation frame
         // every time with it, one closure per tick, none of them ever dropped.
@@ -14,6 +25,9 @@ impl WebXrSession {
             Connect::Failed(message) => {
                 log::error!("wxr-webxr: the session was refused: {message}");
                 self.state = wxr::State::Ended;
+                // Lost is not left for the next poll here: there is no session to tear down and nothing
+                // between this refusal and the end.
+                self.lost = true;
                 return Some(wxr::Event::Lost);
             }
             Connect::Pending => None,
@@ -42,16 +56,12 @@ impl WebXrSession {
             self.request_frame();
         }
 
-        // Before the visibility, because a session that has ended has no visibility worth reading.
+        // Before the visibility, because a session that has ended has no visibility worth reading. The
+        // `Lost` that follows is the guard at the top of the next poll: a session says it ended, and then
+        // says it is gone, in that order and only once.
         if self.ended.get() {
-            if self.state != wxr::State::Ended {
-                self.state = wxr::State::Ended;
-                return Some(wxr::Event::StateChanged(wxr::State::Ended));
-            }
-            if !self.lost {
-                self.lost = true;
-                return Some(wxr::Event::Lost);
-            }
+            self.state = wxr::State::Ended;
+            return Some(wxr::Event::StateChanged(wxr::State::Ended));
         }
 
         // A press the browser has already delivered is news before any tally of what is showing: it happened,
