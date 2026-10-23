@@ -99,6 +99,9 @@ def main() -> int:
     out = os.path.join(os.path.abspath(args.root), "target", TARGET, "release", "smoke")
     if not args.no_build:
         out = build(os.path.abspath(args.root))
+    elif not os.path.isfile(os.path.join(out, "index.html")):
+        print(f"wxr-webxr smoke: no built page in {out}; run once without --no-build", flush=True)
+        return 1
 
     class Handler(http.server.SimpleHTTPRequestHandler):
         # `instantiateStreaming` refuses a body that is not `application/wasm`.

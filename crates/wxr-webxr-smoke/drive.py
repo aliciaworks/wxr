@@ -395,6 +395,11 @@ def main() -> int:
         if args.no_build
         else serve.build(root)
     )
+    # `--no-build` says the page is already there, and a page that is not there is every request a 404 and
+    # every run a timeout - which reads as a browser that opened nothing rather than a build that was skipped.
+    if args.no_build and not os.path.isfile(os.path.join(out, "stub.html")):
+        print(f"smoke: no built page in {out}; run once without --no-build", flush=True)
+        return 1
 
     # Bound before the browser is started and served after it, so that the fork above happens while this
     # thread is the only one there is.
