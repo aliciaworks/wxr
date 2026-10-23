@@ -221,7 +221,12 @@ impl wxr::Session for OpenXrSession {
                 meta: wxr::ImageMeta {
                     format: self.color,
                     extent: slot.extent,
-                    layers: 1,
+                    // A cube's swapchain is six faces, one per array layer. Every other shape is one picture.
+                    layers: if matches!(slot.shape, wxr::LayerShape::Cube) {
+                        6
+                    } else {
+                        1
+                    },
                 },
                 viewport: wxr::Viewport {
                     x: 0,

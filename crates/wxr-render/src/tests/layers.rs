@@ -226,3 +226,46 @@ fn an_image_nothing_can_wrap_is_a_layer_that_was_not_drawn() {
         "and the callback is not given a pass that has nothing to draw into",
     );
 }
+
+/// A cube is six pictures in one image, and one pass cannot draw them.
+///
+/// The texture is valid and the importer would wrap it, but a default view of six array layers is not a
+/// two-dimensional colour attachment - so the layer is refused before the importer is asked for anything.
+/// What would otherwise happen is a validation error, or a cube with one drawn face and five the compositor
+/// had to make up.
+#[test]
+fn a_layered_image_is_not_one_picture() {
+    let Some((_turn, device, queue)) = device() else {
+        return;
+    };
+
+    let meta = ImageMeta {
+        format: wxr::ColorFormat::Rgba8Unorm,
+        extent: wxr::Extent2d {
+            width: 8,
+            height: 8,
+        },
+        layers: 6,
+    };
+    let layer = wxr::LayerImage {
+        meta,
+        viewport: wxr::Viewport {
+            x: 0,
+            y: 0,
+            width: meta.extent.width,
+            height: meta.extent.height,
+        },
+    };
+
+    let mut renderer = Renderer::new([1.0, 0.0, 0.0, 1.0]);
+    let keeping = Keeping::default();
+    let ran = std::cell::Cell::new(false);
+    let drawn = renderer.draw_layer(&device, &queue, &keeping, &0, layer, |_| ran.set(true));
+
+    assert!(!drawn, "six faces are six pictures, not one");
+    assert!(!ran.get(), "there is no one pass to draw a cube in");
+    assert!(
+        keeping.last.borrow().is_none(),
+        "the image is refused before it is wrapped",
+    );
+}
