@@ -30,9 +30,16 @@ impl WebXrSession {
         // this session between frames, and a question about the frame asked then has no frame to answer for.
         self.current = None;
         // Last frame's views are not this frame's, and a depth buffer is about *that* frame's eyes. The same
-        // is true of a layer's picture: it is the compositor's for one frame and taken back at the end of it.
+        // is true of the picture and of a layer's picture: they are the compositor's for one frame and taken
+        // back at the end of it, so none of them is an answer before `views` fills this frame's in.
         self.frame_views.clear();
         self.layer_images.clear();
+        self.image = None;
+        self.meta = wxr::ImageMeta {
+            format: wxr::ColorFormat::Unknown,
+            ..Default::default()
+        };
+        self.depth_image = None;
 
         // The frame is whatever the last callback left behind, and the clock is the callback's own: WebXR
         // has no other.
