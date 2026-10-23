@@ -295,18 +295,15 @@ impl OpenXrSession {
                             .sub_image(sub_image()),
                     ),
                     // A cube has no sub-image: the whole swapchain is the six faces, and which way it is
-                    // turned is the only thing left to say.
+                    // turned is the only thing left to say. A translation is in `placed`, which is a space at
+                    // that point in the layer's own space; the orientation stays here because it does not
+                    // need a space of its own.
                     wxr::LayerShape::Cube => Built::Cube(
                         xr::CompositionLayerCubeKHR::new()
                             .layer_flags(flags)
-                            .space(space)
+                            .space(layer.placed.as_ref().unwrap_or(space))
                             .eye_visibility(xr::EyeVisibility::BOTH)
-                            .orientation(xr::Quaternionf {
-                                x: 0.0,
-                                y: 0.0,
-                                z: 0.0,
-                                w: 1.0,
-                            })
+                            .orientation(layer.pose.orientation)
                             .swapchain(&layer.swapchain)
                             .image_array_index(0),
                     ),

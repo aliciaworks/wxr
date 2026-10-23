@@ -192,7 +192,10 @@ impl wxr::Session for OpenXrSession {
             swapchain,
             images,
             space: space.id() as usize,
+            space_kind: space.kind,
             pose: xr::Posef::IDENTITY,
+            placed: None,
+            placed_at: None,
             shape,
             extent: pixels,
             held: None,
@@ -239,7 +242,32 @@ impl wxr::Session for OpenXrSession {
             return Err(wxr::Error::Unsupported("no such layer".into()));
         };
         // Kept rather than applied: a composition layer's pose is read at `xrEndFrame`, so placing one is not a
-        // call into the runtime - it is where the next frame will say it is.
+        // call into the runtime - it is where the next frame will say it is. A cube is the exception: its
+        // composition struct has an orientation and no position, so a translated cube is placed by making a
+        // reference space at that translation and handing the cube that space instead.
+        if matches!(slot.shape, wxr::LayerShape::Cube) && pose.position != wxr::glam::Vec3::ZERO {
+            if slot.placed.is_none() || slot.placed_at != Some(pose.position) {
+                let Some(offset) = self.offsets.get(slot.space).copied() else {
+                    return Err(wxr::Error::NoSpace(slot.space_kind));
+                };
+                let at = wxr::Pose {
+                    position: pose.position,
+                    orientation: wxr::glam::Quat::IDENTITY,
+                };
+                let space = self
+                    .session
+                    .create_reference_space(
+                        reference_space(slot.space_kind),
+                        posef(offset.then(at)),
+                    )
+                    .map_err(|error| Error::runtime("place a cube layer", error))?;
+                slot.placed = Some(space);
+                slot.placed_at = Some(pose.position);
+            }
+        } else {
+            slot.placed = None;
+            slot.placed_at = None;
+        }
         slot.pose = posef(pose);
         Ok(())
     }

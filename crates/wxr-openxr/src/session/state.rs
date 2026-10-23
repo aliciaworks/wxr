@@ -121,10 +121,18 @@ pub(super) struct Layer {
     /// Its images, as the runtime names them - a `VkImage`, which on this platform is an integer - for the
     /// renderer to wrap, the same shape the eyes' images arrive in.
     pub(super) images: Vec<u64>,
-    /// The space it was made in, by the session's own index, and where in it. Both are needed at submission,
-    /// because a layer's pose is read then and not when it is placed.
+    /// The space it was made in, by the session's own index, and what kind of space that was. A cube has no
+    /// pose in its composition struct, so placing one off the origin means making a space of the same kind at
+    /// that point, which needs the kind.
     pub(super) space: usize,
+    pub(super) space_kind: wxr::SpaceKind,
+    /// The pose within that space: where it is, and for a cube, which way its six faces are turned.
     pub(super) pose: xr::Posef,
+    /// For a cube, the reference space at its translation. The cube struct carries an orientation and no
+    /// position, so the position is the space's origin instead. `None` means the layer's own space.
+    pub(super) placed: Option<xr::Space>,
+    /// The position [`Self::placed`] was made for. A frame that only turns a cube keeps the same space.
+    pub(super) placed_at: Option<wxr::glam::Vec3>,
     /// The shape, which is what `xrEndFrame` is told about it - and the reason a layer is not just a size:
     /// `XR_KHR_composition_layer_*` is one extension per shape and each has its own struct.
     pub(super) shape: wxr::LayerShape,
