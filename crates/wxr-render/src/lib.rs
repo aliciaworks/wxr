@@ -300,8 +300,9 @@ impl Renderer {
             let Some(depth) = self.depth_for(device, importer, meta, view.image, image) else {
                 continue;
             };
+            // A one-layer measurement is the view's own; a layered one is indexed by the view.
             let depth_layer = depth.create_view(&wgpu::TextureViewDescriptor {
-                base_array_layer: view.layer,
+                base_array_layer: view.layer.min(depth.size().depth_or_array_layers - 1),
                 array_layer_count: Some(1),
                 ..Default::default()
             });
