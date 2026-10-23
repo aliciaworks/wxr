@@ -172,7 +172,7 @@ impl Session for MockSession {
                 Visibility::Visible | Visibility::VisibleBlurred => FrameState::Render,
             },
         };
-        out.views_mut().clear();
+        out.reset();
         Ok(())
     }
 

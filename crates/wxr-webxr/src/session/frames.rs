@@ -24,7 +24,7 @@ impl WebXrSession {
         _now: Duration,
         out: &mut wxr::Frame,
     ) -> Result<(), wxr::Error> {
-        out.views_mut().clear();
+        out.reset();
         self.located = 0;
         // Last frame's views are not this frame's, and neither is last frame's *frame*: a `Wait` below leaves
         // this session between frames, and a question about the frame asked then has no frame to answer for.
@@ -45,7 +45,6 @@ impl WebXrSession {
         self.current = Some(frame);
         out.predicted_display_time = time;
         out.state = wxr::FrameState::Render;
-        out.views_mut().clear();
         Ok(())
     }
 }

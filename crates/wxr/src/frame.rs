@@ -134,6 +134,17 @@ impl Frame {
         &mut self.views
     }
 
+    /// Forget the last frame: its eyes, and where its head was.
+    ///
+    /// A frame is the caller's and is reused, so a runtime that begins a new one has to say that the old
+    /// one's views are gone. `viewer` is part of the same fact - it is filled by `views`, and a frame
+    /// whose views have not been asked for yet is a frame with no head either; reading last frame's
+    /// would stand a scene at last frame's eye height for a frame that never located one.
+    pub fn reset(&mut self) {
+        self.viewer = Pose::IDENTITY;
+        self.views.clear();
+    }
+
     /// Whether the caller has anything to draw.
     pub fn is_render(&self) -> bool {
         self.state == FrameState::Render
@@ -169,5 +180,31 @@ mod tests {
         let frame = Frame::default();
         assert!(!frame.is_render());
         assert!(frame.views().is_empty());
+    }
+
+    #[test]
+    fn forgetting_a_frame_forgets_its_eyes_and_its_head() {
+        let mut frame = Frame {
+            viewer: Pose {
+                position: crate::glam::Vec3::Y,
+                orientation: crate::glam::Quat::IDENTITY,
+            },
+            ..Default::default()
+        };
+        frame.views_mut().push(View {
+            eye: Eye::Mono,
+            pose: Pose::IDENTITY,
+            fov: FieldOfView::symmetric(1.0, 1.0),
+            viewport: Viewport::default(),
+            image: 0,
+            layer: 0,
+            recommended_viewport_scale: None,
+        });
+        frame.reset();
+        assert!(
+            frame.views().is_empty(),
+            "the old eyes are not this frame's"
+        );
+        assert_eq!(frame.viewer, Pose::IDENTITY, "and neither is the old head");
     }
 }

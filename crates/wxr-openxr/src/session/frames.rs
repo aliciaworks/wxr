@@ -12,12 +12,13 @@ impl OpenXrSession {
         _now: Duration,
         out: &mut wxr::Frame,
     ) -> Result<(), wxr::Error> {
+        // Last frame's eyes and last frame's head are not this frame's, on every path out of here.
+        out.reset();
         // A runtime is not asked to wait for a frame until the session has been begun. `xrWaitFrame` before
         // `xrBeginSession` is an error at best, and the event that says to begin arrives on the same poll the
         // caller is not making while it waits - so waiting on it is a deadlock rather than a frame. A session
         // that has not begun is a frame to wait for.
         if !self.begun {
-            out.views_mut().clear();
             out.state = wxr::FrameState::Wait;
             return Ok(());
         }
@@ -38,7 +39,6 @@ impl OpenXrSession {
         };
         out.predicted_display_time =
             Duration::from_nanos(state.predicted_display_time.as_nanos().max(0) as u64);
-        out.views_mut().clear();
         // A frame the app never asks views of must not submit the views the last frame located, nor a
         // projection layer in the space that frame used: both are about an image that is already gone.
         self.located.clear();

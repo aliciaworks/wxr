@@ -21,7 +21,7 @@ impl AppleSession {
         out: &mut wxr::Frame,
     ) -> Result<(), wxr::Error> {
         self.release();
-        out.views_mut().clear();
+        out.reset();
         out.state = wxr::FrameState::Wait;
 
         // The layer has a frame when it has one, and `nil` when it does not: paused, invalidated, or a frame
