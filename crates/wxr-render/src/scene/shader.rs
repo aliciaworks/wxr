@@ -5,8 +5,10 @@
 /// file of its own only because this project counts lines, and this is a block of them that belongs together
 /// and belongs to nothing else here.
 ///
-/// `textureLoad` rather than `textureSample`: the depth a runtime hands over is `r32float` or `r16uint`, and
-/// neither is a filterable format - so the texel is found by hand, which is honest about what the buffer is.
+/// `textureLoad` rather than `textureSample`: the depth a runtime hands over is `r32float` or a depth format
+/// such as `depth16unorm`, and neither is filterable - so the texel is found by hand, which is honest about
+/// what the buffer is. The two sample types cannot share one binding, so both are bound and a uniform says
+/// which one this frame's room is in; the other binding is a one-texel stand-in that is never read.
 pub(super) const SHADER: &str = r#"
 struct Camera {
     view_projection: mat4x4<f32>,
@@ -24,7 +26,8 @@ struct Occlusion {
     linear_scale: f32,
     near_z: f32,
     far_z: f32,
-    _spare: u32,
+    /// 1 when the room is in `real_depth_typed`, 0 when it is in `real_depth`.
+    depth_is_depth: u32,
     _pad: vec2<u32>,
 };
 
@@ -40,6 +43,7 @@ struct Vertex {
 @group(0) @binding(0) var<uniform> camera: Camera;
 @group(0) @binding(1) var real_depth: texture_2d<f32>;
 @group(0) @binding(2) var<uniform> occlusion: Occlusion;
+@group(0) @binding(3) var real_depth_typed: texture_depth_2d;
 
 /// How far away the room is at a texel, in metres - or `0.0` when nothing says.
 ///
@@ -84,9 +88,20 @@ fn vertex(@location(0) position: vec3<f32>, @location(1) colour: vec3<f32>) -> V
 fn fragment(in: Vertex) -> @location(0) vec4<f32> {
     if (occlusion.enabled == 1u) {
         let view = (occlusion.norm_depth_from_view * vec4(in.view, 0.0, 1.0)).xy;
-        let size = vec2<f32>(textureDimensions(real_depth));
+        // Both textures are bound, and the one that is the room is the one whose size the transform was
+        // given; the other is a one-texel stand-in and is never read below.
+        let size = select(
+            vec2<f32>(textureDimensions(real_depth)),
+            vec2<f32>(textureDimensions(real_depth_typed)),
+            occlusion.depth_is_depth == 1u,
+        );
         let texel = vec2<i32>(clamp(view * size, vec2<f32>(0.0), size - vec2<f32>(1.0)));
-        let real = metres(textureLoad(real_depth, texel, 0).r);
+        var real = 0.0;
+        if (occlusion.depth_is_depth == 1u) {
+            real = metres(textureLoad(real_depth_typed, texel, 0));
+        } else {
+            real = metres(textureLoad(real_depth, texel, 0).r);
+        }
         // A fragment farther away than what the room actually is in that direction is behind the room. A
         // buffer that says nothing says nothing rather than hiding the whole scene behind the eye - which is
         // `metres`'s `0.0`, and the reason `0.0` is what it returns for an encoding it does not know.

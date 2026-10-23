@@ -104,7 +104,8 @@ struct OcclusionUniform {
     linear_scale: f32,
     near_z: f32,
     far_z: f32,
-    _spare: u32,
+    /// 1 when [`Scene`]'s typed depth binding holds the room, 0 when its float binding does.
+    depth_is_depth: u32,
     _pad: [u32; 2],
 }
 
@@ -122,7 +123,7 @@ impl OcclusionUniform {
             linear_scale: 1.0,
             near_z: 0.0,
             far_z: 0.0,
-            _spare: 0,
+            depth_is_depth: 0,
             _pad: [0; 2],
         }
     }
@@ -135,9 +136,11 @@ pub struct Scene {
     camera: wgpu::Buffer,
     /// What the room's depth means, written per view.
     occlusion: wgpu::Buffer,
-    /// A one-texel depth buffer to bind when a session measured nothing: a bind group needs a texture, and a
-    /// shader with nothing to test against is told so by `enabled`.
+    /// A one-texel float buffer to bind when a session measured nothing, or measured into a depth format:
+    /// a bind group needs both textures, and a shader with nothing to test against is told so by `enabled`.
     no_depth: wgpu::Texture,
+    /// The same stand-in for the typed binding, which is the one OpenXR's `D16_UNORM` room arrives on.
+    no_depth_typed: wgpu::Texture,
     layout: wgpu::BindGroupLayout,
     /// The near and far planes, which a field of view does not carry: a projection needs both, and a
     /// runtime reports neither.
@@ -181,6 +184,20 @@ impl Scene {
             usage: wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
+        let no_depth_typed = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("wxr no typed depth"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("wxr scene"),
             entries: &[
@@ -213,6 +230,18 @@ impl Scene {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // The typed half: a depth format such as OpenXR's `D16_UNORM` cannot be bound as a float
+                // texture, so the room is bound here when that is what it is and the shader selects it.
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
                     },
                     count: None,
                 },
@@ -288,6 +317,7 @@ impl Scene {
             camera,
             occlusion,
             no_depth,
+            no_depth_typed,
             layout,
             // A hand's width to a room: an eye's field of view says nothing about either, because it is
             // about the lens. This is the renderer's guess and the day a scene has a floor, it is the scene's.
@@ -319,23 +349,42 @@ impl crate::Draw for Scene {
         // The room's depth for this view, or the one-texel stand-in and an `enabled` of 0 that draws
         // everything. The two are different absences - no measurement, and a measurement that does not say -
         // and they land on the same branch below only because both mean the same thing to a fragment.
-        let (uniform, depth) = match occlusion {
-            Some((texture, occlusion)) => (
-                OcclusionUniform {
-                    norm_depth_from_view: occlusion.norm_depth_from_view.to_cols_array_2d(),
-                    kind: occlusion.kind,
-                    enabled: 1,
-                    linear_scale: occlusion.linear_scale,
-                    near_z: occlusion.near_z,
-                    far_z: occlusion.far_z,
-                    _spare: 0,
-                    _pad: [0; 2],
-                },
-                texture.create_view(&wgpu::TextureViewDescriptor::default()),
-            ),
+        let (uniform, float_depth, typed_depth) = match occlusion {
+            Some((texture, occlusion)) => {
+                // The two sample types are not interchangeable in wgpu: a depth format binds as a depth
+                // texture, and `r32float` binds as an unfilterable float one. The shader is told which of
+                // the two bindings holds the room, and the other gets a one-texel stand-in.
+                let typed = texture.format().is_depth_stencil_format();
+                (
+                    OcclusionUniform {
+                        norm_depth_from_view: occlusion.norm_depth_from_view.to_cols_array_2d(),
+                        kind: occlusion.kind,
+                        enabled: 1,
+                        linear_scale: occlusion.linear_scale,
+                        near_z: occlusion.near_z,
+                        far_z: occlusion.far_z,
+                        depth_is_depth: typed as u32,
+                        _pad: [0; 2],
+                    },
+                    if typed {
+                        self.no_depth
+                            .create_view(&wgpu::TextureViewDescriptor::default())
+                    } else {
+                        texture.create_view(&wgpu::TextureViewDescriptor::default())
+                    },
+                    if typed {
+                        texture.create_view(&wgpu::TextureViewDescriptor::default())
+                    } else {
+                        self.no_depth_typed
+                            .create_view(&wgpu::TextureViewDescriptor::default())
+                    },
+                )
+            }
             None => (
                 OcclusionUniform::off(),
                 self.no_depth
+                    .create_view(&wgpu::TextureViewDescriptor::default()),
+                self.no_depth_typed
                     .create_view(&wgpu::TextureViewDescriptor::default()),
             ),
         };
@@ -353,11 +402,15 @@ impl crate::Draw for Scene {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&depth),
+                    resource: wgpu::BindingResource::TextureView(&float_depth),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: self.occlusion.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&typed_depth),
                 },
             ],
         });

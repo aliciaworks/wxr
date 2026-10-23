@@ -73,6 +73,86 @@ fn room(
     )
 }
 
+/// The same room in a depth texture, which is what an OpenXR runtime hands over: `D16_UNORM` is a depth
+/// format and cannot be bound as the `r32float` texture a browser's measurement is.
+fn typed_texel(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    value: f32,
+    encoding: wxr::DepthEncoding,
+) -> (wgpu::Texture, scene::Occlusion) {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("test room in depth"),
+        size: wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Depth16Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    let raw = (value.clamp(0.0, 1.0) * u16::MAX as f32).round() as u16;
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::DepthOnly,
+        },
+        &raw.to_le_bytes(),
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(2),
+            rows_per_image: Some(1),
+        },
+        wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+    );
+    let info = wxr::DepthInfo {
+        size: wxr::Extent2d::new(1, 1),
+        encoding,
+        norm_depth_buffer_from_norm_view: wxr::Pose::IDENTITY,
+    };
+    (texture, scene::Occlusion::from(info))
+}
+
+/// A depth-format measurement is read through the typed binding rather than the float one.
+///
+/// OpenXR's environment depth is `D16_UNORM` and WebXR's is `r32float`; wgpu will not bind the first where
+/// the second is expected, so the scene has two bindings and picks the one this frame's room arrived in. The
+/// two cases below are the same `Window` arithmetic as the float test, which is what makes a failure here a
+/// failure to bind or select rather than a second opinion about depth.
+#[test]
+fn a_depth_format_room_is_read_through_its_own_binding() {
+    let Some((_turn, device, queue)) = device() else {
+        return;
+    };
+    let encoding = wxr::DepthEncoding::Window {
+        near_z: 0.1,
+        far_z: 100.0,
+    };
+    let behind = typed_texel(&device, &queue, window_value(0.1, 100.0, 5.0), encoding);
+    let pixel = super::centre_pixel_with(&device, &queue, Depth::ZeroToOne, Some(behind));
+    assert!(
+        standing(pixel),
+        "a five-metre room read through the typed binding leaves the one-metre triangle standing: {pixel:?}"
+    );
+
+    let in_front = typed_texel(&device, &queue, window_value(0.1, 100.0, 0.5), encoding);
+    let pixel = super::centre_pixel_with(&device, &queue, Depth::ZeroToOne, Some(in_front));
+    assert!(
+        !standing(pixel),
+        "the same room at half a metre hides the scene: {pixel:?}"
+    );
+}
+
 /// The forward direction of a window-depth projection: how far out a point is, given where between the two
 /// planes the buffer said it was.
 ///
