@@ -111,6 +111,10 @@ pub struct AppleSession {
     /// layer's and are given back in `end`.
     frame: cp_frame_t,
     drawable: cp_drawable_t,
+    /// Whether the open frame's update window has been closed, which `views` does and `end` has to if the
+    /// caller never asked for views. Submitting with it still open is the one ordering the compositor's
+    /// header says a client must not take.
+    updated: bool,
     /// The frame's images, retained while the frame is in flight: the drawable's own references are not ours
     /// to keep, and the renderer wraps these between `begin` and `end`.
     textures: Vec<FrameImage>,
@@ -162,6 +166,7 @@ impl AppleSession {
             queue,
             frame: std::ptr::null_mut(),
             drawable: std::ptr::null_mut(),
+            updated: false,
             textures: Vec::new(),
             depth_range: None,
             blend: wxr::Blend::Opaque,
@@ -255,6 +260,7 @@ impl AppleSession {
         self.origin = None;
         self.drawable = std::ptr::null_mut();
         self.frame = std::ptr::null_mut();
+        self.updated = false;
     }
 
     /// Encode the presentation event and commit it, on a command buffer of its own.

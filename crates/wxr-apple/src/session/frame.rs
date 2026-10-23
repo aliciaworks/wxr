@@ -192,12 +192,22 @@ impl AppleSession {
         // The queries are finished; rendering starts after this and the frame is submitted in `end`.
         // SAFETY: the frame is the one begun above and has not been given back.
         unsafe { cp_frame::end_update(self.frame) };
+        self.updated = true;
         Ok(())
     }
 
     pub(super) fn end_impl(&mut self, _frame: &mut wxr::Frame) -> Result<(), wxr::Error> {
         if self.frame.is_null() {
             return Ok(());
+        }
+        // A caller may end a frame without asking for its views - one that decided not to draw, or that
+        // only wanted the timing `begin` predicted. The update window is still open then, and submission
+        // has to follow its close rather than open it. `views` is the normal place this happens, because
+        // the caller renders between the two; a frame with no views has nothing to render.
+        // SAFETY: the frame is the one begun above and has not been given back.
+        if !self.updated {
+            unsafe { cp_frame::end_update(self.frame) };
+            self.updated = true;
         }
         // SAFETY: the frame is the one begun above and has not been given back.
         unsafe {
