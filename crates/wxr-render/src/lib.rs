@@ -266,6 +266,10 @@ impl Renderer {
         S: wxr::Session,
         I: Import<Image = S::Image, Depth = S::Depth>,
     {
+        // A session's depth is the frame's, and the last frame's is already over - including on a frame that
+        // will not draw at all. Dropping it here is what keeps a compositor's buffer from being held by a
+        // renderer that is waiting for the next picture.
+        self.session_depth = None;
         if !frame.is_render() {
             return Ok(0);
         }
@@ -378,6 +382,9 @@ impl Renderer {
         index: usize,
         image: &I::Image,
     ) -> Option<&wgpu::Texture> {
+        // The previous view's session depth is not this view's, even in the same frame: each is a separate
+        // attachment for a separate pass, and only the one being returned has to outlive the call.
+        self.session_depth = None;
         if let Some(session) = importer.depth(device, meta, image) {
             if session.format() == DEPTH_FORMAT {
                 self.session_depth = Some(session);
