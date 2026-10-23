@@ -27,17 +27,6 @@ pub(super) struct Space {
     pub(super) on_reset: Option<Closure<dyn FnMut(Event)>>,
 }
 
-impl Space {
-    /// A space that is here.
-    pub(super) fn resolved(space: XrReferenceSpace) -> Self {
-        Self {
-            space: Some(space),
-            promise: None,
-            on_reset: None,
-        }
-    }
-}
-
 /// One of the frame's images: the colour texture, and the depth buffer the layer gave with it.
 ///
 /// They are one thing here because the compositor hands them over as one - both come from the same sub-image -
