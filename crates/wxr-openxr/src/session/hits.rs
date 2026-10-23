@@ -118,7 +118,12 @@ impl Raycaster {
         };
         if result != openxr_sys::Result::SUCCESS {
             log::debug!("wxr-openxr: polling the raycaster's future: {result:?}");
-            self.making = None;
+            // The future is not ready and never will be through this path. Cancelling it is what tells the
+            // runtime to stop making the raycaster, rather than leaving a handle with no owner and a
+            // completion that nobody will collect.
+            if let Some(future) = self.making.take() {
+                self.cancel(future);
+            }
             return;
         }
         if poll_result.state != openxr_sys::FutureStateEXT::READY {
@@ -157,6 +162,27 @@ impl Raycaster {
         }
         self.handle = Some(completion.environment_raycaster);
         log::debug!("wxr-openxr: hit testing is ready");
+    }
+
+    /// Tell the runtime to stop making what a pending future is making.
+    ///
+    /// A future that is dropped is a future the runtime is still working on: `XR_EXT_future` gives no handle
+    /// to destroy, and the operation's own completion is the only thing that would collect it. Cancelling is
+    /// the last call the spec has for one, and it is safe to make on a future the runtime has already
+    /// finished or invalidated - the answer is an error, not a second destruction.
+    fn cancel(&self, future: openxr_sys::FutureEXT) {
+        let info = openxr_sys::FutureCancelInfoEXT {
+            ty: openxr_sys::StructureType::FUTURE_CANCEL_INFO_EXT,
+            next: std::ptr::null(),
+            future,
+        };
+        // SAFETY: the instance is live, and the cancel info outlives the call. The future came from this
+        // instance's raycaster create and has been completed, cancelled, or is this frame's pending one.
+        let result =
+            unsafe { (self.futures.cancel_future)(self.session.instance().as_raw(), &info) };
+        if result != openxr_sys::Result::SUCCESS {
+            log::debug!("wxr-openxr: cancelling the raycaster's future: {result:?}");
+        }
     }
 
     /// Where one ray lands, or nothing.
@@ -326,10 +352,12 @@ fn null_raycaster() -> openxr_sys::EnvironmentRaycasterMETA {
 
 impl Drop for Raycaster {
     fn drop(&mut self) {
-        // Only the one that finished: a raycaster being made has a future that is not complete, and the
-        // spec's destroy is for a handle. Cancelling the future is what `XR_EXT_future` is for, and a
-        // session ending under an unfinished create is the runtime's business - it is the thing that will
-        // not deliver the handle at all.
+        // A create still in flight has no raycaster to destroy yet, and dropping the future would leave the
+        // runtime making one that nobody collects. Cancel it first; the completion the runtime would have
+        // delivered is then not delivered, which is what cancellation means.
+        if let Some(future) = self.making.take() {
+            self.cancel(future);
+        }
         if let Some(handle) = self.handle.take() {
             // SAFETY: the raycaster is this session's and is being destroyed exactly once.
             let result = unsafe { (self.table.destroy_environment_raycaster)(handle) };
