@@ -407,8 +407,16 @@ impl ArKit {
     }
 
     /// Where an anchor is now, in the session's own origin.
+    ///
+    /// `None` until the provider has tracked it and while it has lost it, which is what the core's
+    /// `anchor_pose` means by a place that is not there. An anchor that was never added, or whose add failed,
+    /// is never tracked and so never answers with its creation transform.
     pub fn anchor_pose(&self, anchor: wxr::Anchor) -> Option<Mat4> {
         let world_anchor = self.anchors.get(&anchor.id())?;
+        // SAFETY: the anchor is live, and asking whether it is tracked does not consume it.
+        if !unsafe { ar_world_anchor_t::is_tracked(world_anchor) } {
+            return None;
+        }
         // SAFETY: the anchor is live, and reading a transform from one does not consume it.
         let transform = unsafe {
             sys::ar_world_anchor_get_origin_from_anchor_transform(
@@ -419,8 +427,27 @@ impl ArKit {
     }
 
     /// Gives an anchor back, which drops it from the runtime as well.
+    ///
+    /// Dropping the handle is not enough: a world anchor the provider added is persisted across device
+    /// restarts until it is explicitly removed, so a released anchor that was only dropped from the map would
+    /// stay in the room - and on disk - for every session after this one.
     pub fn release_anchor(&mut self, anchor: wxr::Anchor) {
-        self.anchors.remove(&anchor.id());
+        let Some(world) = &self.world else {
+            return;
+        };
+        let Some(world_anchor) = self.anchors.remove(&anchor.id()) else {
+            return;
+        };
+        // SAFETY: the provider and the anchor are both live. The completion is a no-op: the anchor has been
+        // given back, and the provider holds it until the removal finishes.
+        unsafe {
+            ar_world_tracking_provider_t::remove_anchor_f(
+                &world.provider,
+                &world_anchor,
+                std::ptr::null_mut(),
+                anchor_removed,
+            );
+        }
     }
 }
 
@@ -431,6 +458,20 @@ impl ArKit {
 ///
 /// Called by ARKit with the context the caller passed.
 unsafe extern "C-unwind" fn anchor_added(
+    _context: *mut c_void,
+    _anchor: &ar_world_anchor_t,
+    _success: bool,
+    _error: Option<&ar_error_t>,
+) {
+}
+
+/// The completion for a released anchor, which has nothing left to do: the handle is out of the map and the
+/// provider owns the object until it has finished removing it.
+///
+/// # Safety
+///
+/// Called by ARKit with the context the caller passed.
+unsafe extern "C-unwind" fn anchor_removed(
     _context: *mut c_void,
     _anchor: &ar_world_anchor_t,
     _success: bool,
