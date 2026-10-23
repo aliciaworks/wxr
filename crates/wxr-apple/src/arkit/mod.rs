@@ -198,6 +198,9 @@ impl ArKit {
         // SAFETY: the calls build ARKit objects, and the provider is added to the collection the session
         // retains. The casts are the subtype ones documented on the helpers above.
         unsafe {
+            if !ar_world_tracking_provider_t::is_supported() {
+                return None;
+            }
             let configuration = ar_world_tracking_configuration_t::new();
             let provider = ar_world_tracking_provider_t::new(&configuration);
             ar_data_providers_t::add_data_provider(providers, as_data_provider(&provider));
