@@ -33,7 +33,9 @@ impl WebXrSession {
             Connect::Pending => None,
         };
         if let Some(session) = arrived {
-            self.state = wxr::State::Ready;
+            // The state is still `Connecting` here on purpose. The lifecycle section below is the one place
+            // that compares it with what is now in the slot, and assigning `Ready` here would make that
+            // comparison see no change - which is a caller that never hears the session arrived.
             // Before the frame loop starts, because a WebGPU-compatible session with no layer set is a session
             // whose animation frames never arrive at all - and before that, the session is put where the layer
             // list can find it, because handing over a layer is a thing done *to* a session.
