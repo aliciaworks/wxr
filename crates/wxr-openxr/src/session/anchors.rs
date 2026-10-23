@@ -76,8 +76,14 @@ impl Anchors {
             .iter()
             .position(|slot| matches!(slot, Some(Slot::Pending(id)) if *id == request))
         else {
-            // A completion for a request this backend has already given up on, which a runtime does after a
-            // session has been torn down. Nothing to do and nothing to warn about.
+            // A request the caller released before the runtime answered, or one left over from a session
+            // being torn down. A successful completion still made a space, and this table is the only
+            // owner it could have - so dropping it here is the `xrDestroySpace` that releases it.
+            if result == openxr_sys::Result::SUCCESS {
+                // SAFETY: the runtime says this handle is a space belonging to this session, and the
+                // `Arc` above keeps the session alive until the drop.
+                drop(unsafe { xr::Space::reference_from_raw(self.session.clone(), space) });
+            }
             return;
         };
         let slot = &mut self.slots[index];
