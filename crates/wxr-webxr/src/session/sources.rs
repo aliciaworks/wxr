@@ -95,7 +95,11 @@ impl WebXrSession {
                 buttons: wxr::Buttons {
                     select: button(0).is_some_and(|button| button.pressed()),
                     squeeze: button(1).is_some_and(|button| button.pressed()),
-                    menu: button(3).is_some_and(|button| button.pressed()),
+                    // No `xr-standard` button is a menu: its fourth is the thumbstick's click, which is a
+                    // game's to bind rather than the system button this field is for. A profile with a
+                    // menu of its own has nowhere in the mapping to put it, and saying otherwise would
+                    // report a stick press as something the platform may not let a game have.
+                    menu: false,
                 },
                 axes: wxr::Axes {
                     trigger: button(0).map(|button| button.value() as f32).unwrap_or(0.0),
