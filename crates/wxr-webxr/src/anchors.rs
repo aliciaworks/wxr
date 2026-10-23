@@ -17,6 +17,10 @@ use crate::throws;
 #[derive(Default)]
 pub struct Slot {
     anchor: Option<XrAnchor>,
+    /// Set by [`Slot::forget`], so an answer arriving afterwards is deleted rather than kept. An anchor let
+    /// go while its creation was still a promise would otherwise come back from having been released, and
+    /// stay tracked by the browser for the rest of the session with no handle left to delete it.
+    cancelled: bool,
 }
 
 impl Slot {
@@ -27,7 +31,20 @@ impl Slot {
 
     /// Forget it, which is what asking the runtime to delete one leaves behind.
     pub fn forget(&mut self) {
-        self.anchor = None;
+        self.cancelled = true;
+        if let Some(anchor) = self.anchor.take() {
+            anchor.delete();
+        }
+    }
+
+    /// Take the browser's answer, unless the anchor was let go while it was still being made - in which case
+    /// it is deleted here rather than kept, since no caller will ever ask for it.
+    pub fn fill(&mut self, anchor: XrAnchor) {
+        if self.cancelled {
+            anchor.delete();
+        } else {
+            self.anchor = Some(anchor);
+        }
     }
 }
 
@@ -43,7 +60,7 @@ pub fn create(
         if let Ok(anchor) = JsFuture::from(promise).await
             && let Ok(anchor) = anchor.dyn_into::<XrAnchor>()
         {
-            slot.borrow_mut().anchor = Some(anchor);
+            slot.borrow_mut().fill(anchor);
         }
     });
 }

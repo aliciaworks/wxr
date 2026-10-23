@@ -59,9 +59,8 @@ impl WebXrSession {
         let Some(slot) = self.anchors.get(anchor.id() as usize) else {
             return;
         };
-        if let Some(anchor) = slot.borrow().anchor() {
-            anchor.delete();
-        }
+        // `forget` deletes an anchor that has arrived and remembers that one which has not must be deleted
+        // when it does - so this is the whole of a release whether or not the promise has answered.
         slot.borrow_mut().forget();
     }
 }
