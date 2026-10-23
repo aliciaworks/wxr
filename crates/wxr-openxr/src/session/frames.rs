@@ -14,6 +14,10 @@ impl OpenXrSession {
     ) -> Result<(), wxr::Error> {
         // Last frame's eyes and last frame's head are not this frame's, on every path out of here.
         out.reset();
+        // Nor is last frame's measurement this frame's. A successful `end` clears it too, but an `end` that
+        // failed after taking the depth image - or a `Wait` frame - would otherwise leave it for `depth` to
+        // answer with, and the runtime only allows one acquire per frame.
+        self.measured = None;
         // A runtime is not asked to wait for a frame until the session has been begun. `xrWaitFrame` before
         // `xrBeginSession` is an error at best, and the event that says to begin arrives on the same poll the
         // caller is not making while it waits - so waiting on it is a deadlock rather than a frame. A session
