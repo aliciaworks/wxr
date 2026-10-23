@@ -246,10 +246,6 @@ impl wxr::Session for WebXrSession {
         self.poll_impl()
     }
 
-    /// What the display shows behind the picture, which WebXR calls `environmentBlendMode`.
-    ///
-    /// Opaque until there is a session to ask, which is the honest answer for a session that is not here: what a
-    /// display does with the world behind it is a fact about the display, and there is none.
     /// What the browser says the depth sensing is - the only backend where this is an app's request rather
     /// than a compositor's buffer, and so the only one that answers with something.
     fn depth_sensing(&self) -> Option<wxr::DepthSensing> {
@@ -261,6 +257,10 @@ impl wxr::Session for WebXrSession {
         self.interaction_mode_impl()
     }
 
+    /// What the display shows behind the picture, which WebXR calls `environmentBlendMode`.
+    ///
+    /// Opaque until there is a session to ask, which is the honest answer for a session that is not here: what a
+    /// display does with the world behind it is a fact about the display, and there is none.
     fn blend(&self) -> wxr::Blend {
         let Some(session) = self.inner.borrow().session.clone() else {
             return wxr::Blend::Opaque;
