@@ -10,6 +10,17 @@ impl WebXrSession {
         space: wxr::ReferenceSpace,
         pose: wxr::Pose,
     ) -> Result<wxr::Anchor, wxr::Error> {
+        // An anchor is a feature, and a session that did not ask for `anchors` cannot make one. Say so here,
+        // rather than returning a handle for a request the browser will only reject: a handle that never
+        // answers is the one shape this backend already refuses for every other asynchronous resource.
+        let Some(session) = self.inner.borrow().session.clone() else {
+            return Err(wxr::Error::Unavailable(
+                "the session has not started yet".into(),
+            ));
+        };
+        if !has_feature(&session, "anchors") {
+            return Err(wxr::Error::Unsupported("anchors".into()));
+        }
         let Some(frame) = self.frame() else {
             return Err(wxr::Error::Unavailable("a frame has not begun yet".into()));
         };
