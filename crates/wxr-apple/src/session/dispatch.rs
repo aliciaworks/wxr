@@ -67,6 +67,16 @@ impl wxr::Session for AppleSession {
             self.reported.0 = state;
             return Some(wxr::Event::StateChanged(state));
         }
+        // The layer being invalidated is the session being gone, and that is `Lost` once, after the state
+        // that said it was over. A visibility read after that is not news: an ended session has no display
+        // to be hidden from, and the other two backends stop before reading one.
+        if state == wxr::State::Ended {
+            if self.lost {
+                return None;
+            }
+            self.lost = true;
+            return Some(wxr::Event::Lost);
+        }
         if visibility != self.reported.1 {
             self.reported.1 = visibility;
             return Some(wxr::Event::VisibilityChanged(visibility));

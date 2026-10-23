@@ -143,6 +143,9 @@ pub struct AppleSession {
     /// What `poll` reported last, on both axes, so that a state the layer is simply still in is not news
     /// twice.
     reported: (wxr::State, wxr::Visibility),
+    /// Whether the final `Lost` has been said. An invalidated layer is over for good, and the event is the
+    /// same one the other two backends give a session the runtime has taken away.
+    lost: bool,
     /// Where each space sits inside the one it was made from, oldest first: a space at a place in the room is
     /// this much transform, and an offset of an offset has to add up.
     spaces: Vec<wxr::Pose>,
@@ -177,6 +180,7 @@ impl AppleSession {
             origin: None,
             predicted: Duration::ZERO,
             reported: (wxr::State::Ready, wxr::Visibility::Hidden),
+            lost: false,
             spaces: Vec::new(),
             hands_seen: 0,
             inputs_changed: false,
