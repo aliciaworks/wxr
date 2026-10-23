@@ -103,7 +103,9 @@ impl WebXrSession {
                 },
                 axes: wxr::Axes {
                     trigger: button(0).map(|button| button.value() as f32).unwrap_or(0.0),
-                    thumbstick: wxr::glam::Vec2::new(axis(2), axis(3)),
+                    // A gamepad's Y axis is positive down - the Gamepad specification calls -1
+                    // "forward" - and the core's is positive up.
+                    thumbstick: wxr::glam::Vec2::new(axis(2), -axis(3)),
                 },
             });
         }
