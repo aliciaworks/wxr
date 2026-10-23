@@ -67,6 +67,12 @@ pub(super) unsafe extern "C-unwind" fn collect_plane(
 ) -> bool {
     // SAFETY: the caller guarantees both.
     unsafe {
+        // A plane anchor ARKit has lost has no pose worth reporting, the same rule the other two backends
+        // apply to a surface they cannot place this frame. It stays in the anchor list, so skipping it here
+        // is what keeps a stale copy out of the frame.
+        if !super::is_tracked(anchor) {
+            return true;
+        }
         (*context.cast::<Vec<wxr::Plane>>()).push(plane_of(anchor));
     }
     true

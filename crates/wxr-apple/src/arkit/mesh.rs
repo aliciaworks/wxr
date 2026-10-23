@@ -28,6 +28,11 @@ pub(super) unsafe extern "C-unwind" fn collect_mesh(
 ) -> bool {
     // SAFETY: the caller guarantees both.
     unsafe {
+        // A mesh anchor ARKit has lost is a copy of a room that is no longer where it was. Skip it for the
+        // same reason a plane is skipped: the anchor list is not the set of things this frame can place.
+        if !super::is_tracked(anchor) {
+            return true;
+        }
         (*context.cast::<Vec<wxr::Mesh>>()).push(mesh_of(anchor));
     }
     true
