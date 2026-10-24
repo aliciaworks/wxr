@@ -146,9 +146,11 @@ pub struct AppleSession {
     /// Whether the final `Lost` has been said. An invalidated layer is over for good, and the event is the
     /// same one the other two backends give a session the runtime has taken away.
     lost: bool,
-    /// Where each space sits inside the one it was made from, oldest first: a space at a place in the room is
-    /// this much transform, and an offset of an offset has to add up.
-    spaces: Vec<wxr::Pose>,
+    /// Where each space sits inside the one it was made from, and the kind it was made as, oldest first: a
+    /// space at a place in the room is this much transform, and an offset of an offset has to add up. The
+    /// kind is kept beside it so that a handle whose public kind was changed is not a handle this session
+    /// handed out.
+    spaces: Vec<(wxr::SpaceKind, wxr::Pose)>,
     /// How many hands were there the last frame, so that the set of inputs changing is news once.
     hands_seen: usize,
     /// Whether the set of inputs changed since the last poll, waiting to be said.
@@ -226,9 +228,17 @@ impl AppleSession {
         let offset = self
             .spaces
             .get(space.id() as usize)
-            .copied()
+            .map(|(_, inside)| *inside)
             .unwrap_or_default();
         Mat4::from(offset.transform()).inverse() * base
+    }
+
+    /// Whether this session handed out `space`, which is the id being one of ours and the public kind still
+    /// the one it was made as. A handle from another session - or one whose kind a caller changed - is not a
+    /// space this session can answer for, and every entry point that takes one says so rather than treating
+    /// it as the identity.
+    fn has_space(&self, space: wxr::ReferenceSpace) -> bool {
+        spaces::has(&self.spaces, space)
     }
 
     /// `space` seen from ARKit's world, which is where a plane, a mesh, a hand and an anchor are reported.

@@ -131,6 +131,9 @@ impl AppleSession {
         space: wxr::ReferenceSpace,
         out: &mut wxr::Frame,
     ) -> Result<(), wxr::Error> {
+        if !self.has_space(space) {
+            return Err(wxr::Error::NoSpace(space.kind));
+        }
         if self.drawable.is_null() {
             return Ok(());
         }

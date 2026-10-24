@@ -6,6 +6,17 @@
 //! easy to swap, which is why they are here with a test rather than inline at each use.
 
 use wxr::glam::Mat4;
+use wxr::{ReferenceSpace, SpaceKind};
+
+/// Whether a session's own list of spaces holds the one a handle names.
+///
+/// The id is the session's index and the kind is public on the handle, so both have to agree: an id past
+/// the end is another session's, and a kind a caller changed is not the space this session made.
+pub(super) fn has(spaces: &[(SpaceKind, wxr::Pose)], space: ReferenceSpace) -> bool {
+    spaces
+        .get(space.id() as usize)
+        .is_some_and(|(kind, _)| *kind == space.kind)
+}
 
 /// `space` seen from ARKit's world: a world pose is this composed on the left.
 ///
@@ -66,5 +77,21 @@ mod tests {
         let there = space_from_world(device(), Some(device()));
         let back = world_from_space(device(), Some(device()));
         assert!((back * there).abs_diff_eq(Mat4::IDENTITY, 1e-6));
+    }
+
+    /// A handle names a space only when both halves agree: the id is one this session made, and the kind is
+    /// the kind it made of that id. Either one changed is another session's handle, or a lie about this one.
+    #[test]
+    fn a_space_needs_its_own_id_and_its_own_kind() {
+        let spaces = [(SpaceKind::Local, wxr::Pose::IDENTITY)];
+        assert!(has(&spaces, ReferenceSpace::new(SpaceKind::Local, 0)));
+        assert!(
+            !has(&spaces, ReferenceSpace::new(SpaceKind::Viewer, 0)),
+            "the kind is public, so a handle can say one this session never made"
+        );
+        assert!(
+            !has(&spaces, ReferenceSpace::new(SpaceKind::Local, 1)),
+            "an id past the list belongs to some other session"
+        );
     }
 }

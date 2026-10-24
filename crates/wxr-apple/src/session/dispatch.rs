@@ -156,7 +156,7 @@ impl wxr::Session for AppleSession {
             (wxr::SpaceKind::Local, Some(arkit)) if arkit.is_world_tracked() => {}
             _ => return Err(wxr::Error::NoSpace(kind)),
         }
-        self.spaces.push(wxr::Pose::IDENTITY);
+        self.spaces.push((kind, wxr::Pose::IDENTITY));
         Ok(wxr::ReferenceSpace::new(
             kind,
             (self.spaces.len() - 1) as u32,
@@ -168,12 +168,15 @@ impl wxr::Session for AppleSession {
         base: wxr::ReferenceSpace,
         offset: wxr::Pose,
     ) -> Result<wxr::ReferenceSpace, wxr::Error> {
-        let Some(inside) = self.spaces.get(base.id() as usize).copied() else {
+        let Some((kind, inside)) = self.spaces.get(base.id() as usize).copied() else {
             return Err(wxr::Error::NoSpace(base.kind));
         };
-        self.spaces.push(inside.then(offset));
+        if kind != base.kind {
+            return Err(wxr::Error::NoSpace(base.kind));
+        }
+        self.spaces.push((kind, inside.then(offset)));
         Ok(wxr::ReferenceSpace::new(
-            base.kind,
+            kind,
             (self.spaces.len() - 1) as u32,
         ))
     }
@@ -240,6 +243,9 @@ impl wxr::Session for AppleSession {
         let Some(arkit) = &self.arkit else {
             return Ok(());
         };
+        if !self.has_space(space) {
+            return Err(wxr::Error::NoSpace(space.kind));
+        }
         // ARKit reports planes in the session's own origin, which is this backend's `Local`; a caller asking
         // for another space gets them brought over, the same way the views are.
         let space_from_world = wxr_render::pose_from_transform(self.space_from_world(space));
@@ -261,6 +267,9 @@ impl wxr::Session for AppleSession {
         let Some(arkit) = &self.arkit else {
             return Ok(());
         };
+        if !self.has_space(space) {
+            return Err(wxr::Error::NoSpace(space.kind));
+        }
         // The same space the planes are brought to, and for the same reason: ARKit traces in the session's
         // own origin, which is this backend's `Local`, so a caller asking for another space gets the meshes
         // brought over rather than a refusal.
@@ -308,6 +317,15 @@ impl wxr::Session for AppleSession {
         space: wxr::ReferenceSpace,
         pose: wxr::Pose,
     ) -> Result<wxr::Anchor, wxr::Error> {
+        // The feature first, as the other backends do: a session with no anchors has nothing to ask a space
+        // about. Then the space, because a handle this session did not hand out is not one to build a world
+        // transform from.
+        if self.arkit.is_none() {
+            return Err(wxr::Error::Unsupported("anchors".into()));
+        }
+        if !self.has_space(space) {
+            return Err(wxr::Error::NoSpace(space.kind));
+        }
         // The anchor's place is asked for in `space`; ARKit takes one in the session's origin, which this
         // backend's `Local` is - so the space's own transform is composed in front.
         let world_from_anchor = self.world_from_space(space) * Mat4::from(pose.transform());
@@ -325,6 +343,9 @@ impl wxr::Session for AppleSession {
         let Some(arkit) = &self.arkit else {
             return Ok(None);
         };
+        if !self.has_space(space) {
+            return Err(wxr::Error::NoSpace(space.kind));
+        }
         let Some(world) = arkit.anchor_pose(anchor) else {
             return Ok(None);
         };

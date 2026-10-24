@@ -32,15 +32,22 @@ impl AppleSession {
         // and the other backends empty it for the same reason. A list that grows by two hands a frame is a
         // list that is mostly hands that have been put down.
         out.clear();
-        // Controllers are GameController's and hands are ARKit's, so this comes first and on its own: a
-        // session whose ARKit never came up still has controllers, and the early return below is about one
-        // framework rather than about both.
+        // Controllers are GameController's and hands are ARKit's, so a session whose ARKit never came up
+        // still has controllers, and an invalid space is not something the controller half dereferences.
+        let Some(arkit) = &self.arkit else {
+            if self.controllers.read(out) {
+                self.inputs_changed = true;
+            }
+            return Ok(());
+        };
+        // Before the controllers are read: a space this session did not hand out is an error, and an error
+        // should not leave a half-filled list behind.
+        if !self.has_space(space) {
+            return Err(wxr::Error::NoSpace(space.kind));
+        }
         if self.controllers.read(out) {
             self.inputs_changed = true;
         }
-        let Some(arkit) = &self.arkit else {
-            return Ok(());
-        };
         // ARKit reports a hand in its world, which is `Local`; a caller in another space gets the palm brought
         // over, the same way a view is.
         let space_from_world = self.space_from_world(space);
@@ -98,6 +105,9 @@ impl AppleSession {
         let Some(arkit) = &self.arkit else {
             return Ok(());
         };
+        if !self.has_space(space) {
+            return Err(wxr::Error::NoSpace(space.kind));
+        }
         // A controller's id is past the offset its own module starts at, and a hand's is its index in the
         // order `ArKit::hands` reports - left, then right. Written as the offset rather than as a bare
         // `< 2`, so that a controller id is refused for the reason it is actually refused: it is not one of
