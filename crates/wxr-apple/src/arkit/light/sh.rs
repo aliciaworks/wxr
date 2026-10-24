@@ -119,8 +119,8 @@ pub(super) fn project(
             primary_intensity: intensity,
             harmonics,
         },
-        // A room with no light in it at all is a room with no estimate, which the core says is all zero
-        // - a scene lit by nothing rather than by a guess at nothing.
+        // A room with no light in it at all is a room with no estimate, which the core says has no
+        // intensity and zero harmonics - a scene lit by nothing rather than by a guess at nothing.
         None => LightEstimate::default(),
     }
 }
@@ -269,7 +269,7 @@ mod tests {
     }
 
     /// A dark room is a room with no estimate, not a room whose estimate is a very small one: the core
-    /// says all zero means nothing was measured, and a scene has to be able to tell the difference
+    /// says no intensity means nothing was measured, and a scene has to be able to tell the difference
     /// between a black room and no answer.
     #[test]
     fn a_dark_room_has_no_estimate() {

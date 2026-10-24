@@ -35,13 +35,41 @@ impl LightProbe {
 /// this core does. A scene that wants the primary light in its own frame brings it over itself - it is one
 /// vector - while the ambient is low-frequency enough to use where it is.
 ///
-/// All zero is a runtime with no estimate, which is a scene lit by nothing rather than by a guess.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
+/// A runtime with no estimate reports no intensity and zero harmonics, which is a scene lit by nothing rather
+/// than by a guess. The direction is still a unit vector: WebXR's answer for a room where it found no light is
+/// straight up, toward a light overhead.
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct LightEstimate {
     /// A unit vector toward the brightest light, in the probe's space, and its colour per channel. WebXR's
-    /// answer when it has no direction is straight down and no intensity, which is also what the default is.
+    /// answer when it has no direction is up, toward a light overhead, with no intensity - which is also what
+    /// the default is.
     pub primary_direction: Vec3,
     pub primary_intensity: Vec3,
     /// The ambient light, as nine RGB coefficients in WebXR's order.
     pub harmonics: [Vec3; 9],
+}
+
+impl Default for LightEstimate {
+    fn default() -> Self {
+        Self {
+            primary_direction: Vec3::Y,
+            primary_intensity: Vec3::ZERO,
+            harmonics: [Vec3::ZERO; 9],
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_estimate_still_points_the_way_webxr_does() {
+        // The intensity is what says there was no measurement; the direction is a unit vector either way,
+        // because a caller that normalises it must not divide by zero. WebXR's no-light answer is +Y.
+        let light = LightEstimate::default();
+        assert_eq!(light.primary_direction, Vec3::Y);
+        assert_eq!(light.primary_intensity, Vec3::ZERO);
+        assert_eq!(light.harmonics, [Vec3::ZERO; 9]);
+    }
 }

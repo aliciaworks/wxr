@@ -20,9 +20,9 @@
 //! always the half that was not thought about.
 //!
 //! **What is missing is missing on purpose.** A room too dark to photograph has no texture, and the core
-//! says an estimate of all zero is what a runtime with nothing to say hands over - so that is what a dark
-//! room gets, rather than an error to stop a frame over. A texture in a format this has not met is the
-//! same answer for the same reason: a guess at four channels is how a room ends up lit by noise.
+//! says no intensity and zero harmonics is what a runtime with nothing to say hands over - so that is what
+//! a dark room gets, rather than an error to stop a frame over. A texture in a format this has not met is
+//! the same answer for the same reason: a guess at four channels is how a room ends up lit by noise.
 
 use std::ffi::c_void;
 use std::sync::Mutex;

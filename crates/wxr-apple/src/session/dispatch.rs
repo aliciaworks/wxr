@@ -42,7 +42,7 @@ impl wxr::Session for AppleSession {
         // Light estimation, which is ARKit's environment probe rather than either shape provider above: a
         // session can trace a room as triangles and still be unable to photograph it, and the bit is the
         // provider being up rather than a picture having arrived - a room too dark to photograph answers
-        // with the all-zero estimate the core says means nothing was measured.
+        // with no intensity and zero harmonics, which the core says means nothing was measured.
         if self.arkit.as_ref().is_some_and(ArKit::has_light) {
             features = features.union(wxr::Features::LIGHT_ESTIMATION);
         }
@@ -271,8 +271,8 @@ impl wxr::Session for AppleSession {
     ///
     /// The one handle here that does not wait for anything: ARKit's provider is already running by the time
     /// a session exists, and what is asynchronous is the photograph rather than the probe. Asking for the
-    /// estimate immediately after is not too early - it is the all-zero one, which is the core's own word
-    /// for a room it has not measured yet.
+    /// estimate immediately after is not too early - it is the no-intensity one, which is the core's own
+    /// word for a room it has not measured yet.
     fn light_probe(&mut self) -> Result<wxr::LightProbe, wxr::Error> {
         if self.arkit.as_ref().is_some_and(ArKit::has_light) {
             return Ok(wxr::LightProbe::new(0));
@@ -282,9 +282,9 @@ impl wxr::Session for AppleSession {
 
     /// What the room's light is this frame, which is ARKit's last photograph as the core's harmonics.
     ///
-    /// Every value if it has one and all zero if it does not, which is what the core says a runtime with no
-    /// estimate hands over. A dark room and a room ARKit has not got round to yet are the same answer, and
-    /// both are a scene lit by nothing rather than by a guess.
+    /// Every value if it has one and no intensity with zero harmonics if it does not, which is what the
+    /// core says a runtime with no estimate hands over. A dark room and a room ARKit has not got round to
+    /// yet are the same answer, and both are a scene lit by nothing rather than by a guess.
     fn light(
         &mut self,
         _probe: wxr::LightProbe,

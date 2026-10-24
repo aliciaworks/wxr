@@ -441,8 +441,8 @@ pub trait Session: Any {
         Err(Error::Unsupported("light estimation".into()))
     }
 
-    /// Fill in what the room's light is this frame, from a probe. Zero with no estimate, which is a scene lit
-    /// by nothing rather than by a guess.
+    /// Fill in what the room's light is this frame, from a probe. No intensity and zero harmonics with no
+    /// estimate, which is a scene lit by nothing rather than by a guess.
     fn light(&mut self, _probe: LightProbe, out: &mut LightEstimate) -> Result<(), Error> {
         *out = LightEstimate::default();
         Ok(())

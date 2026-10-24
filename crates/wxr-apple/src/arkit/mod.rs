@@ -378,7 +378,7 @@ impl ArKit {
     /// Whether the room's light can be estimated, which is what `features` asks.
     ///
     /// The provider being up, and not a promise of a photograph: a room ARKit cannot see well enough to
-    /// light is a room that answers with no estimate, which the core says is all zero.
+    /// light is a room that answers with no intensity and zero harmonics.
     pub fn has_light(&self) -> bool {
         self.lights.is_some()
     }
