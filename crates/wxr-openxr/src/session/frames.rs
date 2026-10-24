@@ -24,13 +24,22 @@ impl OpenXrSession {
             out.state = wxr::FrameState::Exit;
             return Ok(());
         }
-        // A runtime is not asked to wait for a frame until the session has been begun. `xrWaitFrame` before
-        // `xrBeginSession` is an error at best, and the event that says to begin arrives on the same poll the
-        // caller is not making while it waits - so waiting on it is a deadlock rather than a frame. A session
-        // that has not begun is a frame to wait for.
+        // A runtime is not asked to wait for a frame until the session has been begun. `xrBeginSession` is
+        // legal only once the runtime has said `READY`, which is news `poll` carries, so a session whose
+        // caller has not polled yet is a frame to wait for rather than a deadlock.
+        //
+        // The begin is here and not in `poll` because it is part of the frame that asks for one: a failure
+        // is this call's error, and a session that failed to begin is still one to try again rather than a
+        // session marked begun that every `xrWaitFrame` will then refuse.
         if !self.begun {
-            out.state = wxr::FrameState::Wait;
-            return Ok(());
+            if self.openxr_state != xr::SessionState::READY {
+                out.state = wxr::FrameState::Wait;
+                return Ok(());
+            }
+            self.session
+                .begin(xr::ViewConfigurationType::PRIMARY_STEREO)
+                .map_err(|error| wxr::Error::Present(format!("starting the session: {error:?}")))?;
+            self.begun = true;
         }
 
         // The runtime is asked to wait, and it answers with the frame's timing: when the picture will be
@@ -81,32 +90,71 @@ impl OpenXrSession {
             .begin()
             .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
 
-        let held = self
-            .swapchain
-            .acquire_image()
-            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+        let held = match self.swapchain.acquire_image() {
+            Ok(held) => held,
+            Err(error) => {
+                self.abandon_frame();
+                return Err(wxr::Error::Present(format!("{error:?}")));
+            }
+        };
         // Unbounded: the runtime is the one that knows when the image is free, and a timeout here would be
         // this code deciding it knows better.
-        self.swapchain
-            .wait_image(xr::Duration::INFINITE)
-            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+        if let Err(error) = self.swapchain.wait_image(xr::Duration::INFINITE) {
+            // The image was acquired but never handed over, so there is nothing here that may be released.
+            // The frame itself still has to close, or every later `xrBeginFrame` is a call-order error.
+            self.abandon_frame();
+            return Err(wxr::Error::Present(format!("{error:?}")));
+        }
         self.held = Some(held);
 
         // Each layer has a swapchain of its own, and each is taken in the same frame the eyes are: an image the
         // runtime has not handed over is not one an app may draw into, and waiting is unbounded for the reason
         // the eyes' wait is - the runtime is the one that knows when it is free.
-        for layer in self.layers.iter_mut().flatten() {
-            let held = layer
-                .swapchain
-                .acquire_image()
-                .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
-            layer
-                .swapchain
-                .wait_image(xr::Duration::INFINITE)
-                .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
-            layer.held = Some(held);
+        for index in 0..self.layers.len() {
+            if let Err(error) = self.acquire_layer(index) {
+                self.abandon_frame();
+                return Err(error);
+            }
         }
         Ok(())
+    }
+
+    /// Take one app layer's image for this frame, if that layer still exists.
+    ///
+    /// Separate from the loop so a failure ends the layer borrow before the caller has to close a frame that
+    /// is holding the images already taken.
+    fn acquire_layer(&mut self, index: usize) -> Result<(), wxr::Error> {
+        let Some(layer) = self.layers[index].as_mut() else {
+            return Ok(());
+        };
+        let held = layer
+            .swapchain
+            .acquire_image()
+            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+        layer
+            .swapchain
+            .wait_image(xr::Duration::INFINITE)
+            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+        layer.held = Some(held);
+        Ok(())
+    }
+
+    /// Give back a frame whose images could not all be taken.
+    ///
+    /// Once `xrBeginFrame` has succeeded the pair has to close, even when nothing was drawn: an open frame is
+    /// every later `xrBeginFrame` failing. An image already waited for is released first, because the runtime
+    /// will not hand it out again until it is. An image whose wait failed is left alone - the binding refuses
+    /// to release one it never waited for - and the runtime has already lost that frame.
+    fn abandon_frame(&mut self) {
+        if self.held.take().is_some() {
+            let _ = self.swapchain.release_image();
+        }
+        for layer in self.layers.iter_mut().flatten() {
+            if layer.held.take().is_some() {
+                let _ = layer.swapchain.release_image();
+            }
+        }
+        let _ = self.stream.end(self.predicted, self.blend, &[]);
     }
 }
 

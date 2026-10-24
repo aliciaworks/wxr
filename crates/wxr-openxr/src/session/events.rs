@@ -52,16 +52,9 @@ impl OpenXrSession {
                         xr::SessionState::READY => {
                             // A session runs only after the app has begun it, and only once it is ready -
                             // the runtime says `XR_ERROR_SESSION_NOT_RUNNING` from `xrWaitFrame` until then,
-                            // which is the one thing it will not do on the app's behalf.
-                            if !self.begun {
-                                if let Err(error) = self
-                                    .session
-                                    .begin(xr::ViewConfigurationType::PRIMARY_STEREO)
-                                {
-                                    log::error!("wxr-openxr: beginning the session: {error:?}");
-                                }
-                                self.begun = true;
-                            }
+                            // which is the one thing it will not do on the app's behalf. Beginning it is
+                            // `begin_impl`'s business, on the frame that asks; polling only says what the
+                            // runtime is waiting for.
                             (wxr::State::Ready, wxr::Visibility::Hidden)
                         }
                         xr::SessionState::IDLE | xr::SessionState::SYNCHRONIZED => {

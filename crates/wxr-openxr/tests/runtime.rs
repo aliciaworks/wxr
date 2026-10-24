@@ -324,17 +324,17 @@ fn inputs_on_a_runtime_with_no_controllers_are_none_and_not_a_failure() {
 
 #[test]
 fn a_frame_before_the_session_is_begun_is_a_frame_to_wait_for() {
-    // Its own session, and one that is never polled: polling is what begins a session, and `xrWaitFrame`
-    // after that is a wait for a display this machine does not have.
+    // Its own session, and one that is never polled: polling is what makes a session ready and `begin` is
+    // what starts it, so a `begin` asked before either is a frame to wait for rather than a wait that blocks.
     let Some((_turn, _, mut session)) = connect() else {
         eprintln!("no OpenXR runtime on this machine; nothing to connect to");
         return;
     };
 
     // This is the deadlock the trait is written against, named in `begin`'s own documentation: a runtime is
-    // not asked to wait for a frame until the session has been begun, and the event that says to begin
-    // arrives on the poll the caller is not making while it waits. A session that has not begun answers
-    // `Wait` - a frame to begin another of - rather than blocking on one that will never come.
+    // not asked to wait for a frame until the session has been begun, and the state that says it may be
+    // begun arrives on a poll the caller has not made. A session that has not begun answers `Wait` - a frame
+    // to begin another of - rather than blocking on one that will never come.
     let mut frame = wxr::Frame::default();
     session
         .begin(std::time::Duration::ZERO, &mut frame)
