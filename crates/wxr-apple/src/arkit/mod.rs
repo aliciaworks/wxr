@@ -193,7 +193,15 @@ impl ArKit {
             let planes = Self::start_planes(&providers);
             let meshes = Self::start_meshes(&providers);
             let lights = Lights::start(&providers);
-            if world.is_none() && hands.is_none() {
+            // None of the five is the only way there is no session. A device that can see the room or its
+            // light but not track a head still has something to describe, and dropping the session because
+            // the two providers this backend happens to need for a pose failed would throw that away too.
+            if world.is_none()
+                && hands.is_none()
+                && planes.is_none()
+                && meshes.is_none()
+                && lights.is_none()
+            {
                 return None;
             }
 
