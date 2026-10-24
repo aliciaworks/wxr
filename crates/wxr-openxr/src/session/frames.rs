@@ -247,17 +247,30 @@ impl OpenXrSession {
             return Ok(());
         }
 
+        // Every image has to be given back, but a failure while doing it must not leave the frame open: a
+        // frame between `xrBeginFrame` and `xrEndFrame` is one the next `xrBeginFrame` cannot start, and an
+        // app that gets an error here is still going to ask for the next frame. The images that could be
+        // released are; the empty end is what says this frame has nothing to draw and closes the pair.
         self.held = None;
-        self.swapchain
-            .release_image()
-            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+        let mut failed = None;
+        if let Err(error) = self.swapchain.release_image() {
+            failed = Some(wxr::Error::Present(format!("{error:?}")));
+        }
         for layer in self.layers.iter_mut().flatten() {
-            if layer.held.take().is_some() {
-                layer
-                    .swapchain
-                    .release_image()
-                    .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+            if layer.held.take().is_some()
+                && let Err(error) = layer.swapchain.release_image()
+                && failed.is_none()
+            {
+                failed = Some(wxr::Error::Present(format!("{error:?}")));
             }
+        }
+        if let Some(error) = failed {
+            let _ = self.stream.end(self.predicted, self.blend, &[]);
+            // The runtime has the frame either way, so this frame's depth is over too - the same clearing
+            // the successful end below does.
+            self.measured = None;
+            self.depth_asked = false;
+            return Err(error);
         }
 
         // The layer borrows this frame's views, so it is built here and lives only until it is submitted.
