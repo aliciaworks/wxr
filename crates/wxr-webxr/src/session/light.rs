@@ -11,13 +11,15 @@ impl WebXrSession {
                 "the session has not started yet".into(),
             ));
         };
-        // For the same reason as a hit-test source: `requestLightProbe` throws `NotSupportedError` rather than
-        // rejecting when the feature is not there.
+        // `requestLightProbe` throws `NotSupportedError` when the feature was not granted and
+        // `InvalidStateError` once the session has ended, rather than rejecting. The feature check covers the
+        // usual case; the caught call covers a session that ended between the check and the request.
         if !has_feature(&session, "light-estimation") {
             return Err(wxr::Error::Unsupported("light-estimation".into()));
         }
         let slot = Rc::new(RefCell::new(crate::light::Slot::default()));
-        crate::light::request(&session, slot.clone());
+        crate::light::request(&session, slot.clone())
+            .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?;
         self.light_probes.push(slot);
         Ok(wxr::LightProbe::new((self.light_probes.len() - 1) as u32))
     }

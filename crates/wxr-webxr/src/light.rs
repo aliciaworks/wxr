@@ -28,8 +28,12 @@ impl Slot {
 ///
 /// No options: the only one the specification has is the reflection format of a cubemap this core does not read,
 /// and the probe's own space is the runtime's to choose either way.
-pub fn request(session: &XrSession, slot: Rc<RefCell<Slot>>) {
-    let promise: js_sys::Promise = session.request_light_probe();
+///
+/// The request itself can throw before it is a promise - a session that was not granted lighting estimation,
+/// or one that has ended - so this is `Err` for the caller to turn into the core's answer rather than an
+/// exception through the backend.
+pub fn request(session: &XrSession, slot: Rc<RefCell<Slot>>) -> Result<(), JsValue> {
+    let promise = crate::throws::request_light_probe(session)?;
     wasm_bindgen_futures::spawn_local(async move {
         if let Ok(probe) = JsFuture::from(promise).await
             && let Ok(probe) = probe.dyn_into::<XrLightProbe>()
@@ -37,6 +41,7 @@ pub fn request(session: &XrSession, slot: Rc<RefCell<Slot>>) {
             slot.borrow_mut().probe = Some(probe);
         }
     });
+    Ok(())
 }
 
 /// Read the frame's estimate for a probe into the core's shape.

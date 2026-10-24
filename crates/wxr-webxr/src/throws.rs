@@ -35,6 +35,11 @@ extern "C" {
         space: &XrReferenceSpace,
     ) -> Result<js_sys::Promise, JsValue>;
 
+    /// `XRSession.requestLightProbe`, which throws `NotSupportedError` when light estimation was not granted
+    /// and `InvalidStateError` once the session has ended - a refused request rather than a rejected promise.
+    #[wasm_bindgen(method, catch, js_name = "requestLightProbe")]
+    fn request_light_probe_caught(this: &XrSession) -> Result<js_sys::Promise, JsValue>;
+
     /// `XRSession.updateRenderState`, which throws `InvalidStateError` during an animation frame. A layer list
     /// is handed over between frames, and a caller that breaks that rule gets `Err` rather than a trap.
     #[wasm_bindgen(method, catch, js_name = "updateRenderState")]
@@ -102,6 +107,11 @@ pub fn create_anchor(
     space: &XrReferenceSpace,
 ) -> Result<js_sys::Promise, JsValue> {
     frame.create_anchor_caught(pose, space)
+}
+
+/// `XRSession.requestLightProbe`, caught.
+pub fn request_light_probe(session: &XrSession) -> Result<js_sys::Promise, JsValue> {
+    session.request_light_probe_caught()
 }
 
 /// `XRSession.updateRenderState`, caught.
