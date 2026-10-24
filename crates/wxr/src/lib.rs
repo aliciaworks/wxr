@@ -54,7 +54,7 @@ pub use mesh::{Mesh, MeshKind};
 pub use plane::{Plane, PlaneOrientation};
 pub use session::{
     Backend, Blend, Error, Event, InteractionMode, Presentation, Session, SessionMode, State,
-    Visibility,
+    Visibility, should_render,
 };
 pub use space::{Pose, ReferenceSpace, SpaceKind};
 pub use target::{ColorFormat, Extent2d, ImageMeta};

@@ -490,8 +490,3 @@ pub trait Session: Any {
     /// Hand the frame back for the compositor to present.
     fn end(&mut self, frame: &mut Frame) -> Result<(), Error>;
 }
-
-/// Whether a session is both able and expected to draw, which is the question a renderer really asks.
-pub fn should_render<S: Session + ?Sized>(session: &S) -> bool {
-    session.presentation() == Presentation::Composited && session.visibility().can_render()
-}

@@ -189,3 +189,14 @@ pub enum Error {
     #[error("the frame could not be presented: {0}")]
     Present(String),
 }
+
+/// Whether a session is both able and expected to draw, which is the question a renderer really asks.
+///
+/// Being on a display is not enough: a session that is still being asked for has no images to draw into,
+/// and one that has ended will not hand out another - even when the last visibility it reported is still
+/// one a display shows.
+pub fn should_render<S: Session + ?Sized>(session: &S) -> bool {
+    session.state() == State::Ready
+        && session.presentation() == Presentation::Composited
+        && session.visibility().can_render()
+}

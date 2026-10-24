@@ -47,6 +47,26 @@ fn the_lifecycle_and_the_visibility_are_two_ladders() {
 }
 
 #[test]
+fn an_ended_session_is_not_one_to_draw_into() {
+    let mut session = MockBackend {
+        states: vec![State::Ready, State::Ended],
+        ..Default::default()
+    }
+    .connect((), SessionMode::ImmersiveVr)
+    .unwrap();
+    while session.poll().is_some() {}
+    assert_eq!(session.state(), State::Ended);
+    assert!(
+        session.visibility().can_render(),
+        "the last visibility rung is still one a display shows"
+    );
+    assert!(
+        !crate::should_render(&session),
+        "but the session it belonged to is over"
+    );
+}
+
+#[test]
 fn the_escape_hatch_hands_back_the_backends_own_type() {
     let mut session = MockBackend::default()
         .connect((), SessionMode::ImmersiveVr)
