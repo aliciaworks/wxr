@@ -8,6 +8,7 @@ use openxr as xr;
 mod anchors;
 mod depth;
 mod hits;
+mod layers;
 mod planes;
 mod state;
 
@@ -290,44 +291,11 @@ impl wxr::Session for OpenXrSession {
     }
 
     fn binding(&mut self, layer: wxr::Layer) -> Result<wxr::Binding, wxr::Error> {
-        // On OpenXR a composition layer *is* its swapchain - the runtime reads the image the layer names at
-        // `xrEndFrame` - so there is nothing to make here: the binding is the layer's own, named by the handle
-        // the layer already has. A handle this session did not hand out has no swapchain behind it, though,
-        // and binding to one would be a binding to the projection image under a false name.
-        if self
-            .layers
-            .get(layer.id() as usize)
-            .and_then(Option::as_ref)
-            .is_none()
-        {
-            return Err(wxr::Error::Unsupported("no such layer".into()));
-        }
-        Ok(wxr::Binding::new(layer.id()))
+        self.binding_impl(layer)
     }
 
     fn sub_image(&mut self, binding: wxr::Binding, view: usize) -> Option<wxr::SubImage> {
-        // The swapchain the layer draws into, which is the layer's own: the projection layer's images are
-        // what `image` names, and they are not a `Layer` this could have been asked to bind.
-        let extent = self
-            .layers
-            .get(binding.id() as usize)
-            .and_then(Option::as_ref)?
-            .extent;
-        Some(wxr::SubImage {
-            color_size: wxr::glam::UVec2::new(extent.width, extent.height),
-            // The session's swapchain is a colour attachment and sampled with no depth image of its own, so
-            // there is no depth size to report rather than a zero one.
-            depth_size: None,
-            // A stereo swapchain carries the eyes as its array slices, not as two viewports of one image -
-            // which is why `ImageMeta::layers` is two - so each eye owns the whole of its slice.
-            viewport: wxr::Viewport {
-                x: 0,
-                y: 0,
-                width: extent.width,
-                height: extent.height,
-            },
-            array_index: Some(view as u32),
-        })
+        self.sub_image_impl(binding, view)
     }
 
     fn views(
