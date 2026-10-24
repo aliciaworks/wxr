@@ -122,7 +122,10 @@ impl AppleSession {
         // The same space the palm beside it was brought to, so that a joint and the hand it is on land in
         // the same place - which is the property that has to hold, or a drawn hand comes apart at the wrist.
         let space_from_world = self.space_from_world(space);
-        if let Some((_tracked, hand)) = arkit.hand(*handedness, space_from_world) {
+        // A hand ARKit is no longer tracking has joints at the last place it saw them, which is not where
+        // the hand is. `out` is already empty, so an untracked hand is the empty skeleton the core says a
+        // hand out of view is, rather than a stale one that looks tracked.
+        if let Some((true, hand)) = arkit.hand(*handedness, space_from_world) {
             *out = hand;
         }
         Ok(())
