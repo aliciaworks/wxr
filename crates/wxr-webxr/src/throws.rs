@@ -13,9 +13,9 @@
 use wasm_bindgen::prelude::*;
 
 use crate::sys::{
-    XrAnchor, XrCompositionLayer, XrEye, XrFrame, XrProjectionLayer, XrRenderStateInit, XrSession,
-    XrSpace, XrView, XrgpuBinding, XrgpuDepthInformation, XrgpuProjectionLayerInit,
-    XrgpuQuadLayerInit, XrgpuSubImage,
+    XrAnchor, XrCompositionLayer, XrEye, XrFrame, XrProjectionLayer, XrReferenceSpace,
+    XrRenderStateInit, XrRigidTransform, XrSession, XrSpace, XrView, XrgpuBinding,
+    XrgpuDepthInformation, XrgpuProjectionLayerInit, XrgpuQuadLayerInit, XrgpuSubImage,
 };
 
 #[wasm_bindgen]
@@ -24,6 +24,16 @@ extern "C" {
     /// gone rather than a frame to fail.
     #[wasm_bindgen(method, getter, catch, js_name = "anchorSpace")]
     fn anchor_space_caught(this: &XrAnchor) -> Result<XrSpace, JsValue>;
+
+    /// `XRFrame.createAnchor`, which throws `InvalidStateError` when the frame is not active and
+    /// `NotSupportedError` when the session was not made with anchors - a request the core answers with an
+    /// error rather than a frame that stops happening.
+    #[wasm_bindgen(method, catch, js_name = "createAnchor")]
+    fn create_anchor_caught(
+        this: &XrFrame,
+        pose: &XrRigidTransform,
+        space: &XrReferenceSpace,
+    ) -> Result<js_sys::Promise, JsValue>;
 
     /// `XRSession.updateRenderState`, which throws `InvalidStateError` during an animation frame. A layer list
     /// is handed over between frames, and a caller that breaks that rule gets `Err` rather than a trap.
@@ -83,6 +93,15 @@ extern "C" {
 /// `XRAnchor.anchorSpace`, caught.
 pub fn anchor_space(anchor: &XrAnchor) -> Result<XrSpace, JsValue> {
     anchor.anchor_space_caught()
+}
+
+/// `XRFrame.createAnchor`, caught.
+pub fn create_anchor(
+    frame: &XrFrame,
+    pose: &XrRigidTransform,
+    space: &XrReferenceSpace,
+) -> Result<js_sys::Promise, JsValue> {
+    frame.create_anchor_caught(pose, space)
 }
 
 /// `XRSession.updateRenderState`, caught.

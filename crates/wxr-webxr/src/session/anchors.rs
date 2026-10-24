@@ -32,7 +32,8 @@ impl WebXrSession {
             return Err(wxr::Error::NoSpace(space.kind));
         };
         let slot = Rc::new(RefCell::new(crate::anchors::Slot::default()));
-        crate::anchors::create(&frame, &base, rigid(pose)?, slot.clone());
+        crate::anchors::create(&frame, &base, rigid(pose)?, slot.clone())
+            .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?;
         self.anchors.push(slot);
         Ok(wxr::Anchor::new((self.anchors.len() - 1) as u32))
     }

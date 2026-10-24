@@ -49,13 +49,18 @@ impl Slot {
 }
 
 /// Ask the frame for an anchor at `pose` in `space`, and fill the slot when the promise answers.
+///
+/// The request itself can throw before it is a promise - a frame that is no longer active, or a session the
+/// browser did not make with anchors - so this is `Err` for the caller to turn into the core's answer rather
+/// than an exception through the backend. A rejection after that is a request that will never fill its slot,
+/// which is the same shape as an anchor the runtime lost.
 pub fn create(
     frame: &XrFrame,
     space: &XrReferenceSpace,
     pose: XrRigidTransform,
     slot: Rc<RefCell<Slot>>,
-) {
-    let promise: js_sys::Promise = frame.create_anchor(&pose, space);
+) -> Result<(), JsValue> {
+    let promise = throws::create_anchor(frame, &pose, space)?;
     wasm_bindgen_futures::spawn_local(async move {
         if let Ok(anchor) = JsFuture::from(promise).await
             && let Ok(anchor) = anchor.dyn_into::<XrAnchor>()
@@ -63,6 +68,7 @@ pub fn create(
             slot.borrow_mut().fill(anchor);
         }
     });
+    Ok(())
 }
 
 /// Where the anchor is now, in `space`, or `None` when the runtime has lost it.
