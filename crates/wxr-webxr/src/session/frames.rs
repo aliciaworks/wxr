@@ -97,9 +97,6 @@ impl WebXrSession {
             let Ok(view) = views.get(index).dyn_into::<XrView>() else {
                 continue;
             };
-            // Kept as the browser's own object, because `getDepthInformation` is asked one of these and not an
-            // index into anything this core has.
-            self.frame_views.push(view.clone());
             // What this view draws into. With a layer, a sub-image per view says which part of the one
             // texture and which array layer - and the texture itself is taken here too, so that `images` has
             // it by the time the renderer asks.
@@ -124,15 +121,23 @@ impl WebXrSession {
                             base_array_layer(&sub.get_view_descriptor()),
                         )
                     }
-                    // A sub-image the browser will not give is a frame with no picture, which is the same
-                    // answer as a session that never had a binding.
+                    // A sub-image the browser will not give is a view with no place to draw, not a view with
+                    // a default place: a zero viewport is a pass wgpu refuses, and the other eye's image is
+                    // not this eye's. Leave it out, the way a pose the frame will not give is left out above,
+                    // and keep the indices of the views that did answer together.
                     Err(error) => {
                         log::warn!("wxr-webxr: no sub-image for a view: {error:?}");
-                        (wxr::Viewport::default(), 0)
+                        continue;
                     }
                 },
+                // No binding is a session with a head and no picture, which is still a real view list - an
+                // app drawing into its own canvas uses it.
                 None => (wxr::Viewport::default(), 0),
             };
+            // Kept as the browser's own object, because `getDepthInformation` is asked one of these and not an
+            // index into anything this core has. It goes in only when the view does, so the index `depth`
+            // takes and the index the renderer has are the same.
+            self.frame_views.push(view.clone());
             out_views.push(wxr::View {
                 eye: match view.eye() {
                     XrEye::Left => wxr::Eye::Left,
