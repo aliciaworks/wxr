@@ -25,6 +25,9 @@ pub struct OpenXrSession {
     pub(super) color: wxr::ColorFormat,
     pub(super) blend: xr::EnvironmentBlendMode,
     pub(super) spaces: Vec<xr::Space>,
+    /// Which kind each of `spaces` was made as. The core's handle carries the kind publicly, so a handle whose
+    /// kind no longer matches the space at its id is not one this session handed out.
+    pub(super) kinds: Vec<wxr::SpaceKind>,
     /// Where each of `spaces` sits inside its kind, because an offset space is the kind's origin moved - and an
     /// offset of an offset has to add up.
     pub(super) offsets: Vec<wxr::Pose>,

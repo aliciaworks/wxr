@@ -153,6 +153,7 @@ impl OpenXrSession {
             color,
             blend: backend.blend,
             spaces: Vec::new(),
+            kinds: Vec::new(),
             offsets: Vec::new(),
             view,
             located: Vec::new(),

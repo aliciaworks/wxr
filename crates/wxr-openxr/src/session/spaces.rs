@@ -15,6 +15,7 @@ impl OpenXrSession {
             .create_reference_space(reference_space(kind), xr::Posef::IDENTITY)
             .map_err(|_| wxr::Error::NoSpace(kind))?;
         self.spaces.push(space);
+        self.kinds.push(kind);
         self.offsets.push(wxr::Pose::IDENTITY);
         Ok(wxr::ReferenceSpace::new(
             kind,
@@ -24,12 +25,20 @@ impl OpenXrSession {
 }
 
 impl OpenXrSession {
+    /// The runtime space a handle names, when this session is the one that handed it out.
+    pub(super) fn reference(&self, space: wxr::ReferenceSpace) -> Option<&xr::Space> {
+        if !owns(&self.kinds, space) {
+            return None;
+        }
+        self.spaces.get(space.id() as usize)
+    }
+
     pub(super) fn offset_space_impl(
         &mut self,
         base: wxr::ReferenceSpace,
         offset: wxr::Pose,
     ) -> Result<wxr::ReferenceSpace, wxr::Error> {
-        if self.spaces.get(base.id() as usize).is_none() {
+        if self.reference(base).is_none() {
             return Err(wxr::Error::NoSpace(base.kind));
         }
         // A reference space here is a type and a pose inside it, so an offset of one is that pose composed with
@@ -40,6 +49,7 @@ impl OpenXrSession {
             .create_reference_space(reference_space(base.kind), posef(inside))
             .map_err(|_| wxr::Error::NoSpace(base.kind))?;
         self.spaces.push(space);
+        self.kinds.push(base.kind);
         self.offsets.push(inside);
         Ok(wxr::ReferenceSpace::new(
             base.kind,
@@ -70,7 +80,7 @@ impl OpenXrSession {
         }
         // A space this session never handed out has no boundary to ask about, and asking the runtime about one
         // it does not know is a fault rather than an empty answer.
-        if self.spaces.get(space.id() as usize).is_none() {
+        if self.reference(space).is_none() {
             return Ok(());
         }
 
@@ -96,6 +106,17 @@ impl OpenXrSession {
         out.extend(corners(inside, bounds.width, bounds.height));
         Ok(())
     }
+}
+
+/// Whether a session made `space`, which needs both halves of the handle to agree.
+///
+/// The id is the session's index into its own list and the kind is public on the handle, so an id past the end
+/// is another session's space and a kind changed since it was made is not the space at that id. Answering for
+/// either would put a caller in a space the runtime never gave them.
+fn owns(kinds: &[wxr::SpaceKind], space: wxr::ReferenceSpace) -> bool {
+    kinds
+        .get(space.id() as usize)
+        .is_some_and(|kind| *kind == space.kind)
 }
 
 /// The four corners of a `width` by `height` rectangle, in `space`.
@@ -136,6 +157,25 @@ mod tests {
                 Vec2::new(2.0, 1.0),
                 Vec2::new(-2.0, 1.0),
             ]
+        );
+    }
+
+    /// Both halves of a handle are the session's: the id is inside its list, and the kind is the one the
+    /// session recorded there. Either one changed is a handle from somewhere else.
+    #[test]
+    fn a_space_needs_its_own_id_and_its_own_kind() {
+        let kinds = [wxr::SpaceKind::Local];
+        assert!(owns(
+            &kinds,
+            wxr::ReferenceSpace::new(wxr::SpaceKind::Local, 0)
+        ));
+        assert!(
+            !owns(&kinds, wxr::ReferenceSpace::new(wxr::SpaceKind::Viewer, 0)),
+            "the kind is public on the handle, so a caller can say one this session never made"
+        );
+        assert!(
+            !owns(&kinds, wxr::ReferenceSpace::new(wxr::SpaceKind::Local, 1)),
+            "an id past the end belongs to some other session"
         );
     }
 
