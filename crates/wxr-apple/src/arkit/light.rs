@@ -152,19 +152,33 @@ unsafe extern "C-unwind" fn probe_updated(
             );
         }
     }
-    if let Some(estimate) = freshest.estimate {
-        *slot
-            .lock()
-            .expect("the light slot is only ever written by a handler that cannot panic") =
-            Some(estimate);
-    }
+    let mut slot = slot
+        .lock()
+        .expect("the light slot is only ever written by a handler that cannot panic");
+    freshest.keep(&mut slot);
 }
 
 /// The freshest photograph ARKit has offered: when it was taken, and what it came to once it was read.
 #[derive(Default)]
 struct Freshest {
     timestamp: f64,
-    estimate: Option<wxr::LightEstimate>,
+    /// `None` when this pass saw no photograph to read, and `Some(None)` when it read one this backend
+    /// cannot use. The difference is the whole of the staleness rule: a room ARKit has not photographed
+    /// again keeps the estimate it had, and a photograph that arrived but could not be read takes it away.
+    estimate: Option<Option<wxr::LightEstimate>>,
+}
+
+impl Freshest {
+    /// Put this pass into the session's slot, if it read a photograph at all.
+    ///
+    /// An unreadable photograph is a room whose light is no longer known, so it clears the estimate rather
+    /// than leaving the last readable one in place. A pass with no photograph is not news about the room
+    /// and leaves the estimate where it was.
+    fn keep(&self, slot: &mut Option<wxr::LightEstimate>) {
+        if let Some(estimate) = self.estimate {
+            *slot = estimate;
+        }
+    }
 }
 
 /// The enumerator [`probe_updated`] hands ARKit: one probe anchor, read if it is the newest with a picture.
@@ -194,8 +208,9 @@ unsafe extern "C-unwind" fn take_photograph(
     let scale = unsafe { ar_environment_probe_anchor_t::camera_scale_reference(anchor) };
     freshest.timestamp = timestamp;
     // A photograph this backend cannot read is no estimate, and not the stale one: the room it was taken
-    // in has since changed, and lighting a scene by yesterday's room is worse than not lighting it.
-    freshest.estimate = estimate(&texture, scale);
+    // in has since changed, and lighting a scene by yesterday's room is worse than not lighting it. It is
+    // still `Some` of nothing, which is what tells the caller to clear rather than to leave the old one.
+    freshest.estimate = Some(estimate(&texture, scale));
     true
 }
 
@@ -423,6 +438,48 @@ mod tests {
             float_bytes.extend_from_slice(&channel.to_le_bytes());
         }
         assert_eq!(rgba32(&float_bytes), [0.5, 3.0, 0.0, 1.5]);
+    }
+
+    /// A pass with no photograph is not news, so it keeps the estimate. A photograph that could not be
+    /// read is news that the room is no longer known, so it clears it. Leaving the old estimate in that
+    /// second case is lighting a changed room with yesterday's light.
+    #[test]
+    fn an_unreadable_photograph_clears_the_estimate() {
+        let mut slot = Some(wxr::LightEstimate::default());
+
+        Freshest::default().keep(&mut slot);
+        assert!(
+            slot.is_some(),
+            "no photograph at all leaves the last estimate alone"
+        );
+
+        Freshest {
+            estimate: Some(None),
+            ..Default::default()
+        }
+        .keep(&mut slot);
+        assert!(
+            slot.is_none(),
+            "a photograph that could not be read is no estimate"
+        );
+    }
+
+    /// A readable photograph replaces the last one, so the slot is always the freshest estimate and never
+    /// the first one that happened to arrive.
+    #[test]
+    fn a_readable_photograph_replaces_the_estimate() {
+        let mut slot = Some(wxr::LightEstimate::default());
+        let lit = wxr::LightEstimate {
+            primary_intensity: Vec3::ONE,
+            ..Default::default()
+        };
+
+        Freshest {
+            estimate: Some(Some(lit)),
+            ..Default::default()
+        }
+        .keep(&mut slot);
+        assert_eq!(slot.unwrap().primary_intensity, Vec3::ONE);
     }
 
     /// A buffer shorter than the faces it is supposed to hold reads as black rather than as whatever
