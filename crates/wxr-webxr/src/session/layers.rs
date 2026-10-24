@@ -5,26 +5,41 @@
 use super::*;
 
 impl WebXrSession {
-    pub(super) fn binding_impl(&mut self, _layer: wxr::Layer) -> Result<wxr::Binding, wxr::Error> {
+    pub(super) fn binding_impl(&mut self, layer: wxr::Layer) -> Result<wxr::Binding, wxr::Error> {
         // WebXR's binding is per GPU device, and a session has exactly one device and therefore one binding -
         // the one `start_gpu` made. So this hands that back rather than making another: a second would be a
         // second view of the same GPU device, which is not a thing the API has.
-        if self.gpu.is_some() {
-            Ok(wxr::Binding::new(0))
-        } else {
-            Err(wxr::Error::Unsupported(
+        if self.gpu.is_none() {
+            return Err(wxr::Error::Unsupported(
                 "the session has no GPU device to bind from".into(),
-            ))
+            ));
         }
+        // The binding itself is session-wide, but it is still a binding *for a layer*: a caller holding a
+        // handle this session did not hand out has nothing to bind, and saying so is the same answer
+        // `set_layer_pose` gives for a layer that is gone.
+        if self
+            .layers
+            .get(layer.id() as usize)
+            .and_then(Option::as_ref)
+            .is_none()
+        {
+            return Err(wxr::Error::Unsupported("no such layer".into()));
+        }
+        Ok(wxr::Binding::new(0))
     }
 }
 
 impl WebXrSession {
     pub(super) fn sub_image_impl(
         &mut self,
-        _binding: wxr::Binding,
+        binding: wxr::Binding,
         view: usize,
     ) -> Option<wxr::SubImage> {
+        // There is one binding per session, so any other id is a handle from a session other than this one:
+        // `None`, as the core promises, rather than a sub-image of whatever this session happens to have.
+        if binding.id() != 0 {
+            return None;
+        }
         // The browser's own `XRView` for that index, kept by `views` for exactly this - `getViewSubImage` is
         // asked one of those, not an index into anything this core has.
         let xr_view = self.frame_views.get(view)?.clone();
