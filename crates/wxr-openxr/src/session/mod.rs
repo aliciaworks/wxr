@@ -494,6 +494,7 @@ impl OpenXrSession {
 }
 
 mod display;
+mod events;
 mod frames;
 mod sources;
 mod spaces;
