@@ -151,6 +151,9 @@ impl Raycaster {
         // in `future_result`, and the spec is explicit that the two are not the same thing.
         if result != openxr_sys::Result::SUCCESS {
             log::debug!("wxr-openxr: completing the raycaster: {result:?}");
+            // A failed completion did not consume the future, so it is still the runtime's pending work
+            // and still this backend's to cancel. Dropping it would leave a completion nobody collects.
+            self.cancel(future);
             return;
         }
         if completion.future_result != openxr_sys::Result::SUCCESS {
