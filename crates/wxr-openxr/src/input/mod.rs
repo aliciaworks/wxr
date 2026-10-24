@@ -31,9 +31,6 @@ pub struct Hands {
     hands: Vec<Hand>,
     /// The press and squeeze edges the last `read` found, waiting to be polled.
     pending: VecDeque<wxr::Event>,
-    /// Whether the instance was made with `XR_EXT_haptic_feedback`, which is what makes the haptic actions
-    /// below mean anything: a runtime without it has no `/output/haptic` path to bind.
-    haptics: bool,
     /// Whether it also took `XR_FB_haptic_pcm`, which is the waveform on top of the buzz - an app can have
     /// [`pulse`](Hands::pulse) and not [`play_pcm`](Hands::play_pcm).
     pcm: bool,
@@ -193,7 +190,6 @@ impl Hands {
             set,
             hands,
             pending: VecDeque::new(),
-            haptics: haptics.feedback,
             pcm: haptics.pcm,
         };
         hands.suggest(instance);
@@ -313,9 +309,6 @@ impl Hands {
         // The edges this frame is a rising or falling side of, collected here and queued at the end: the hands
         // are borrowed for the loop below, and `pending` cannot be borrowed at the same time.
         let mut edges = Vec::new();
-        // Read out before the hands are borrowed, because whether a source can buzz is a fact about the
-        // instance and not about the hand - it is the same answer for all of them.
-        let haptics = self.haptics;
         for hand in &mut self.hands {
             let grip = hand.grip.locate(base, time).ok();
             let aim = hand.aim.locate(base, time).ok();
@@ -379,10 +372,10 @@ impl Hands {
                 // of the other modes with.
                 target_ray_mode: wxr::TargetRayMode::TrackedPointer,
                 hand: hand.tracker.is_some(),
-                // And whether there is an actuator to send to, which is the extension having been taken and
-                // the path having been found - the same answer for every source, because OpenXR has no
-                // per-controller way to ask.
-                haptics,
+                // Whether there is an actuator to send to: the extension having been taken and this hand's
+                // output path having been found. Both are per hand, and a session-wide `true` here would tell
+                // an app to buzz a controller whose `pulse` can only answer `Unsupported`.
+                haptics: hand.haptic.is_some(),
                 grip: pose(&grip),
                 aim: pose(&aim),
                 tracked: tracked(&grip) || tracked(&aim),

@@ -123,9 +123,9 @@ impl OpenXrSession {
                 features = features.union(bit);
             }
         }
-        // Haptics, and here the bit is the extension rather than a per-controller answer: OpenXR has no way to
-        // ask whether a particular controller has an actuator, so a runtime with the extension is a session
-        // whose sources say they can buzz, and one without is a session whose sources say they cannot.
+        // Haptics: whether the session can be asked to buzz at all. A runtime without the extension cannot,
+        // and one with it can - but which of its hands has an output path is a fact about each hand, and it
+        // is `InputSource::haptics` that answers it rather than this session-wide bit.
         if self.haptics.feedback {
             features = features.union(wxr::Features::HAPTICS);
         }
