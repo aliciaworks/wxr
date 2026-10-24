@@ -175,6 +175,7 @@ impl OpenXrSession {
             raycast,
             depth,
             measured: None,
+            depth_asked: false,
             // Cloned, and the last field - see its documentation for why it is both.
             device: device.clone(),
         })

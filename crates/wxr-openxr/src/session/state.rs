@@ -94,6 +94,9 @@ pub struct OpenXrSession {
     /// [`Self::depth_impl`] and cleared at the end of the frame, because the runtime takes the image back
     /// then. See [`super::MeasuredDepth`] for why the two are carried apart.
     pub(super) measured: Option<super::MeasuredDepth>,
+    /// Whether this frame has already asked the runtime for its depth, which it permits once per frame -
+    /// including the ask that answered that no depth was ready yet.
+    pub(super) depth_asked: bool,
     /// The wgpu objects every swapchain above was allocated through, kept so that they outlive the handles
     /// that name their images.
     ///

@@ -362,14 +362,15 @@ impl OpenXrSession {
     /// [`wxr::DepthInfo`] has nowhere for. A renderer that wants the eye asks the frame's views, which are
     /// the same ones the measurement was taken in.
     pub(super) fn depth_impl(&mut self, view: usize) -> Option<(&DepthImage, wxr::DepthInfo)> {
-        // The first ask of a frame is the one that takes the image: the runtime allows one acquire between a
-        // frame's begin and its end, and a second is `XR_ERROR_LIMIT_REACHED`. Asking for a view this
-        // backend's own views never had is nothing, which is the same answer a caller gets for an index past
-        // the end of the frame's list.
+        // The first ask of a frame is the one that tries to take the image: the runtime allows one acquire
+        // between a frame's begin and its end, and a second is `XR_ERROR_LIMIT_REACHED` - even when the first
+        // answered that no depth was ready. Asking for a view this backend's own views never had is nothing,
+        // which is the same answer a caller gets for an index past the end of the frame's list.
         if view >= 2 {
             return None;
         }
-        if self.measured.is_none() {
+        if !self.depth_asked {
+            self.depth_asked = true;
             let depth = self.depth.as_mut()?;
             if !depth.start() {
                 return None;

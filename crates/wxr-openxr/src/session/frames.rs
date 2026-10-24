@@ -18,6 +18,7 @@ impl OpenXrSession {
         // failed after taking the depth image - or a `Wait` frame - would otherwise leave it for `depth` to
         // answer with, and the runtime only allows one acquire per frame.
         self.measured = None;
+        self.depth_asked = false;
         // A session the runtime has taken away has no frame to wait for. `xrWaitFrame` on one is an error,
         // and a caller that keeps asking is a loop that ends by error rather than by the `Exit` the core has.
         if self.state == wxr::State::Ended {
@@ -397,6 +398,7 @@ impl OpenXrSession {
         // is the reason [`Self::depth`] takes the image on the first ask of a frame and then reads it: this
         // line is what makes the first ask of the next frame the first ask rather than the second.
         self.measured = None;
+        self.depth_asked = false;
         Ok(())
     }
 }
