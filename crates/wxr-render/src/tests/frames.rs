@@ -126,6 +126,25 @@ fn a_depth_buffer_follows_the_image_it_is_attached_to() {
     }
 }
 
+#[test]
+fn an_eye_with_an_empty_viewport_is_not_drawn() {
+    let Some((_turn, device, queue)) = device() else {
+        return;
+    };
+    let mut session = session_at(wxr::Extent2d::new(64, 64), true);
+    let space = session.space(wxr::SpaceKind::LocalFloor).expect("a floor");
+    let mut frame = wxr::Frame::default();
+    session.begin(Duration::ZERO, &mut frame).expect("a frame");
+    session.views(space, &mut frame).expect("views");
+    frame.views_mut()[0].viewport.width = 0;
+
+    let mut renderer = Renderer::new([0.0, 0.0, 0.0, 1.0]);
+    let drawn = renderer
+        .draw(&device, &queue, &mut session, &Plain, &mut frame)
+        .expect("the frame still ends");
+    assert_eq!(drawn, 1, "the other eye is still a view with pixels");
+}
+
 /// An importer that offers the compositor's depth as well as its colour.
 ///
 /// A drawable's depth belongs to the frame it came with, exactly as its colour does, so the interesting

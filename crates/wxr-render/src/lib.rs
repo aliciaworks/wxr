@@ -280,6 +280,11 @@ impl Renderer {
 
         let mut drawn = 0;
         for (index, view) in frame.views().iter().enumerate() {
+            // A viewport with no pixels is no place to draw, and `set_viewport` with one is a validation error
+            // rather than a blank picture. Leave the view out, the way a session that could not place it does.
+            if view.viewport.width == 0 || view.viewport.height == 0 {
+                continue;
+            }
             // The room's depth, if this session measured any: imported and let go of in one breath, because the
             // buffer belongs to the frame and the session cannot be asked for anything else while a reference
             // into it is held.
