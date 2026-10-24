@@ -451,9 +451,19 @@ impl OpenXrSession {
                 }
                 Err(error) => {
                     log::error!("wxr-openxr: polling events: {error:?}");
-                    self.state = wxr::State::Ended;
-                    self.lost = true;
-                    return Some(wxr::Event::Lost);
+                    // A poll that fails is the instance going away, which is the same ending a state event
+                    // would have said. Say the state first if it has not been said, then `Lost` once: a
+                    // persistent error must not turn every later poll into another `Lost`, and a caller that
+                    // only ever hears `Lost` never sees the state that explains it.
+                    if self.state != wxr::State::Ended {
+                        self.state = wxr::State::Ended;
+                        return Some(wxr::Event::StateChanged(wxr::State::Ended));
+                    }
+                    if !self.lost {
+                        self.lost = true;
+                        return Some(wxr::Event::Lost);
+                    }
+                    return None;
                 }
             }
         }
