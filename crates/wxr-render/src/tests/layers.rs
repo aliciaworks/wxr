@@ -150,6 +150,37 @@ fn a_layer_with_an_empty_viewport_is_not_drawn() {
     assert!(!ran.get(), "and the callback never saw a pass to draw in");
 }
 
+/// A viewport that reaches past the image is a pass wgpu refuses, not a layer drawn on its right-hand part.
+#[test]
+fn a_layer_viewport_outside_the_image_is_not_drawn() {
+    let Some((_turn, device, queue)) = device() else {
+        return;
+    };
+    let meta = ImageMeta {
+        format: wxr::ColorFormat::Rgba8Unorm,
+        extent: wxr::Extent2d {
+            width: 8,
+            height: 8,
+        },
+        layers: 1,
+    };
+    let layer = wxr::LayerImage {
+        meta,
+        // The right half of the image, and then eight more columns that are not there.
+        viewport: wxr::Viewport {
+            x: 4,
+            y: 0,
+            width: meta.extent.width,
+            height: meta.extent.height,
+        },
+    };
+    let mut renderer = Renderer::new([0.0, 0.0, 0.0, 1.0]);
+    let ran = std::cell::Cell::new(false);
+    let drawn = renderer.draw_layer(&device, &queue, &Plain, &0, layer, |_| ran.set(true));
+    assert!(!drawn, "part of the viewport is outside the image");
+    assert!(!ran.get(), "and the callback never saw a pass to draw in");
+}
+
 /// An image with no pixels is nothing to wrap, whatever the viewport says.
 #[test]
 fn a_layer_with_an_empty_image_is_not_drawn() {

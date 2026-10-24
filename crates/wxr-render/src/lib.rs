@@ -69,6 +69,18 @@ pub fn depth_state(depth: Depth) -> DepthState {
     }
 }
 
+/// Whether a viewport is a non-empty rectangle inside an image of this extent.
+///
+/// A viewport is a pass's one rectangle, so a zero width, a zero height, or a right or bottom edge past the
+/// image is a pass wgpu refuses rather than a blank picture. A session that reports one is malformed; the
+/// renderer's answer is to leave that view or layer out, the same way it treats an image it cannot wrap.
+fn viewport_fits(viewport: wxr::Viewport, extent: wxr::Extent2d) -> bool {
+    viewport.width > 0
+        && viewport.height > 0
+        && u64::from(viewport.x) + u64::from(viewport.width) <= u64::from(extent.width)
+        && u64::from(viewport.y) + u64::from(viewport.height) <= u64::from(extent.height)
+}
+
 /// How a backend's images become wgpu textures.
 ///
 /// One call per image per *frame*, because a compositor's handle may be: a `CompositorServices` drawable's
@@ -286,9 +298,10 @@ impl Renderer {
 
         let mut drawn = 0;
         for (index, view) in frame.views().iter().enumerate() {
-            // A viewport with no pixels is no place to draw, and `set_viewport` with one is a validation error
-            // rather than a blank picture. Leave the view out, the way a session that could not place it does.
-            if view.viewport.width == 0 || view.viewport.height == 0 {
+            // A viewport with no pixels, or one that reaches outside the image, is no place to draw:
+            // `set_viewport` refuses both as a validation error rather than a blank picture. Leave the view
+            // out, the way a session that could not place it does.
+            if !viewport_fits(view.viewport, meta.extent) {
                 continue;
             }
             // An array layer past the image's own is not a view of it: a session that says so is malformed,

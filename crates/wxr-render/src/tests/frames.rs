@@ -145,6 +145,26 @@ fn an_eye_with_an_empty_viewport_is_not_drawn() {
     assert_eq!(drawn, 1, "the other eye is still a view with pixels");
 }
 
+/// A viewport that reaches past the image is a pass wgpu refuses, not an eye drawn on its right-hand part.
+#[test]
+fn an_eye_viewport_outside_the_image_is_not_drawn() {
+    let Some((_turn, device, queue)) = device() else {
+        return;
+    };
+    let mut session = session_at(wxr::Extent2d::new(64, 64), true);
+    let space = session.space(wxr::SpaceKind::LocalFloor).expect("a floor");
+    let mut frame = wxr::Frame::default();
+    session.begin(Duration::ZERO, &mut frame).expect("a frame");
+    session.views(space, &mut frame).expect("views");
+    frame.views_mut()[0].viewport.x = 32;
+
+    let mut renderer = Renderer::new([0.0, 0.0, 0.0, 1.0]);
+    let drawn = renderer
+        .draw(&device, &queue, &mut session, &Plain, &mut frame)
+        .expect("the frame still ends");
+    assert_eq!(drawn, 1, "the other eye is still inside the image");
+}
+
 /// A frame whose image has no pixels is a frame with nothing in it, not a texture to create.
 #[test]
 fn a_frame_with_an_empty_image_is_not_drawn() {

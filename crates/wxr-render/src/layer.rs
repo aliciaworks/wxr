@@ -19,8 +19,8 @@ impl Renderer {
     /// face or eye it is drawing. A cube is six passes and a layered stereo image is two, and the caller that
     /// has one draws them itself.
     ///
-    /// A viewport with no pixels is `false` for the same reason the layered image is: there is nowhere to
-    /// draw, and a pass with an empty viewport is a validation error rather than a blank layer.
+    /// A viewport with no pixels, or one reaching outside the image, is `false` for the same reason the
+    /// layered image is: a pass with such a viewport is a validation error rather than a blank layer.
     pub fn draw_layer<I: Import>(
         &mut self,
         device: &wgpu::Device,
@@ -32,14 +32,9 @@ impl Renderer {
     ) -> bool {
         // A default view of a layered texture covers every layer, and a render pass cannot attach that as a
         // two-dimensional target. Refusing it is the only answer that does not silently draw one face of six
-        // and leave the rest as whatever the compositor had. An image with no pixels or no layers is refused
-        // for the same reason: there is no texture to make.
-        if layer.meta.layers != 1
-            || layer.meta.extent.width == 0
-            || layer.meta.extent.height == 0
-            || layer.viewport.width == 0
-            || layer.viewport.height == 0
-        {
+        // and leave the rest as whatever the compositor had. A viewport that is empty or reaches outside the
+        // image is refused for the same reason: there is no valid rectangle to draw in.
+        if layer.meta.layers != 1 || !viewport_fits(layer.viewport, layer.meta.extent) {
             return false;
         }
         // The format and the extent are the layer's, which is what a render target is made from - so there is
