@@ -22,10 +22,16 @@ impl AppleSession {
     ) -> Result<(), wxr::Error> {
         self.release();
         out.reset();
+        // An invalidated layer hands out no more frames, and waiting for one is a frame loop that never stops.
+        // The state is already `Ended`, so this is the answer the core has for it rather than a second guess.
+        if self.layer_state().0 == wxr::State::Ended {
+            out.state = wxr::FrameState::Exit;
+            return Ok(());
+        }
         out.state = wxr::FrameState::Wait;
 
-        // The layer has a frame when it has one, and `nil` when it does not: paused, invalidated, or a frame
-        // already in flight. Waiting is the right answer to all three, and none of them is an error.
+        // The layer has a frame when it has one, and `nil` when it does not: paused, or a frame already in
+        // flight. Waiting is the right answer to both, and neither of them is an error.
         // SAFETY: the layer renderer is live, and a frame it returns is used until `end` gives it back.
         self.frame = unsafe { cp_layer_renderer_query_next_frame(&self.renderer) };
         if self.frame.is_null() {
