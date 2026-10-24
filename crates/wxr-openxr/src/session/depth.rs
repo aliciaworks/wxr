@@ -155,8 +155,8 @@ impl EnvironmentDepth {
             undo(table, provider, Some(swapchain));
             return None;
         }
-        if count == 0 {
-            log::warn!("wxr-openxr: no depth: the swapchain holds no images at all");
+        if count == 0 || state.width == 0 || state.height == 0 {
+            log::warn!("wxr-openxr: no depth: the swapchain has no usable image");
             undo(table, provider, Some(swapchain));
             return None;
         }
