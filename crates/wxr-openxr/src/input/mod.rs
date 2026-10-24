@@ -400,9 +400,7 @@ impl Hands {
                     thumbstick: hand
                         .thumbstick
                         .state::<xr::Vulkan>(session, hand.path)
-                        .map(|state| {
-                            wxr::glam::Vec2::new(state.current_state.x, state.current_state.y)
-                        })
+                        .map(|state| thumbstick(state.current_state))
                         .unwrap_or_default(),
                 },
             });
@@ -467,5 +465,26 @@ fn bind<'a, T: xr::ActionTy>(
 ) {
     if let Ok(path) = instance.string_to_path(&format!("/user/hand/{side}{path}")) {
         bindings.push(xr::Binding::new(action, path));
+    }
+}
+
+/// A thumbstick in the core's terms, which is the one axis the two specifications disagree about.
+///
+/// OpenXR's `y` is positive *down* and the core's [`wxr::Axes`] is positive *up* - the Gamepad API's
+/// convention, which is what WebXR reports directly and what the other backend flips. Leaving the sign alone
+/// makes every stick drive a camera backwards.
+fn thumbstick(value: xr::Vector2f) -> wxr::glam::Vec2 {
+    wxr::glam::Vec2::new(value.x, -value.y)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Down on the hardware is down on the screen: OpenXR's positive Y becomes the core's negative one.
+    #[test]
+    fn a_thumbstick_y_axis_points_up() {
+        let stick = thumbstick(xr::Vector2f { x: 0.5, y: 0.25 });
+        assert_eq!(stick, wxr::glam::Vec2::new(0.5, -0.25));
     }
 }
