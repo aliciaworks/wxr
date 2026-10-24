@@ -81,7 +81,7 @@ impl OpenXrSession {
         // A space this session never handed out has no boundary to ask about, and asking the runtime about one
         // it does not know is a fault rather than an empty answer.
         if self.reference(space).is_none() {
-            return Ok(());
+            return Err(wxr::Error::NoSpace(space.kind));
         }
 
         // `xrGetReferenceSpaceBoundsRect`, which answers `SPACE_BOUNDS_UNAVAILABLE` as a `None` - the runtime
