@@ -19,19 +19,14 @@ impl WebXrSession {
 }
 
 impl WebXrSession {
-    pub(super) fn begin_impl(
-        &mut self,
-        _now: Duration,
-        out: &mut wxr::Frame,
-    ) -> Result<(), wxr::Error> {
-        out.reset();
-        self.located = 0;
-        // Last frame's views are not this frame's, and neither is last frame's *frame*: a `Wait` below leaves
-        // this session between frames, and a question about the frame asked then has no frame to answer for.
+    /// Forget the frame this session was holding, and everything that belonged to it.
+    ///
+    /// Called when a frame is begun and when it is given back, because those are the two ends of the only
+    /// window in which a browser's `XRFrame` and its images are valid. A frame left in the slot between them
+    /// is a frame `views`, `depth` or `anchor` would answer from after the browser had taken it back.
+    fn clear_frame(&mut self) {
         self.current = None;
-        // Last frame's views are not this frame's, and a depth buffer is about *that* frame's eyes. The same
-        // is true of the picture and of a layer's picture: they are the compositor's for one frame and taken
-        // back at the end of it, so none of them is an answer before `views` fills this frame's in.
+        self.located = 0;
         self.frame_views.clear();
         self.layer_images.clear();
         self.image = None;
@@ -40,6 +35,15 @@ impl WebXrSession {
             ..Default::default()
         };
         self.depth_image = None;
+    }
+
+    pub(super) fn begin_impl(
+        &mut self,
+        _now: Duration,
+        out: &mut wxr::Frame,
+    ) -> Result<(), wxr::Error> {
+        out.reset();
+        self.clear_frame();
 
         // A session that has ended does not get a frame, even if the browser left one queued before it said
         // so: the queued callback is the last one there will be, and drawing it would be a picture after the
@@ -66,8 +70,10 @@ impl WebXrSession {
 
 impl WebXrSession {
     pub(super) fn end_impl(&mut self, _frame: &mut wxr::Frame) -> Result<(), wxr::Error> {
-        // There is nothing to hand back: the compositor has no image of ours. The next frame is asked for,
-        // which is what keeps the session running.
+        // There is nothing to hand back to the browser: the frame ends when this call returns, so its views,
+        // its picture and its depth all stop being answers here rather than at the next `begin`. The next
+        // frame is asked for, which is what keeps the session running.
+        self.clear_frame();
         self.request_frame();
         Ok(())
     }

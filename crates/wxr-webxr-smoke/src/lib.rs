@@ -454,14 +454,30 @@ fn tick(board: &mut Board) -> Result<(), String> {
         }
     }
 
+    let handed_over = board.session.image_count();
     if let Err(error) = board.session.end(&mut board.frame) {
         return Err(format!("end failed: {error}"));
     }
+    // The browser owns a frame only until the animation callback returns, and `end` is where this backend
+    // gives it back. Everything that belonged to it stops being an answer then, so the next `begin` has
+    // nothing stale to clear and a caller between frames is told there is no frame rather than given the
+    // picture from the one before.
+    if board.session.image_count() != 0 {
+        return Err(format!(
+            "the frame was ended and the session still hands over {} image(s)",
+            board.session.image_count()
+        ));
+    }
+    if board.session.image(0).is_some() {
+        return Err("the frame was ended and its image is still there".into());
+    }
+    if board.session.depth(0).is_some() {
+        return Err("the frame was ended and its depth is still there".into());
+    }
     board.drawn += 1;
     say(&format!(
-        "frame {} drawn ({} image(s) this session hands over)",
-        board.drawn,
-        board.session.image_count()
+        "frame {} drawn ({handed_over} image(s) this session handed over)",
+        board.drawn
     ));
     Ok(())
 }
