@@ -14,6 +14,20 @@
 
 use super::*;
 
+/// One eye as the drawable describes it: the eye's place in device space, its projection, and the part of
+/// the frame's images it draws into.
+///
+/// Cached because the compositor's update window closes on the first `views`, and reading the drawable after
+/// that is the access its header forbids. A caller that asks for the same frame's views again - in another
+/// space, or because it retried - gets this frame's eyes with the new head, not a second trip to the drawable.
+pub(super) struct EyeView {
+    device_from_eye: Mat4,
+    projection: Mat4,
+    image: usize,
+    layer: u32,
+    viewport: wxr::Viewport,
+}
+
 impl AppleSession {
     pub(super) fn begin_impl(
         &mut self,
@@ -134,48 +148,63 @@ impl AppleSession {
         if !self.has_space(space) {
             return Err(wxr::Error::NoSpace(space.kind));
         }
+        // Asking twice replaces the eyes rather than adding a second pair to the same frame.
+        out.views_mut().clear();
         if self.drawable.is_null() {
             return Ok(());
         }
+        // The compositor's update window is open until the first `views` closes it, and the drawable may not
+        // be read afterwards. Read its eyes once, keep them, and close the window here rather than on every
+        // call - a second call uses the cache.
+        if !self.updated {
+            // SAFETY: the drawable is this frame's and is live until `end`. Every index below is below the
+            // view count just read, and the texture map lives as long as the view it came from.
+            self.eyes = unsafe {
+                (0..cp_drawable::view_count(self.drawable))
+                    .map(|index| {
+                        let view = cp_drawable::view(self.drawable, index);
+                        let map = cp_view::view_texture_map(view);
+                        let viewport = cp_view_texture_map::viewport(map);
+                        EyeView {
+                            // `device from view`: the eye's own place in device space. It is a pose
+                            // already, so nothing inverts it - the eye-in-space transform is `head * this`.
+                            device_from_eye: Mat4::from_cols_array(
+                                &sys::cp_view_get_transform(view).0,
+                            ),
+                            // A mixed-reality layer refuses `cp_view_get_tangents` and wants the projection
+                            // matrix instead; the four openings are read back out of it for `fov` below.
+                            projection: Mat4::from_cols_array(
+                                &sys::cp_drawable_compute_projection(
+                                    self.drawable,
+                                    cp_axis_direction_convention::right_up_back,
+                                    index,
+                                )
+                                .0,
+                            ),
+                            image: cp_view_texture_map::texture_index(map),
+                            layer: cp_view_texture_map::slice_index(map) as u32,
+                            viewport: wxr::Viewport {
+                                x: viewport.originX.max(0.0) as u32,
+                                y: viewport.originY.max(0.0) as u32,
+                                width: viewport.width.max(0.0) as u32,
+                                height: viewport.height.max(0.0) as u32,
+                            },
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            };
+            // The queries are finished; rendering starts after this and the frame is submitted in `end`.
+            // SAFETY: the frame is the one begun above and has not been given back.
+            unsafe { cp_frame::end_update(self.frame) };
+            self.updated = true;
+        }
+
         // The head in the space, and then each eye around it: the compositor's eye transforms are already
         // relative to the wearer, so the viewer is the device and an eye is `head * device_from_eye`.
         let head = self.device_in_space(space);
         out.viewer = wxr_render::pose_from_transform(head);
-
-        // SAFETY: the drawable is this frame's and is live until `end`. Every index below is below the view
-        // count just read, and the texture map lives as long as the view it came from.
-        let (count, maps) = unsafe {
-            let count = cp_drawable::view_count(self.drawable);
-            let maps = (0..count)
-                .map(|index| {
-                    let view = cp_drawable::view(self.drawable, index);
-                    let map = cp_view::view_texture_map(view);
-                    (
-                        // `device from view`: the eye's own place in device space. It is a pose already, so
-                        // nothing inverts it - the eye-in-space transform is `head * this`.
-                        Mat4::from_cols_array(&sys::cp_view_get_transform(view).0),
-                        // A mixed-reality layer refuses `cp_view_get_tangents` and wants the projection
-                        // matrix instead; the four openings are read back out of it for `fov` below.
-                        Mat4::from_cols_array(
-                            &sys::cp_drawable_compute_projection(
-                                self.drawable,
-                                cp_axis_direction_convention::right_up_back,
-                                index,
-                            )
-                            .0,
-                        ),
-                        cp_view_texture_map::texture_index(map),
-                        cp_view_texture_map::slice_index(map) as u32,
-                        cp_view_texture_map::viewport(map),
-                    )
-                })
-                .collect::<Vec<_>>();
-            (count, maps)
-        };
-
-        for (index, (device_from_eye, projection, image, layer, viewport)) in
-            maps.into_iter().enumerate()
-        {
+        let count = self.eyes.len();
+        for (index, eye) in self.eyes.iter().enumerate() {
             out.views_mut().push(wxr::View {
                 eye: if count == 1 {
                     wxr::Eye::Mono
@@ -184,24 +213,14 @@ impl AppleSession {
                 } else {
                     wxr::Eye::Right
                 },
-                pose: wxr_render::pose_from_transform(head * device_from_eye),
-                fov: wxr_render::angles(projection),
-                viewport: wxr::Viewport {
-                    x: viewport.originX.max(0.0) as u32,
-                    y: viewport.originY.max(0.0) as u32,
-                    width: viewport.width.max(0.0) as u32,
-                    height: viewport.height.max(0.0) as u32,
-                },
-                image,
-                layer,
+                pose: wxr_render::pose_from_transform(head * eye.device_from_eye),
+                fov: wxr_render::angles(eye.projection),
+                viewport: eye.viewport,
+                image: eye.image,
+                layer: eye.layer,
                 recommended_viewport_scale: None,
             });
         }
-
-        // The queries are finished; rendering starts after this and the frame is submitted in `end`.
-        // SAFETY: the frame is the one begun above and has not been given back.
-        unsafe { cp_frame::end_update(self.frame) };
-        self.updated = true;
         Ok(())
     }
 

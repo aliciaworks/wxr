@@ -85,6 +85,12 @@ impl WebXrSession {
         space: wxr::ReferenceSpace,
         out: &mut wxr::Frame,
     ) -> Result<(), wxr::Error> {
+        // This frame's eyes replace the last answer rather than adding to it. The same is true of the
+        // browser's views the depth pass is indexed by: a retry that returned early must not leave a count
+        // that names views no longer in the frame.
+        out.views_mut().clear();
+        self.frame_views.clear();
+        self.located = 0;
         let Some(reference) = self
             .spaces
             .get(space.id() as usize)

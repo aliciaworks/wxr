@@ -24,6 +24,22 @@ fn a_frame_has_an_eye_a_side_an_interpupillary_distance_apart() {
 }
 
 #[test]
+fn asking_for_views_twice_replaces_the_eyes() {
+    // A caller may ask for the same frame's views more than once - a retry, or a second space - and the
+    // frame holds what the backend last said rather than every answer it has ever given. Four eyes are not
+    // a stereo frame.
+    let mut session = running();
+    let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+    let mut frame = Frame::default();
+    session.begin(Duration::ZERO, &mut frame).unwrap();
+    session.views(space, &mut frame).unwrap();
+    session.views(space, &mut frame).unwrap();
+    assert_eq!(frame.views().len(), 2);
+    assert_eq!(frame.views()[0].eye, Eye::Left);
+    assert_eq!(frame.views()[1].eye, Eye::Right);
+}
+
+#[test]
 fn a_new_frame_does_not_carry_the_last_one_head() {
     // A frame loop reuses one `Frame`, and `begin` is what makes it this frame's. A `Wait` or a `views`
     // that could not locate the eyes leaves nothing in it - not the head from the frame before.

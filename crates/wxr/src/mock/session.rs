@@ -181,8 +181,10 @@ impl Session for MockSession {
             return Err(Error::NoSpace(space.kind));
         }
         // The head is between the eyes and the eyes are level with it, which is the one place a mock can be
-        // exactly like a real runtime.
+        // exactly like a real runtime. Asking twice for one frame replaces the eyes rather than adding a
+        // second pair to them: `views` fills the frame, and the caller's vector is the one a frame loop keeps.
         out.viewer = Pose::IDENTITY;
+        out.views_mut().clear();
         let fov = FieldOfView::symmetric(std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
         let views = out.views_mut();
         if self.stereo {

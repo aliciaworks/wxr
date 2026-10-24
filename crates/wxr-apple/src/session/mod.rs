@@ -118,6 +118,9 @@ pub struct AppleSession {
     /// The frame's images, retained while the frame is in flight: the drawable's own references are not ours
     /// to keep, and the renderer wraps these between `begin` and `end`.
     textures: Vec<FrameImage>,
+    /// This frame's eyes as the drawable described them, read once inside the update window. Kept because the
+    /// window is closed by the first `views`, and a second one has to answer without touching the drawable.
+    eyes: Vec<frame::EyeView>,
     /// The near and far planes the app draws with, which the compositor is told each frame so that it can
     /// reproject with the depth buffer. `None` until an app says - see `set_depth_range`.
     depth_range: Option<(f32, f32)>,
@@ -173,6 +176,7 @@ impl AppleSession {
             drawable: std::ptr::null_mut(),
             updated: false,
             textures: Vec::new(),
+            eyes: Vec::new(),
             depth_range: None,
             blend: wxr::Blend::Opaque,
             // Tracking that will not start is a head-locked scene, not a session that failed.
@@ -271,6 +275,7 @@ impl AppleSession {
     /// Give the frame back. The textures are the compositor's and were only borrowed for one frame.
     fn release(&mut self) {
         self.textures.clear();
+        self.eyes.clear();
         self.origin = None;
         self.drawable = std::ptr::null_mut();
         self.frame = std::ptr::null_mut();

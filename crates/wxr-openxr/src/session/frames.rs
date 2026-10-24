@@ -165,6 +165,12 @@ impl OpenXrSession {
         space: wxr::ReferenceSpace,
         out: &mut wxr::Frame,
     ) -> Result<(), wxr::Error> {
+        // Asking for views twice in one frame replaces them; it does not give the frame four eyes. The
+        // runtime's own views and the space they were located in go with them, so a second call that fails
+        // cannot leave `end` submitting the first call's eyes.
+        out.views_mut().clear();
+        self.located.clear();
+        self.view_space = None;
         let Some(reference) = self.spaces.get(space.id() as usize) else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
