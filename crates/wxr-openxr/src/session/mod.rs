@@ -292,19 +292,27 @@ impl wxr::Session for OpenXrSession {
     fn binding(&mut self, layer: wxr::Layer) -> Result<wxr::Binding, wxr::Error> {
         // On OpenXR a composition layer *is* its swapchain - the runtime reads the image the layer names at
         // `xrEndFrame` - so there is nothing to make here: the binding is the layer's own, named by the handle
-        // the layer already has.
+        // the layer already has. A handle this session did not hand out has no swapchain behind it, though,
+        // and binding to one would be a binding to the projection image under a false name.
+        if self
+            .layers
+            .get(layer.id() as usize)
+            .and_then(Option::as_ref)
+            .is_none()
+        {
+            return Err(wxr::Error::Unsupported("no such layer".into()));
+        }
         Ok(wxr::Binding::new(layer.id()))
     }
 
     fn sub_image(&mut self, binding: wxr::Binding, view: usize) -> Option<wxr::SubImage> {
-        // The swapchain the layer draws into: the session's own for the projection layer, the layer's own
-        // otherwise. Either way the extent is the whole image.
+        // The swapchain the layer draws into, which is the layer's own: the projection layer's images are
+        // what `image` names, and they are not a `Layer` this could have been asked to bind.
         let extent = self
             .layers
             .get(binding.id() as usize)
-            .and_then(|slot| slot.as_ref())
-            .map(|layer| layer.extent)
-            .unwrap_or(self.extent);
+            .and_then(Option::as_ref)?
+            .extent;
         Some(wxr::SubImage {
             color_size: wxr::glam::UVec2::new(extent.width, extent.height),
             // The session's swapchain is a colour attachment and sampled with no depth image of its own, so
