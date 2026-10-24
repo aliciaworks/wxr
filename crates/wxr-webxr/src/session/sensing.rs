@@ -55,6 +55,18 @@ impl WebXrSession {
 }
 
 impl WebXrSession {
+    /// Whether the browser says depth delivery is paused.
+    ///
+    /// An absent `depthActive` is a runtime that did not say, not one that said no - so a measurement it
+    /// delivered is still this frame's measurement.
+    pub(super) fn depth_paused(&self) -> bool {
+        self.inner
+            .borrow()
+            .session
+            .as_ref()
+            .is_some_and(|session| session.depth_active() == Some(false))
+    }
+
     pub(super) fn features_impl(&self) -> wxr::Features {
         let Some(session) = self.inner.borrow().session.clone() else {
             // Before the session arrives there is nothing to ask, and an answer that is not here yet is not a
@@ -74,8 +86,12 @@ impl WebXrSession {
             }
         }
         // Depth is granted by a feature and readable only through the binding that gives a texture: a browser
-        // that granted it and no binding is a depth this backend cannot hand over.
-        if has_feature(&session, "depth-sensing") && self.gpu.is_some() {
+        // that granted it and no binding is a depth this backend cannot hand over. The usage matters too,
+        // because a CPU-optimised session delivers bytes rather than the texture [`wxr::Session::Depth`] is.
+        if has_feature(&session, "depth-sensing")
+            && self.gpu.is_some()
+            && session.depth_usage() != XrDepthUsage::CpuOptimized
+        {
             features = features.union(wxr::Features::DEPTH);
         }
         // Layers need two things and the session has to have both: the binding, which is what makes one, and the

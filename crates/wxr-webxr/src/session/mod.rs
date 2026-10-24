@@ -448,6 +448,11 @@ impl wxr::Session for WebXrSession {
 
     fn depth(&mut self, view: usize) -> Option<(&Self::Depth, wxr::DepthInfo)> {
         self.depth_image = None;
+        // A runtime that has paused depth has nothing for this frame to measure, even if the binding would
+        // still answer.
+        if self.depth_paused() {
+            return None;
+        }
         // From the binding and not the frame, because this session asked for GPU depth - the one that arrives
         // as something to draw with rather than as bytes to read.
         let gpu = self.gpu.as_ref()?;
