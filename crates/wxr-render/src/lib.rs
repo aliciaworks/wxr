@@ -274,6 +274,12 @@ impl Renderer {
             return Ok(0);
         }
         let meta = session.images();
+        // An image with no pixels or no layers is no place to draw, and an importer told to wrap one makes a
+        // texture wgpu refuses. A frame is still a frame to hand back: there is simply nothing in it.
+        if meta.extent.width == 0 || meta.extent.height == 0 || meta.layers == 0 {
+            session.end(frame)?;
+            return Ok(0);
+        }
         self.depth_textures
             .resize_with(session.image_count(), || None);
         let clear_depth = depth_state(self.depth).clear;
@@ -283,6 +289,11 @@ impl Renderer {
             // A viewport with no pixels is no place to draw, and `set_viewport` with one is a validation error
             // rather than a blank picture. Leave the view out, the way a session that could not place it does.
             if view.viewport.width == 0 || view.viewport.height == 0 {
+                continue;
+            }
+            // An array layer past the image's own is not a view of it: a session that says so is malformed,
+            // and a colour view of the layer would be a validation error rather than a picture.
+            if view.layer >= meta.layers {
                 continue;
             }
             // The room's depth, if this session measured any: imported and let go of in one breath, because the

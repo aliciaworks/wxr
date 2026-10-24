@@ -14,7 +14,7 @@ impl Renderer {
     /// is here is the part every layer shares: the image, the attachments, and what an empty one is worth.
     ///
     /// `false` is a session that handed over an image this renderer cannot wrap, which is a frame with no
-    /// layer rather than a frame to fail - the same answer the eyes get. An image with more than one array
+    /// layer rather than a frame to fail - the same answer the eyes get. An image that is not exactly one array
     /// layer is also `false`: it is several pictures, not one, and one callback has nothing to say about which
     /// face or eye it is drawing. A cube is six passes and a layered stereo image is two, and the caller that
     /// has one draws them itself.
@@ -32,8 +32,14 @@ impl Renderer {
     ) -> bool {
         // A default view of a layered texture covers every layer, and a render pass cannot attach that as a
         // two-dimensional target. Refusing it is the only answer that does not silently draw one face of six
-        // and leave the rest as whatever the compositor had.
-        if layer.meta.layers > 1 || layer.viewport.width == 0 || layer.viewport.height == 0 {
+        // and leave the rest as whatever the compositor had. An image with no pixels or no layers is refused
+        // for the same reason: there is no texture to make.
+        if layer.meta.layers != 1
+            || layer.meta.extent.width == 0
+            || layer.meta.extent.height == 0
+            || layer.viewport.width == 0
+            || layer.viewport.height == 0
+        {
             return false;
         }
         // The format and the extent are the layer's, which is what a render target is made from - so there is
