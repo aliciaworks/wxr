@@ -66,6 +66,9 @@ struct Known {
     connected: bool,
     /// What its buttons were the last time they were read, so a press is an edge and not a state.
     buttons_was: wxr::Buttons,
+    /// The player of the last pulse, kept because Core Haptics does not retain a player for the length of
+    /// its pattern: dropping it is stopping it. A new pulse replaces the old one.
+    player: Option<Retained<ProtocolObject<dyn CHHapticPatternPlayer>>>,
 }
 
 impl GameControllers {
@@ -106,6 +109,7 @@ impl GameControllers {
                     engine: None,
                     connected: true,
                     buttons_was: wxr::Buttons::default(),
+                    player: None,
                 });
                 changed = true;
             }
@@ -184,27 +188,35 @@ impl GameControllers {
                 "haptics on a controller that is gone".into(),
             ));
         }
-        let engine = match &mut known.engine {
-            Some(engine) => &*engine,
-            None => {
-                // SAFETY: the controller is live and this is the framework's own question about it.
-                let haptics = unsafe { known.controller.haptics() }
-                    .ok_or_else(|| wxr::Error::Unsupported("haptics on this source".into()))?;
-                // SAFETY: the default locality is the one GameController guarantees every device with an
-                // actuator has, and the engine is the framework's to make.
-                let engine = unsafe { haptics.createEngineWithLocality(GCHapticsLocalityDefault) }
-                    .ok_or_else(|| wxr::Error::Unsupported("a haptic engine".into()))?;
-                known.engine.insert(engine)
-            }
+        // The player is kept in the entry after this block: the engine is borrowed to make it, and Core
+        // Haptics does not hold it for the length of the pattern.
+        let player = {
+            let engine = match &mut known.engine {
+                Some(engine) => &*engine,
+                None => {
+                    // SAFETY: the controller is live and this is the framework's own question about it.
+                    let haptics = unsafe { known.controller.haptics() }
+                        .ok_or_else(|| wxr::Error::Unsupported("haptics on this source".into()))?;
+                    // SAFETY: the default locality is the one GameController guarantees every device with
+                    // an actuator has, and the engine is the framework's to make.
+                    let engine =
+                        unsafe { haptics.createEngineWithLocality(GCHapticsLocalityDefault) }
+                            .ok_or_else(|| wxr::Error::Unsupported("a haptic engine".into()))?;
+                    known.engine.insert(engine)
+                }
+            };
+            // SAFETY: the engine is this controller's and is live. Starting one that is already running is
+            // the framework's own no-op, which is why this is not guarded by a flag of ours.
+            unsafe { engine.startAndReturnError() }
+                .map_err(|error| wxr::Error::Rejected(format!("{error}")))?;
+            pattern(engine, intensity, duration)?
         };
-        // SAFETY: the engine is this controller's and is live. Starting one that is already running is the
-        // framework's own no-op, which is why this is not guarded by a flag of ours.
-        unsafe { engine.startAndReturnError() }
-            .map_err(|error| wxr::Error::Rejected(format!("{error}")))?;
-        let player = pattern(engine, intensity, duration)?;
         // SAFETY: the player is live, and `CHHapticTimeImmediate` is the framework's "as soon as possible".
         unsafe { player.startAtTime_error(CHHapticTimeImmediate) }
             .map_err(|error| wxr::Error::Rejected(format!("{error}")))?;
+        // Kept for the duration of the pattern; without it the player is dropped after the call that starts
+        // it, which stops the thing that was asked to buzz.
+        known.player = Some(player);
         Ok(())
     }
 }
