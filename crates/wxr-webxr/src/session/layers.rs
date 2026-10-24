@@ -169,6 +169,11 @@ impl WebXrSession {
                 },
             )
         };
+        // A sub-image with no pixels in its viewport is no place to draw, the same answer a view with no
+        // sub-image gets. Keeping it would hand back a `LayerImage` whose viewport is a pass wgpu refuses.
+        if viewport.width == 0 || viewport.height == 0 {
+            return None;
+        }
         self.layer_images.resize_with(self.layers.len(), || None);
         self.layer_images[index] = Some(image);
         let image = self.layer_images[index].as_ref()?;
