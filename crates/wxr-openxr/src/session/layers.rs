@@ -33,6 +33,9 @@ impl OpenXrSession {
             .layers
             .get(binding.id() as usize)
             .and_then(Option::as_ref)?;
+        // A layer's image is the runtime's for one frame, like the eyes', and `held` is the image this frame
+        // took. After `end` there is no slice to name, the same reason `layer_image` answers nothing then.
+        layer.held?;
         // A view past the layer's last slice is not a face this texture has, and answering with it would
         // point a renderer at memory outside the array.
         if view >= slices(layer.shape) {
