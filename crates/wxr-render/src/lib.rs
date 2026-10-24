@@ -363,6 +363,10 @@ impl Renderer {
             drawn += 1;
         }
 
+        // The last view is over too, and its depth buffer belongs to the frame that `end` is about to hand
+        // back. Letting it go here means a session that is waiting for a slow compositor is not also holding
+        // the previous frame's depth - which is the whole reason the field is per view rather than per renderer.
+        self.session_depth = None;
         session.end(frame)?;
         Ok(drawn)
     }

@@ -126,6 +126,70 @@ fn a_depth_buffer_follows_the_image_it_is_attached_to() {
     }
 }
 
+/// An importer that offers the compositor's depth as well as its colour.
+///
+/// A drawable's depth belongs to the frame it came with, exactly as its colour does, so the interesting
+/// question is whether the renderer still holds it once the frame has been handed back.
+struct CompositorDepth;
+
+impl Import for CompositorDepth {
+    type Image = u32;
+    type Depth = ();
+
+    fn texture(
+        &self,
+        device: &wgpu::Device,
+        meta: ImageMeta,
+        image: &Self::Image,
+    ) -> Option<wgpu::Texture> {
+        Plain.texture(device, meta, image)
+    }
+
+    fn depth(
+        &self,
+        device: &wgpu::Device,
+        meta: ImageMeta,
+        _image: &Self::Image,
+    ) -> Option<wgpu::Texture> {
+        Some(device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("compositor depth"),
+            size: wgpu::Extent3d {
+                width: meta.extent.width.max(1),
+                height: meta.extent.height.max(1),
+                depth_or_array_layers: meta.layers.max(1),
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: DEPTH_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        }))
+    }
+}
+
+#[test]
+fn the_compositor_depth_is_let_go_when_the_frame_is_given_back() {
+    let Some((_turn, device, queue)) = device() else {
+        return;
+    };
+    let mut session = session_at(wxr::Extent2d::new(64, 64), true);
+    let space = session.space(wxr::SpaceKind::LocalFloor).expect("a floor");
+    let mut frame = wxr::Frame::default();
+    session.begin(Duration::ZERO, &mut frame).expect("a frame");
+    session.views(space, &mut frame).expect("views");
+
+    let mut renderer = Renderer::new([0.0, 0.0, 0.0, 1.0]);
+    renderer
+        .draw(&device, &queue, &mut session, &CompositorDepth, &mut frame)
+        .expect("the frame draws");
+
+    assert!(
+        renderer.session_depth.is_none(),
+        "the last view's depth is the frame's, and `end` has handed the frame back"
+    );
+}
+
 /// An importer that keeps the last image it wrapped, for a test that reads the picture back out of it.
 #[derive(Default)]
 struct Keeping {
