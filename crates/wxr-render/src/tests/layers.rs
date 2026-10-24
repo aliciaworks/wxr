@@ -120,6 +120,36 @@ fn centre_of(texture: &wgpu::Texture, device: &wgpu::Device, queue: &wgpu::Queue
     pixel
 }
 
+#[test]
+fn a_layer_with_an_empty_viewport_is_not_drawn() {
+    let Some((_turn, device, queue)) = device() else {
+        return;
+    };
+    let meta = ImageMeta {
+        format: wxr::ColorFormat::Rgba8Unorm,
+        extent: wxr::Extent2d {
+            width: 8,
+            height: 8,
+        },
+        layers: 1,
+    };
+    let layer = wxr::LayerImage {
+        meta,
+        // A sub-rectangle of nothing, which is what a browser's sub-image is before it has one.
+        viewport: wxr::Viewport {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: meta.extent.height,
+        },
+    };
+    let mut renderer = Renderer::new([0.0, 0.0, 0.0, 1.0]);
+    let ran = std::cell::Cell::new(false);
+    let drawn = renderer.draw_layer(&device, &queue, &Plain, &0, layer, |_| ran.set(true));
+    assert!(!drawn, "there is nowhere in the image to draw");
+    assert!(!ran.get(), "and the callback never saw a pass to draw in");
+}
+
 /// A layer is drawn once, and what the pass did is in the image it was given.
 ///
 /// Two things are asserted rather than one, and neither stands for the other: the callback running says the
