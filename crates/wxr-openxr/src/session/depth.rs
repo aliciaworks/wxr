@@ -364,9 +364,9 @@ impl OpenXrSession {
     pub(super) fn depth_impl(&mut self, view: usize) -> Option<(&DepthImage, wxr::DepthInfo)> {
         // The first ask of a frame is the one that tries to take the image: the runtime allows one acquire
         // between a frame's begin and its end, and a second is `XR_ERROR_LIMIT_REACHED` - even when the first
-        // answered that no depth was ready. Asking for a view this backend's own views never had is nothing,
-        // which is the same answer a caller gets for an index past the end of the frame's list.
-        if view >= 2 {
+        // answered that no depth was ready. A view this frame did not locate is nothing to measure for,
+        // including either eye before `views` has filled the list: that list is what says a view exists.
+        if view >= self.located.len() {
             return None;
         }
         if !self.depth_asked {
