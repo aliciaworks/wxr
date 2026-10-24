@@ -62,6 +62,11 @@ impl wxr::Session for AppleSession {
     }
 
     fn poll(&mut self) -> Option<wxr::Event> {
+        // The press edges the last `inputs` produced come first: they are this crate's own, and waiting for
+        // the layer to have another state to report would be a delay with no cause.
+        if let Some(event) = self.controllers.poll() {
+            return Some(event);
+        }
         let (state, visibility) = self.layer_state();
         if state != self.reported.0 {
             self.reported.0 = state;

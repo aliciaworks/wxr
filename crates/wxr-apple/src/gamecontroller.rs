@@ -17,6 +17,7 @@
 //! driver, so there is no waveform call for this platform to fill - the shape the core has for one is
 //! OpenXR's and the haptics draft's, and both of them are recorded the same way.
 
+use std::collections::VecDeque;
 use std::time::Duration;
 
 use objc2::AllocAnyThread;
@@ -47,6 +48,8 @@ pub const CONTROLLER_ID_BASE: u32 = 1024;
 /// The controllers this session has seen, and the engines their buzzes play on.
 pub struct GameControllers {
     known: Vec<Known>,
+    /// The press and squeeze edges the last read found, waiting to be polled.
+    pending: VecDeque<wxr::Event>,
 }
 
 struct Known {
@@ -61,11 +64,21 @@ struct Known {
     /// Whether it was connected the last time the framework was asked. Kept so that a controller going away
     /// is a change too: a list that only noticed arrivals would leave the app holding a source that is gone.
     connected: bool,
+    /// What its buttons were the last time they were read, so a press is an edge and not a state.
+    buttons_was: wxr::Buttons,
 }
 
 impl GameControllers {
     pub fn new() -> Self {
-        Self { known: Vec::new() }
+        Self {
+            known: Vec::new(),
+            pending: VecDeque::new(),
+        }
+    }
+
+    /// The next press or release this framework saw, if one is waiting.
+    pub fn poll(&mut self) -> Option<wxr::Event> {
+        self.pending.pop_front()
     }
 
     /// Every controller connected right now, as the core's sources, and whether the set changed.
@@ -79,6 +92,7 @@ impl GameControllers {
         // SAFETY: the framework is live, and this is its own list of what is connected to it.
         let connected = unsafe { GCController::controllers() }.to_vec();
         let mut changed = false;
+        let mut edges = Vec::new();
         for controller in &connected {
             if !self
                 .known
@@ -91,6 +105,7 @@ impl GameControllers {
                     id,
                     engine: None,
                     connected: true,
+                    buttons_was: wxr::Buttons::default(),
                 });
                 changed = true;
             }
@@ -104,6 +119,9 @@ impl GameControllers {
             // A controller that has gone away is not reported, and its id stays spent: handing it to a
             // different controller would make a press that came from somewhere else look like the same one.
             if !here {
+                // A controller that is gone has no buttons, and a press held when it left must not look
+                // like one already released when it comes back.
+                known.buttons_was = wxr::Buttons::default();
                 continue;
             }
             // SAFETY: a controller from the framework's own list, and its profile and its haptics are the
@@ -114,6 +132,9 @@ impl GameControllers {
                     known.controller.haptics(),
                 )
             };
+            let buttons = buttons(profile.as_deref());
+            press_edges(known.id, known.buttons_was, buttons, &mut edges);
+            known.buttons_was = buttons;
             out.push(wxr::InputSource {
                 id: known.id,
                 // A pad has no handedness: it is held in two hands, and which half a button is on is the
@@ -127,10 +148,11 @@ impl GameControllers {
                 grip: wxr::Pose::IDENTITY,
                 aim: wxr::Pose::IDENTITY,
                 tracked: false,
-                buttons: buttons(profile.as_deref()),
+                buttons,
                 axes: axes(profile.as_deref()),
             });
         }
+        self.pending.extend(edges);
         changed
     }
 
@@ -267,6 +289,34 @@ fn axes(profile: Option<&GCExtendedGamepad>) -> wxr::Axes {
     }
 }
 
+/// Queue the edges between two readings of a controller's buttons.
+///
+/// The core's events are what a caller reacts to, and GameController hands out a state rather than a
+/// notification - so the same comparison OpenXR makes once a frame is made here, with the release before the
+/// completed selection, which is the order the core documents and a browser fires.
+fn press_edges(id: wxr::InputId, was: wxr::Buttons, now: wxr::Buttons, out: &mut Vec<wxr::Event>) {
+    if now.select != was.select {
+        out.push(if now.select {
+            wxr::Event::SelectStart(id)
+        } else {
+            wxr::Event::SelectEnd(id)
+        });
+        if !now.select {
+            out.push(wxr::Event::Select(id));
+        }
+    }
+    if now.squeeze != was.squeeze {
+        out.push(if now.squeeze {
+            wxr::Event::SqueezeStart(id)
+        } else {
+            wxr::Event::SqueezeEnd(id)
+        });
+        if !now.squeeze {
+            out.push(wxr::Event::Squeeze(id));
+        }
+    }
+}
+
 /// Whether a button is down.
 ///
 /// # Safety
@@ -292,4 +342,69 @@ unsafe fn button_value(button: &GCControllerButtonInput) -> f32 {
 /// The axis must be an input of a live profile.
 unsafe fn axis_value(axis: &GCControllerAxisInput) -> f32 {
     unsafe { axis.value() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A press is the two edges and the completed selection, in the order a caller reads them.
+    #[test]
+    fn a_press_is_a_start_an_end_and_a_selection() {
+        let id = wxr::InputId::new(CONTROLLER_ID_BASE);
+        let mut out = Vec::new();
+        press_edges(
+            id,
+            wxr::Buttons::default(),
+            wxr::Buttons {
+                select: true,
+                ..Default::default()
+            },
+            &mut out,
+        );
+        assert_eq!(out, [wxr::Event::SelectStart(id)]);
+        out.clear();
+        press_edges(
+            id,
+            wxr::Buttons {
+                select: true,
+                ..Default::default()
+            },
+            wxr::Buttons::default(),
+            &mut out,
+        );
+        assert_eq!(
+            out,
+            [wxr::Event::SelectEnd(id), wxr::Event::Select(id)],
+            "the release and then the selection it completes"
+        );
+    }
+
+    /// The same for the grip, which is a separate pair of edges.
+    #[test]
+    fn a_squeeze_is_a_start_an_end_and_a_squeeze() {
+        let id = wxr::InputId::new(CONTROLLER_ID_BASE);
+        let mut out = Vec::new();
+        press_edges(
+            id,
+            wxr::Buttons::default(),
+            wxr::Buttons {
+                squeeze: true,
+                ..Default::default()
+            },
+            &mut out,
+        );
+        assert_eq!(out, [wxr::Event::SqueezeStart(id)]);
+        out.clear();
+        press_edges(
+            id,
+            wxr::Buttons {
+                squeeze: true,
+                ..Default::default()
+            },
+            wxr::Buttons::default(),
+            &mut out,
+        );
+        assert_eq!(out, [wxr::Event::SqueezeEnd(id), wxr::Event::Squeeze(id)]);
+    }
 }
