@@ -19,10 +19,17 @@ use crate::throws;
 /// The depth buffer for `view`, and what it means, from the binding that hands it over.
 pub fn information(binding: &XrgpuBinding, view: &XrView) -> Option<(JsValue, wxr::DepthInfo)> {
     let information = throws::get_depth_information(binding, view).ok()?;
+    let width = information.width();
+    let height = information.height();
+    // A buffer with no pixels is not a depth buffer, and wrapping one is a texture the renderer cannot make.
+    // The browser's own value is the only size there is, so the honest answer is that this view has none.
+    if width == 0 || height == 0 {
+        return None;
+    }
     Some((
         information.texture(),
         wxr::DepthInfo {
-            size: wxr::Extent2d::new(information.width(), information.height()),
+            size: wxr::Extent2d::new(width, height),
             // One scalar and one multiply, which is what the specification says this is: the buffer's values
             // are distances, up to `rawValueToMeters`. WebXR has no equivalent of OpenXR's two planes, and
             // this backend would have nothing to report for a `Window` encoding.
