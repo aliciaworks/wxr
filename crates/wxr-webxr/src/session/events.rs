@@ -24,11 +24,12 @@ impl WebXrSession {
             Connect::Started(session) => Some(session),
             Connect::Failed(message) => {
                 log::error!("wxr-webxr: the session was refused: {message}");
+                // A refusal is the same ending as a session that was granted and then went away: the state
+                // first, and `Lost` from the guard at the top of the next poll. Reporting only `Lost` here
+                // skipped the state every other path to the end reports, and set the flag that promises
+                // `Lost` had a state to follow.
                 self.state = wxr::State::Ended;
-                // Lost is not left for the next poll here: there is no session to tear down and nothing
-                // between this refusal and the end.
-                self.lost = true;
-                return Some(wxr::Event::Lost);
+                return Some(wxr::Event::StateChanged(wxr::State::Ended));
             }
             Connect::Pending => None,
         };

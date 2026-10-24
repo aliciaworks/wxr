@@ -41,6 +41,14 @@ impl WebXrSession {
         };
         self.depth_image = None;
 
+        // A session that has ended does not get a frame, even if the browser left one queued before it said
+        // so: the queued callback is the last one there will be, and drawing it would be a picture after the
+        // session it belonged to was gone. `Exit` is what the core's frame loop is allowed to stop on.
+        if self.state == wxr::State::Ended {
+            out.state = wxr::FrameState::Exit;
+            return Ok(());
+        }
+
         // The frame is whatever the last callback left behind, and the clock is the callback's own: WebXR
         // has no other.
         let Some((frame, time)) = self.inner.borrow_mut().frame.take() else {
