@@ -40,6 +40,15 @@ extern "C" {
     #[wasm_bindgen(method, catch, js_name = "requestLightProbe")]
     fn request_light_probe_caught(this: &XrSession) -> Result<js_sys::Promise, JsValue>;
 
+    /// `XRSession.requestAnimationFrame`, which throws `InvalidStateError` once the session has ended. The
+    /// frame loop asks for each next frame at the end of the one before, so a session that ends between the
+    /// two is exactly the call this catches.
+    #[wasm_bindgen(method, catch, js_name = "requestAnimationFrame")]
+    fn request_animation_frame_caught(
+        this: &XrSession,
+        callback: &js_sys::Function,
+    ) -> Result<u32, JsValue>;
+
     /// `XRSession.updateRenderState`, which throws `InvalidStateError` during an animation frame. A layer list
     /// is handed over between frames, and a caller that breaks that rule gets `Err` rather than a trap.
     #[wasm_bindgen(method, catch, js_name = "updateRenderState")]
@@ -112,6 +121,14 @@ pub fn create_anchor(
 /// `XRSession.requestLightProbe`, caught.
 pub fn request_light_probe(session: &XrSession) -> Result<js_sys::Promise, JsValue> {
     session.request_light_probe_caught()
+}
+
+/// `XRSession.requestAnimationFrame`, caught.
+pub fn request_animation_frame(
+    session: &XrSession,
+    callback: &js_sys::Function,
+) -> Result<u32, JsValue> {
+    session.request_animation_frame_caught(callback)
 }
 
 /// `XRSession.updateRenderState`, caught.

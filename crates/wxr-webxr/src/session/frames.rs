@@ -16,6 +16,52 @@ impl WebXrSession {
     pub(super) fn frame(&self) -> Option<XrFrame> {
         self.current.clone()
     }
+
+    /// Ask for the next frame, once there is a session to ask.
+    ///
+    /// Here rather than beside the other session setup because this is the half of the frame loop the
+    /// browser owns: one request per callback, and the callback is what puts the frame in the slot `begin`
+    /// takes. It is kept alive in `self.callback` for as long as the browser may call it.
+    pub(super) fn request_frame(&mut self) {
+        // A session that has ended has no next animation frame, and asking is the one throw the browser
+        // gives this call: `InvalidStateError`. The end handler may have fired between the last callback and
+        // this one, so the state alone is not enough.
+        if self.state == wxr::State::Ended || self.ended.get() {
+            return;
+        }
+        let session = self.inner.borrow().session.clone();
+        let Some(session) = session else {
+            return;
+        };
+        let inner = self.inner.clone();
+        {
+            let mut borrow = inner.borrow_mut();
+            if borrow.awaiting {
+                return;
+            }
+            borrow.awaiting = true;
+        }
+        let callback_inner = inner.clone();
+        let callback = Closure::wrap(Box::new(move |time: f64, frame: XrFrame| {
+            // Milliseconds from the page's origin, which is the only clock a browser has. This one has arrived,
+            // so the next one can be asked for.
+            let mut inner = callback_inner.borrow_mut();
+            inner.awaiting = false;
+            inner.frame = Some((frame, Duration::from_secs_f64(time / 1000.0)));
+        }) as Box<dyn FnMut(f64, XrFrame)>);
+        // Caught, because the session can end between two frames: without this the throw lands in whatever
+        // called `end` and the frame loop stops by exception rather than by the `Ended` every other path
+        // reports. A refused request is also not one that will ever call back, so `awaiting` is cleared and
+        // the end handler's flag is set - the next `poll` then says `Ended` and `Lost` in that order.
+        match throws::request_animation_frame(&session, callback.as_ref().unchecked_ref()) {
+            Ok(_) => self.callback = Some(callback),
+            Err(error) => {
+                log::debug!("wxr-webxr: the browser would not give another frame: {error:?}");
+                inner.borrow_mut().awaiting = false;
+                self.ended.set(true);
+            }
+        }
+    }
 }
 
 impl WebXrSession {

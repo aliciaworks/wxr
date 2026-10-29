@@ -189,32 +189,6 @@ impl WebXrSession {
         };
         gpu.layer.set_fixed_foveation(Some(foveation));
     }
-
-    /// Ask for the next frame, once there is a session to ask.
-    fn request_frame(&mut self) {
-        let session = self.inner.borrow().session.clone();
-        let Some(session) = session else {
-            return;
-        };
-        let inner = self.inner.clone();
-        {
-            let mut borrow = inner.borrow_mut();
-            if borrow.awaiting {
-                return;
-            }
-            borrow.awaiting = true;
-        }
-        let callback = Closure::wrap(Box::new(move |time: f64, frame: XrFrame| {
-            // Milliseconds from the page's origin, which is the only clock a browser has. This one has arrived,
-            // so the next one can be asked for.
-            let mut inner = inner.borrow_mut();
-            inner.awaiting = false;
-            inner.frame = Some((frame, Duration::from_secs_f64(time / 1000.0)));
-        }) as Box<dyn FnMut(f64, XrFrame)>);
-        // The handle comes back as a number, and a browser that will not give one has a session that is over.
-        let _ = session.request_animation_frame(callback.as_ref().unchecked_ref());
-        self.callback = Some(callback);
-    }
 }
 
 impl wxr::Session for WebXrSession {
