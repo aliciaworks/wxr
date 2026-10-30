@@ -11,6 +11,11 @@ pub(super) struct Inner {
     /// second ask would replace the first - so the callback it then calls is a closure this side has dropped,
     /// which is an exception in the animation callback rather than a frame.
     pub(super) awaiting: bool,
+    /// The app's frame loop, run by the animation callback while the `XRFrame` is still active.
+    ///
+    /// Frame calls throw `InvalidStateError` once the callback that delivered the frame returns, and an
+    /// opaque texture is invalid after it too, so the frame can only be used from here.
+    pub(super) handler: Option<Box<dyn FnMut()>>,
 }
 
 /// A reference space, which the browser hands over as a promise rather than as an object.

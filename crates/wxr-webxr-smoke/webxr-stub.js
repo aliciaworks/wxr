@@ -476,9 +476,10 @@ class XRSession {
       if (this._ended) {
         return;
       }
-      this._frame = time;
+      const frame = new XRFrame(this, time);
+      this._frame = frame;
       try {
-        callback(time, new XRFrame(this, time));
+        callback(time, frame);
       } finally {
         this._frame = null;
       }
@@ -502,14 +503,41 @@ class XRSession {
   }
 }
 
+/**
+ * Throw unless `frame` is the active one, as every frame method in the specification does.
+ *
+ * Without this a backend that asks from outside the callback would look like one that works.
+ */
+function requireActive(frame) {
+  if (!frame.active) {
+    throw new DOMException('the frame is not active', 'InvalidStateError');
+  }
+}
+
+/**
+ * The same rule for a binding, which takes no frame: it answers only inside an animation callback, because
+ * the texture and viewport it hands over are invalid afterwards.
+ */
+function requireActiveFrame(session) {
+  if (session._frame === null) {
+    throw new DOMException('the session is not inside an animation callback', 'InvalidStateError');
+  }
+}
+
 class XRFrame {
   constructor(session, time) {
     this.session = session;
     this.time = time;
   }
 
+  /** Whether this is still the frame the browser is inside, i.e. its callback has not returned. */
+  get active() {
+    return this.session._frame === this;
+  }
+
   /** The head, measured from whatever space was asked. */
   getViewerPose(space) {
+    requireActive(this);
     const near = this.session.renderState.depthNear;
     const far = this.session.renderState.depthFar;
     return new XRViewerPose(relative(headAt(this.time), space.at(this.time)), near, far);
@@ -517,6 +545,7 @@ class XRFrame {
 
   /** Anything else: an input source's space, or a hand's joint, measured from the space it was asked in. */
   getPose(space, baseSpace) {
+    requireActive(this);
     if (!space || !baseSpace) {
       return null;
     }
@@ -525,6 +554,7 @@ class XRFrame {
   }
 
   getJointPose(space, baseSpace) {
+    requireActive(this);
     const joint = this.session._jointOf(space);
     if (!joint) {
       return null;
@@ -543,6 +573,7 @@ class XRFrame {
    * that reads all twenty-five has to be able to tell which were not there.
    */
   fillPoses(spaces, baseSpace, poses) {
+    requireActive(this);
     if (!spaces || !baseSpace || !poses) {
       throw new TypeError('fillPoses wants spaces, a base space and somewhere to put the matrices');
     }
@@ -563,6 +594,7 @@ class XRFrame {
 
   /** The same question about the joints' radii, which is the other half of a hand in one call each. */
   fillJointRadii(jointSpaces, radii) {
+    requireActive(this);
     if (!jointSpaces || !radii) {
       throw new TypeError('fillJointRadii wants joint spaces and somewhere to put the radii');
     }
@@ -797,6 +829,7 @@ class XRGPUBinding {
   }
 
   getViewSubImage(layer, view) {
+    requireActiveFrame(this.session);
     if (!(layer instanceof XRProjectionLayer) || !this.session._layers.has(layer)) {
       throw new DOMException("that is not this session's projection layer", 'InvalidStateError');
     }
@@ -815,6 +848,7 @@ class XRGPUBinding {
    * have a scale here, and that is the whole of what this number is for.
    */
   getDepthInformation(view) {
+    requireActiveFrame(this.session);
     if (!this.usesDepthValues || !view || (view.eye !== 'left' && view.eye !== 'right')) {
       throw new DOMException('this session is not configured for GPU depth', 'InvalidStateError');
     }

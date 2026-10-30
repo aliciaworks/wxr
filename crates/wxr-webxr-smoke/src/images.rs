@@ -11,9 +11,12 @@
 
 use super::*;
 
-pub(super) fn check_images(board: &mut Board) -> Result<(), String> {
-    let meta = board.session.images();
-    let count = board.session.image_count();
+pub(super) fn check_images(
+    board: &mut Board,
+    session: &mut wxr_webxr::WebXrSession,
+) -> Result<(), String> {
+    let meta = session.images();
+    let count = session.image_count();
     say(&format!(
         "images: {count}, {:?} at {:?}, {} array layer(s)",
         meta.format, meta.extent, meta.layers
@@ -34,7 +37,7 @@ pub(super) fn check_images(board: &mut Board) -> Result<(), String> {
                 meta.format, meta.extent
             ));
         }
-        if board.session.depth_sensing().is_some() {
+        if session.depth_sensing().is_some() {
             return Err("a session with no binding claims depth sensing it cannot measure".into());
         }
         return Ok(());
@@ -45,7 +48,7 @@ pub(super) fn check_images(board: &mut Board) -> Result<(), String> {
             "a projection layer hands over one image for both eyes, and this one handed {count}"
         ));
     }
-    if board.session.image(0).is_none() {
+    if session.image(0).is_none() {
         return Err("image 0 is counted but not there".into());
     }
     if meta.format == wxr::ColorFormat::Unknown {
@@ -103,11 +106,11 @@ pub(super) fn check_images(board: &mut Board) -> Result<(), String> {
 
     // Depth, which is the other half of what a binding hands over and the reason this run is immersive-ar:
     // `depth-sensing` is asked for there and nowhere else, so this is the only run that can have it.
-    let features = board.session.features();
+    let features = session.features();
     if !features.contains(wxr::Features::DEPTH) {
         return Err("the session asked for depth-sensing and the DEPTH bit is not set".into());
     }
-    let Some(sensing) = board.session.depth_sensing() else {
+    let Some(sensing) = session.depth_sensing() else {
         return Err("the DEPTH bit is set and depth sensing says nothing".into());
     };
     say(&format!(
@@ -117,7 +120,7 @@ pub(super) fn check_images(board: &mut Board) -> Result<(), String> {
         sensing.ty,
         sensing.active.unwrap_or(false)
     ));
-    let Some((_, info)) = board.session.depth(0) else {
+    let Some((_, info)) = session.depth(0) else {
         return Err("a session configured for GPU depth gave no depth for view 0".into());
     };
     if info.size != meta.extent {

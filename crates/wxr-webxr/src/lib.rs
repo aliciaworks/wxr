@@ -13,6 +13,13 @@
 //! * A frame arrives in the animation callback rather than from a `wait`. The callback puts it in a slot,
 //!   `wxr::Session::begin` drains it, and the next one is asked for when the frame is handed back.
 //!
+//! A frame is only *usable* inside that callback: `getViewerPose`, `getPose`, `getJointPose`,
+//! `getHitTestResults`, `getLightEstimate`, `getDepthInformation` and `createAnchor` all throw
+//! `InvalidStateError` once the callback returns, and an opaque texture is invalid outside it too. A caller
+//! that polls from its own loop therefore has a frame it cannot ask anything. `WebXrSession::set_frame_handler`
+//! is where the loop belongs: the handler runs while the frame is active, and that is where `begin`, `views`,
+//! the drawing and `end` go.
+//!
 //! And images: this *does* hand them over, through WebXR's binding for WebGPU (`XRGPUBinding`), and only when
 //! three things line up, because each of the three is off by default somewhere:
 //!

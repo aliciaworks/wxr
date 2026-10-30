@@ -21,7 +21,8 @@ impl WebXrSession {
     ///
     /// Here rather than beside the other session setup because this is the half of the frame loop the
     /// browser owns: one request per callback, and the callback is what puts the frame in the slot `begin`
-    /// takes. It is kept alive in `self.callback` for as long as the browser may call it.
+    /// takes. The closure is made once and kept in `self.callback`; a new one per request would drop the
+    /// closure that is running whenever `end` asks for a frame from inside a callback.
     pub(super) fn request_frame(&mut self) {
         // A session that has ended has no next animation frame, and asking is the one throw the browser
         // gives this call: `InvalidStateError`. The end handler may have fired between the last callback and
@@ -41,26 +42,54 @@ impl WebXrSession {
             }
             borrow.awaiting = true;
         }
-        let callback_inner = inner.clone();
-        let callback = Closure::wrap(Box::new(move |time: f64, frame: XrFrame| {
-            // Milliseconds from the page's origin, which is the only clock a browser has. This one has arrived,
-            // so the next one can be asked for.
-            let mut inner = callback_inner.borrow_mut();
-            inner.awaiting = false;
-            inner.frame = Some((frame, Duration::from_secs_f64(time / 1000.0)));
-        }) as Box<dyn FnMut(f64, XrFrame)>);
+        if self.callback.is_none() {
+            let callback_inner = inner.clone();
+            self.callback = Some(Closure::wrap(Box::new(move |time: f64, frame: XrFrame| {
+                // Milliseconds from the page's origin, which is the only clock a browser has.
+                {
+                    let mut inner = callback_inner.borrow_mut();
+                    inner.awaiting = false;
+                    inner.frame = Some((frame, Duration::from_secs_f64(time / 1000.0)));
+                }
+                // The frame is only active until this callback returns, so the app loop must run here.
+                // The handler is taken out first: it borrows the session, and with it this same `Inner`.
+                let handler = callback_inner.borrow_mut().handler.take();
+                if let Some(mut handler) = handler {
+                    handler();
+                    callback_inner.borrow_mut().handler = Some(handler);
+                }
+            })
+                as Box<dyn FnMut(f64, XrFrame)>));
+        }
+        let callback = self.callback.as_ref().expect("the callback was just made");
         // Caught, because the session can end between two frames: without this the throw lands in whatever
         // called `end` and the frame loop stops by exception rather than by the `Ended` every other path
         // reports. A refused request is also not one that will ever call back, so `awaiting` is cleared and
         // the end handler's flag is set - the next `poll` then says `Ended` and `Lost` in that order.
         match throws::request_animation_frame(&session, callback.as_ref().unchecked_ref()) {
-            Ok(_) => self.callback = Some(callback),
+            Ok(_) => {}
             Err(error) => {
                 log::debug!("wxr-webxr: the browser would not give another frame: {error:?}");
                 inner.borrow_mut().awaiting = false;
                 self.ended.set(true);
             }
         }
+    }
+
+    /// Hand this session the loop to run inside the browser's animation callback, where a frame is active.
+    ///
+    /// `getViewerPose`, `getPose`, `getJointPose`, `getHitTestResults`, `getLightEstimate`,
+    /// `getDepthInformation` and `createAnchor` throw `InvalidStateError` once the callback that delivered
+    /// the frame returns, and an opaque texture is invalid after it too. Callers that poll from their own
+    /// loop therefore have a frame they cannot ask anything. The handler is where `poll`, `begin`, `views`,
+    /// the drawing and `end` belong; the callback runs it with the frame already in the slot `begin` takes.
+    ///
+    /// The handler reaches the session through the `Rc<RefCell<WebXrSession>>` the caller keeps it in; a
+    /// `Weak` there avoids the cycle. Installing a handler on a session that is already running asks for the
+    /// first frame it will be called with.
+    pub fn set_frame_handler(&mut self, handler: Box<dyn FnMut()>) {
+        self.inner.borrow_mut().handler = Some(handler);
+        self.request_frame();
     }
 }
 

@@ -156,6 +156,9 @@ WebXR session patches the fork in the same way; one that only wants OpenXR or Ap
 
 **`wxr-webxr`** is the one that did not fit: WebXR's session, its reference spaces and its frames all arrive
 asynchronously, which is why the core has `State::Connecting` and why a space is asked for before it exists.
+Its frame loop belongs inside the browser's animation callback - `XRFrame` methods throw `InvalidStateError`
+once the callback returns, and an opaque texture is invalid outside it - so `set_frame_handler` is where an
+app's `begin`, `views`, drawing and `end` run.
 It hands a renderer images when three things line up, and each is off by default somewhere: the browser has
 WebXR's WebGPU binding at all, which in Chromium is behind the `webxr-webgpu-binding` flag; the session granted
 `webgpu`; and the device came from an adapter requested with `xrCompatible: true`, which is the field this
