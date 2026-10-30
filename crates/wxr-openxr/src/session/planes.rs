@@ -97,11 +97,11 @@ impl PlaneDetector {
 }
 
 impl OpenXrSession {
-    /// One step of the detection loop, and whatever the last pass found.
+    /// One step of the detection loop, and whatever the last finished pass found.
     ///
-    /// Which is the honest shape for this: a pass begun here will not be finished here, and the planes that
-    /// come out of it come out of the *next* call. A caller that asks once and expects an answer gets an
-    /// empty list, and [`wxr::Features::PLANES`] is what says whether to keep asking.
+    /// A pass begun here will not be finished here, so the call that begins one answers empty; the call that
+    /// finds it done answers its planes and begins the next pass before returning, so a pass that completes
+    /// in one step does not leave every other call empty.
     pub(super) fn planes_impl(
         &mut self,
         space: wxr::ReferenceSpace,
@@ -150,9 +150,11 @@ impl OpenXrSession {
         }
 
         detector.read(reference.as_raw(), time, out);
-        // The snapshot this pass produced is discarded by the next one, so the next call begins it - which
-        // is what keeps a list that is re-read every frame a list that is refreshed rather than frozen.
+        // Start the next pass here rather than on the next call. Doing it on the next call leaves the
+        // caller's list empty every other frame, and a room that blinks is worse than one that is a frame
+        // stale. The pass just read is discarded by this begin, but its planes are already in `out`.
         detector.running = false;
+        detector.begin(time);
         Ok(())
     }
 }
