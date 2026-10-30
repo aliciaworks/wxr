@@ -91,8 +91,7 @@ impl WebXrSession {
         // A layer is made *in* a space, so a space that is still a promise is a layer to ask for again - the
         // same answer `hit_test_source` gives, for the same reason.
         let Some(reference) = self
-            .spaces
-            .get(space.id() as usize)
+            .space_slot(space)
             .and_then(|slot| slot.borrow().space.clone())
         else {
             return Err(wxr::Error::Unavailable(

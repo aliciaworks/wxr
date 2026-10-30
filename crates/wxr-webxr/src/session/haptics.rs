@@ -57,7 +57,9 @@ impl WebXrSession {
             .ok_or_else(|| wxr::Error::Unsupported("haptics on this source".into()))?;
         let _ = actuator.pulse(
             intensity.clamp(0.0, 1.0) as f64,
-            duration.as_millis() as f64,
+            // Fractional rather than whole milliseconds: a sub-millisecond buzz truncated to zero is no
+            // buzz at all, and the browser takes the number as a double.
+            duration.as_secs_f64() * 1000.0,
         );
         Ok(())
     }

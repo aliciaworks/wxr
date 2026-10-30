@@ -12,8 +12,7 @@ impl WebXrSession {
     ) -> Result<(), wxr::Error> {
         out.clear();
         let Some(reference) = self
-            .spaces
-            .get(space.id() as usize)
+            .space_slot(space)
             .and_then(|slot| slot.borrow().space.clone())
         else {
             return Ok(());
@@ -34,8 +33,7 @@ impl WebXrSession {
     ) -> Result<(), wxr::Error> {
         out.clear();
         let Some(space) = self
-            .spaces
-            .get(space.id() as usize)
+            .space_slot(space)
             .and_then(|slot| slot.borrow().space.clone())
         else {
             return Ok(());
@@ -71,7 +69,7 @@ impl WebXrSession {
         if !has_feature(&session, "hit-test") {
             return Err(wxr::Error::Unsupported("hit-test".into()));
         }
-        let Some(base) = self.spaces.get(space.id() as usize).cloned() else {
+        let Some(base) = self.space_slot(space) else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
         let slot = Rc::new(RefCell::new(hit::Slot::default()));
@@ -125,8 +123,7 @@ impl WebXrSession {
             return Ok(());
         };
         let Some(base) = self
-            .spaces
-            .get(space.id() as usize)
+            .space_slot(space)
             .and_then(|slot| slot.borrow().space.clone())
         else {
             return Ok(());

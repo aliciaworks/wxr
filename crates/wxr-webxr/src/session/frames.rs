@@ -124,6 +124,9 @@ impl WebXrSession {
         // so: the queued callback is the last one there will be, and drawing it would be a picture after the
         // session it belonged to was gone. `Exit` is what the core's frame loop is allowed to stop on.
         if self.state == wxr::State::Ended {
+            // The queued frame, if there is one, is the last callback there will be: drop it rather than
+            // keep a frame from a session that is over.
+            let _ = self.inner.borrow_mut().frame.take();
             out.state = wxr::FrameState::Exit;
             return Ok(());
         }
@@ -167,8 +170,7 @@ impl WebXrSession {
         self.frame_views.clear();
         self.located = 0;
         let Some(reference) = self
-            .spaces
-            .get(space.id() as usize)
+            .space_slot(space)
             .and_then(|slot| slot.borrow().space.clone())
         else {
             // The space is still a promise, which is not an error: it is one or two frames of a session

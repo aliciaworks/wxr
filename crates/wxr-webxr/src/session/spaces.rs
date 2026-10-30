@@ -36,6 +36,7 @@ impl WebXrSession {
             .request_reference_space(reference_space_type(kind))
             .unchecked_into();
         let slot = Rc::new(RefCell::new(Space {
+            kind,
             space: None,
             promise: Some(promise.clone()),
             on_reset: None,
@@ -67,17 +68,31 @@ impl WebXrSession {
 }
 
 impl WebXrSession {
+    /// The slot a handle names, if this session made that id of that kind.
+    ///
+    /// The id is an index and the kind is public on the handle, so both have to agree: an id past the list
+    /// belongs to some other session, and a kind a caller changed is not the space this session made.
+    pub(super) fn space_slot(&self, space: wxr::ReferenceSpace) -> Option<Rc<RefCell<Space>>> {
+        let slot = self.spaces.get(space.id() as usize)?;
+        (slot.borrow().kind == space.kind).then(|| slot.clone())
+    }
+
     pub(super) fn offset_space_impl(
         &mut self,
         space: wxr::ReferenceSpace,
         offset: wxr::Pose,
     ) -> Result<wxr::ReferenceSpace, wxr::Error> {
-        let Some(base) = self.spaces.get(space.id() as usize).cloned() else {
+        let Some(base) = self.space_slot(space) else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
         let resolved = base.borrow().space.clone();
         let pending = base.borrow().promise.clone();
-        let slot = Rc::new(RefCell::new(Space::default()));
+        let slot = Rc::new(RefCell::new(Space {
+            kind: space.kind,
+            space: None,
+            promise: None,
+            on_reset: None,
+        }));
         // The id the handle will have, known before the space is here so that the reset handler can name it.
         let id = self.spaces.len() as u32;
         let reset = self.reset.clone();
@@ -88,6 +103,7 @@ impl WebXrSession {
             let handler = reset_handler(reset, space.kind, id);
             offset.set_onreset(Some(handler.as_ref().unchecked_ref()));
             *slot.borrow_mut() = Space {
+                kind: space.kind,
                 space: Some(offset),
                 promise: None,
                 on_reset: Some(handler),
@@ -102,6 +118,7 @@ impl WebXrSession {
                     let handler = reset_handler(reset, space.kind, id);
                     offset.set_onreset(Some(handler.as_ref().unchecked_ref()));
                     *fill.borrow_mut() = Space {
+                        kind: space.kind,
                         space: Some(offset),
                         promise: None,
                         on_reset: Some(handler),

@@ -14,8 +14,7 @@ impl WebXrSession {
         // keeps, and every other list the session fills starts with the same line.
         out.clear();
         let Some(reference) = self
-            .spaces
-            .get(space.id() as usize)
+            .space_slot(space)
             .and_then(|slot| slot.borrow().space.clone())
         else {
             return Ok(());
@@ -128,8 +127,7 @@ impl WebXrSession {
             return Ok(());
         };
         let Some(reference) = self
-            .spaces
-            .get(space.id() as usize)
+            .space_slot(space)
             .and_then(|slot| slot.borrow().space.clone())
         else {
             return Ok(());

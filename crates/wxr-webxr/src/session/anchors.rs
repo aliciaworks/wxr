@@ -25,8 +25,7 @@ impl WebXrSession {
             return Err(wxr::Error::Unavailable("a frame has not begun yet".into()));
         };
         let Some(base) = self
-            .spaces
-            .get(space.id() as usize)
+            .space_slot(space)
             .and_then(|slot| slot.borrow().space.clone())
         else {
             return Err(wxr::Error::NoSpace(space.kind));
@@ -53,8 +52,7 @@ impl WebXrSession {
             return Ok(None);
         };
         let Some(base) = self
-            .spaces
-            .get(space.id() as usize)
+            .space_slot(space)
             .and_then(|slot| slot.borrow().space.clone())
         else {
             return Ok(None);

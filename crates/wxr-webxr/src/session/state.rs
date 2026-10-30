@@ -1,3 +1,5 @@
+use wxr::SpaceKind;
+
 use super::*;
 
 #[derive(Default)]
@@ -22,8 +24,9 @@ pub(super) struct Inner {
 ///
 /// The promise is kept while it is pending because an offset space is made *from* another one and has to wait
 /// for the same answer - which is the only reason this is not just an `Option`.
-#[derive(Default)]
 pub(super) struct Space {
+    /// The kind this slot was made as. A handle names it only when its own kind matches.
+    pub(super) kind: SpaceKind,
     pub(super) space: Option<XrReferenceSpace>,
     pub(super) promise: Option<js_sys::Promise>,
     /// The `reset` handler, kept alive for as long as the space is: a closure the browser holds and this drops
