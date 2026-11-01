@@ -36,7 +36,12 @@ impl Drop for WebXrSession {
     /// is told.
     fn drop(&mut self) {
         if let Some(session) = self.inner.borrow().session.clone() {
-            let _ = session.end();
+            // Caught: a session dropped from inside its own frame handler is still active, and `end` throws
+            // `InvalidStateError` for that as well as for one that has already ended. An exception out of a
+            // destructor is worse than a session the browser cleans up when the page goes away.
+            if throws::end(&session).is_err() {
+                log::debug!("wxr-webxr: the browser would not end the session on drop");
+            }
         }
     }
 }

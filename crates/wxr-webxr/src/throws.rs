@@ -49,6 +49,13 @@ extern "C" {
         callback: &js_sys::Function,
     ) -> Result<u32, JsValue>;
 
+    /// `XRSession.end`, which throws `InvalidStateError` once the session has ended and while it is active.
+    /// The second is the one a destructor meets: a session dropped from inside the frame handler is dropped
+    /// while the animation callback that delivered the frame is still running, and a throw here would leave
+    /// wasm through a `Drop`.
+    #[wasm_bindgen(method, catch, js_name = "end")]
+    fn end_caught(this: &XrSession) -> Result<js_sys::Promise, JsValue>;
+
     /// `XRSession.updateRenderState`, which throws `InvalidStateError` during an animation frame. A layer list
     /// is handed over between frames, and a caller that breaks that rule gets `Err` rather than a trap.
     #[wasm_bindgen(method, catch, js_name = "updateRenderState")]
@@ -134,6 +141,11 @@ pub fn request_animation_frame(
 /// `XRSession.updateRenderState`, caught.
 pub fn update_render_state(session: &XrSession, state: &XrRenderStateInit) -> Result<(), JsValue> {
     session.update_render_state_caught(state)
+}
+
+/// `XRSession.end`, caught.
+pub fn end(session: &XrSession) -> Result<js_sys::Promise, JsValue> {
+    session.end_caught()
 }
 
 /// `XRGPUBinding.createProjectionLayer`, caught.
