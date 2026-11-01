@@ -7,6 +7,14 @@ use super::*;
 
 impl OpenXrSession {
     pub(super) fn set_foveation_impl(&mut self, amount: f32) {
+        // NaN is not a level and `clamp` passes it through: the match below would then fall to `HIGH` and ask
+        // for the most foveation a runtime has in answer to a request that is not a number at all. Leave the
+        // knob alone instead, which is what this does for a runtime without the extension too. An infinity is
+        // out of range rather than outside the type, and the clamp below is the specification's answer to it.
+        if amount.is_nan() {
+            log::debug!("wxr-openxr: no foveation for {amount}, which is not a number");
+            return;
+        }
         // `XR_FB_foveation` has four levels rather than a fraction, so an amount becomes the nearest of them.
         // A runtime that does not list the extension is a runtime that does not foveate, and a profile is
         // where that is found out - which is a knob left alone rather than a frame to fail.

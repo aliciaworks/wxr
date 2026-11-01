@@ -392,6 +392,15 @@ impl wxr::Session for WebXrSession {
     }
 
     fn set_foveation(&mut self, amount: f32) {
+        // `fixedFoveation` is a WebIDL `float`, and a `float` conversion rejects NaN and the infinities with a
+        // `TypeError` rather than clamping them - an exception through the wasm frame, which is not a knob
+        // refusing a value. `clamp` passes NaN and both infinities through untouched, so neither is a guard:
+        // NaN is not a request at all and leaves the layer's own value alone, and an infinity is out of range,
+        // where the clamp is what the specification says does.
+        if amount.is_nan() {
+            log::debug!("wxr-webxr: no foveation for {amount}, which is not a number");
+            return;
+        }
         // Clamped, because the specification says a value outside `0..=1` is clamped rather than refused.
         self.foveation = Some(amount.clamp(0.0, 1.0));
         self.apply_foveation();
