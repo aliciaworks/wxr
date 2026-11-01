@@ -36,8 +36,16 @@ impl Hands {
         // Nanoseconds is what OpenXR counts in, and a `Duration` too long for an `i64` is "as long as
         // possible" rather than an error: the caller asked for a long buzz, and this is the longest there is.
         let nanos = i64::try_from(duration.as_nanos()).unwrap_or(i64::MAX);
+        // `clamp` passes NaN through, and valid usage for an amplitude is `0..=1`: a runtime handed a NaN
+        // either refuses the event as invalid or shakes by an amount nobody can name. NaN is not an amplitude,
+        // so it becomes the quiet end of the range - a buzz of nothing - and the infinities keep the clamp.
+        let amplitude = if intensity.is_nan() {
+            0.0
+        } else {
+            intensity.clamp(0.0, 1.0)
+        };
         let event = xr::HapticVibration::new()
-            .amplitude(intensity.clamp(0.0, 1.0))
+            .amplitude(amplitude)
             .duration(xr::Duration::from_nanos(nanos))
             .frequency(xr::FREQUENCY_UNSPECIFIED);
         action

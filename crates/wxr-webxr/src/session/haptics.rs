@@ -55,8 +55,16 @@ impl WebXrSession {
             .ok_or_else(|| wxr::Error::Unsupported("haptics".into()))?;
         let actuator = actuator(&input)
             .ok_or_else(|| wxr::Error::Unsupported("haptics on this source".into()))?;
+        // `clamp` passes NaN through, and `pulse` takes a WebIDL `double`, whose conversion rejects NaN with a
+        // `TypeError` - an exception out of the wasm frame rather than a buzz. NaN is not an intensity, so it
+        // becomes the quiet end of the range, and the infinities keep the clamp.
+        let intensity = if intensity.is_nan() {
+            0.0
+        } else {
+            intensity.clamp(0.0, 1.0)
+        };
         let _ = actuator.pulse(
-            intensity.clamp(0.0, 1.0) as f64,
+            intensity as f64,
             // Fractional rather than whole milliseconds: a sub-millisecond buzz truncated to zero is no
             // buzz at all, and the browser takes the number as a double.
             duration.as_secs_f64() * 1000.0,
