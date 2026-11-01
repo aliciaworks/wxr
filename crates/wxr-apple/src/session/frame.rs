@@ -145,11 +145,13 @@ impl AppleSession {
         space: wxr::ReferenceSpace,
         out: &mut wxr::Frame,
     ) -> Result<(), wxr::Error> {
+        // Asking twice replaces the eyes rather than adding a second pair to the same frame, and a call that
+        // fails replaces them with nothing: a caller that logs a `NoSpace` and ends the frame must not have
+        // the last call's eyes presented at a head pose from the space in that call.
+        out.views_mut().clear();
         if !self.has_space(space) {
             return Err(wxr::Error::NoSpace(space.kind));
         }
-        // Asking twice replaces the eyes rather than adding a second pair to the same frame.
-        out.views_mut().clear();
         if self.drawable.is_null() {
             return Ok(());
         }
