@@ -123,6 +123,119 @@ fn typed_texel(
     (texture, scene::Occlusion::from(info))
 }
 
+/// A room measured once per eye, as the array an OpenXR environment depth image is: one value per array
+/// layer, written where the eye that owns that layer will read it.
+///
+/// The extension's image always has two layers, so a test that put the same value in both could not tell a
+/// slice that was chosen from one that was not - which is the whole question here.
+fn typed_room(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    values: [f32; 2],
+    encoding: wxr::DepthEncoding,
+) -> (wgpu::Texture, scene::Occlusion) {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("test room in depth, per eye"),
+        size: wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 2,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Depth16Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    for (layer, value) in values.iter().enumerate() {
+        let raw = (value.clamp(0.0, 1.0) * u16::MAX as f32).round() as u16;
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: 0,
+                    y: 0,
+                    z: layer as u32,
+                },
+                aspect: wgpu::TextureAspect::DepthOnly,
+            },
+            &raw.to_le_bytes(),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(2),
+                rows_per_image: Some(1),
+            },
+            wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+    let info = wxr::DepthInfo {
+        size: wxr::Extent2d::new(1, 1),
+        encoding,
+        norm_depth_buffer_from_norm_view: wxr::Pose::IDENTITY,
+    };
+    (texture, scene::Occlusion::from(info))
+}
+
+/// An eye reads its own slice of a room measured once per eye, which is what an OpenXR depth image is.
+///
+/// Both layers are in one texture and say opposite things about the near triangle: slice zero has the room
+/// half a metre out, in front of it, and slice one has it five metres out, behind it. A scene that read slice
+/// zero for both eyes would draw the same picture twice and be wrong about one of them - the right eye
+/// occluded by the left eye's map, which is an edge of everything in the room shifted by an interpupillary
+/// distance. Each draw below gets its own texture with the values in the same two layers, so the only
+/// difference between the cases is the slice `at_layer` names.
+#[test]
+fn an_eye_reads_its_own_slice_of_the_rooms_depth() {
+    let Some((_turn, device, queue)) = device() else {
+        return;
+    };
+    let encoding = wxr::DepthEncoding::Window {
+        near_z: 0.1,
+        far_z: 100.0,
+    };
+    let values = [window_value(0.1, 100.0, 0.5), window_value(0.1, 100.0, 5.0)];
+    let room = |layer| {
+        let (texture, occlusion) = typed_room(&device, &queue, values, encoding);
+        (texture, occlusion.at_layer(layer))
+    };
+
+    let blocked = super::centre_pixel_with(&device, &queue, Depth::ZeroToOne, Some(room(0)));
+    assert!(
+        !standing(blocked),
+        "slice zero is a room in front of the scene: {blocked:?}"
+    );
+
+    let clear = super::centre_pixel_with(&device, &queue, Depth::ZeroToOne, Some(room(1)));
+    assert!(
+        standing(clear),
+        "slice one is a room behind it, and reading slice zero again would hide it: {clear:?}"
+    );
+}
+
+/// The renderer's half of the same fact: which slice an eye names, and the clamp for a one-slice room.
+///
+/// This is the arithmetic above the scene, and it is where the right eye used to be handed the left eye's
+/// map: every eye asked for slice zero because nothing said otherwise. It needs no GPU - the question is a
+/// number - and the clamp is the case a backend that measured one picture for both eyes would otherwise turn
+/// into a slice that does not exist, which is a bind group wgpu refuses.
+#[test]
+fn an_eye_names_its_own_slice_and_a_one_slice_room_is_not_out_of_range() {
+    assert_eq!(crate::eye_layer(wxr::Eye::Left, 2), 0);
+    assert_eq!(crate::eye_layer(wxr::Eye::Right, 2), 1);
+    // A headset's right eye on a one-picture measurement is the picture, not a slice past it.
+    assert_eq!(crate::eye_layer(wxr::Eye::Right, 1), 0);
+    assert_eq!(crate::eye_layer(wxr::Eye::Mono, 1), 0);
+    // And a session that answered zero layers is not asked for `u32::MAX`: `saturating_sub` is the difference
+    // between the left eye's slice and an index that would overflow a buffer.
+    assert_eq!(crate::eye_layer(wxr::Eye::Mono, 0), 0);
+}
+
 /// A depth-format measurement is read through the typed binding rather than the float one.
 ///
 /// OpenXR's environment depth is `D16_UNORM` and WebXR's is `r32float`; wgpu will not bind the first where

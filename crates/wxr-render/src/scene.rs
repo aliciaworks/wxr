@@ -63,6 +63,9 @@ pub struct Occlusion {
     linear_scale: f32,
     near_z: f32,
     far_z: f32,
+    /// Which array slice of the room's depth is this eye's, when the buffer has one per eye - zero for a
+    /// buffer that is one picture.
+    layer: u32,
 }
 
 impl Occlusion {
@@ -84,7 +87,18 @@ impl Occlusion {
             linear_scale,
             near_z,
             far_z,
+            layer: 0,
         }
+    }
+
+    /// Read this eye's slice of a depth buffer that has one per eye.
+    ///
+    /// OpenXR's environment depth is two array layers, and a right eye tested against the left eye's map is
+    /// an occlusion shifted by an interpupillary distance - visible at every edge in the room. A buffer with
+    /// one slice keeps the zero. The slice becomes a texture view of one layer, not an index in the shader:
+    /// `textureLoad`'s index on a depth texture is a mip level.
+    pub(crate) fn at_layer(self, layer: u32) -> Self {
+        Self { layer, ..self }
     }
 }
 
@@ -355,6 +369,29 @@ impl crate::Draw for Scene {
                 // texture, and `r32float` binds as an unfilterable float one. The shader is told which of
                 // the two bindings holds the room, and the other gets a one-texel stand-in.
                 let typed = texture.format().is_depth_stencil_format();
+                // One slice of the room for this eye. The slice is chosen by the view rather than by the
+                // shader because `textureLoad`'s index on a depth texture is a mip level, and the room is one
+                // mip: an array `D16_UNORM` handed over whole would be the right eye tested against the left
+                // eye's map.
+                let room = texture.create_view(&wgpu::TextureViewDescriptor {
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    base_array_layer: occlusion.layer,
+                    array_layer_count: Some(1),
+                    ..Default::default()
+                });
+                let (float_depth, typed_depth) = if typed {
+                    (
+                        self.no_depth
+                            .create_view(&wgpu::TextureViewDescriptor::default()),
+                        room,
+                    )
+                } else {
+                    (
+                        room,
+                        self.no_depth_typed
+                            .create_view(&wgpu::TextureViewDescriptor::default()),
+                    )
+                };
                 (
                     OcclusionUniform {
                         norm_depth_from_view: occlusion.norm_depth_from_view.to_cols_array_2d(),
@@ -366,18 +403,8 @@ impl crate::Draw for Scene {
                         depth_is_depth: typed as u32,
                         _pad: [0; 2],
                     },
-                    if typed {
-                        self.no_depth
-                            .create_view(&wgpu::TextureViewDescriptor::default())
-                    } else {
-                        texture.create_view(&wgpu::TextureViewDescriptor::default())
-                    },
-                    if typed {
-                        texture.create_view(&wgpu::TextureViewDescriptor::default())
-                    } else {
-                        self.no_depth_typed
-                            .create_view(&wgpu::TextureViewDescriptor::default())
-                    },
+                    float_depth,
+                    typed_depth,
                 )
             }
             None => (
@@ -449,42 +476,4 @@ pub const DEFAULT_FOV: FieldOfView = FieldOfView {
 };
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::projection::angles;
-
-    #[test]
-    fn the_default_field_of_view_survives_the_round_trip() {
-        let back = angles(perspective(DEFAULT_FOV, 0.05, 100.0, Depth::ZeroToOne));
-        assert!((back.up - DEFAULT_FOV.up).abs() < 1e-4);
-        assert!((back.left - DEFAULT_FOV.left).abs() < 1e-4);
-    }
-
-    #[test]
-    fn a_triangle_at_the_far_plane_is_behind_a_triangle_at_the_near_one() {
-        // The two depths the projection has to order, which is the one thing a depth range is for.
-        let (near, far) = planes();
-        let matrix = perspective(DEFAULT_FOV, near, far, Depth::ZeroToOne);
-        let at = |z: f32| (matrix * wxr::glam::Vec4::new(0.0, 0.0, z, 1.0)).z;
-        assert!(at(-near) < at(-far), "nearer is smaller");
-    }
-
-    #[test]
-    fn the_occlusion_uniform_is_what_the_shader_says_it_is() {
-        // The shader's `Occlusion` is 64 bytes of matrix, then `kind` and `enabled` and the three numbers
-        // the two encodings take - six 4-byte fields - and a spare plus a two-uint pad to carry it to the
-        // next 16-byte block. A mismatch is a picture that is wrong rather than a build that fails, so it is
-        // pinned here, and the field *order* is the shader's too: `kind` before the numbers it selects.
-        assert_eq!(std::mem::size_of::<OcclusionUniform>(), 64 + 6 * 4 + 8);
-        assert_eq!(
-            std::mem::offset_of!(OcclusionUniform, kind),
-            64,
-            "the shader branches on `kind` immediately after the matrix"
-        );
-        assert_eq!(
-            std::mem::offset_of!(OcclusionUniform, _pad),
-            88,
-            "the pad starts on an 8-byte boundary, which is what a vec2 needs"
-        );
-    }
-}
+mod tests;

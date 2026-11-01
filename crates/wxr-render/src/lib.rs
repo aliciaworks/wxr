@@ -81,6 +81,19 @@ fn viewport_fits(viewport: wxr::Viewport, extent: wxr::Extent2d) -> bool {
         && u64::from(viewport.y) + u64::from(viewport.height) <= u64::from(extent.height)
 }
 
+/// Which array slice of a room measured once per eye belongs to an eye.
+///
+/// OpenXR's environment depth is an array of two and the extension orders its views left then right, which is
+/// the order the frame's views come in. A buffer that is one picture has a single slice, and every eye reads
+/// it: the clamp is what keeps a session that hands back one layer from naming a slice that does not exist.
+fn eye_layer(eye: wxr::Eye, layers: u32) -> u32 {
+    let eye = match eye {
+        wxr::Eye::Right => 1,
+        wxr::Eye::Mono | wxr::Eye::Left => 0,
+    };
+    eye.min(layers.saturating_sub(1))
+}
+
 /// How a backend's images become wgpu textures.
 ///
 /// One call per image per *frame*, because a compositor's handle may be: a `CompositorServices` drawable's
@@ -313,9 +326,12 @@ impl Renderer {
             // buffer belongs to the frame and the session cannot be asked for anything else while a reference
             // into it is held.
             let occlusion = session.depth(index).and_then(|(depth, info)| {
-                importer
-                    .session_depth(device, info, depth)
-                    .map(|texture| (texture, scene::Occlusion::from(info)))
+                let texture = importer.session_depth(device, info, depth)?;
+                // A room measured once per eye is an array, and this eye is one slice of a depth map that has
+                // one picture per eye. A buffer that is one picture has a single slice, and the clamp in
+                // `eye_layer` leaves the left eye's zero alone.
+                let layer = eye_layer(view.eye, texture.size().depth_or_array_layers);
+                Some((texture, scene::Occlusion::from(info).at_layer(layer)))
             });
             let Some(image) = session.image(view.image) else {
                 continue;
