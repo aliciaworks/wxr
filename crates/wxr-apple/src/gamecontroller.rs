@@ -232,13 +232,22 @@ fn pattern(
     intensity: f32,
     duration: Duration,
 ) -> Result<Retained<ProtocolObject<dyn CHHapticPatternPlayer>>, wxr::Error> {
+    // `clamp` passes NaN through, and a parameter that is not a number is a pattern Core Haptics refuses to
+    // make - an error out of a call whose only other failures are a framework that is not there. NaN is not
+    // an intensity, so it becomes the quiet end of the range, as OpenXR's and WebXR's pulses do; the
+    // infinities keep the clamp.
+    let intensity = if intensity.is_nan() {
+        0.0
+    } else {
+        intensity.clamp(0.0, 1.0)
+    };
     // SAFETY: every object below is the framework's, made here and dropped at the end of the call, and the
     // parameter id and event type are constants.
     unsafe {
         let parameter = CHHapticEventParameter::initWithParameterID_value(
             CHHapticEventParameter::alloc(),
             CHHapticEventParameterIDHapticIntensity,
-            intensity.clamp(0.0, 1.0),
+            intensity,
         );
         let event = CHHapticEvent::initWithEventType_parameters_relativeTime_duration(
             CHHapticEvent::alloc(),
