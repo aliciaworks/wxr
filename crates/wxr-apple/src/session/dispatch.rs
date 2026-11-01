@@ -289,6 +289,7 @@ impl wxr::Session for AppleSession {
     /// word for a room it has not measured yet.
     fn light_probe(&mut self) -> Result<wxr::LightProbe, wxr::Error> {
         if self.arkit.as_ref().is_some_and(ArKit::has_light) {
+            self.light_probe = true;
             return Ok(wxr::LightProbe::new(0));
         }
         Err(wxr::Error::Unsupported("light estimation".into()))
@@ -299,14 +300,21 @@ impl wxr::Session for AppleSession {
     /// Every value if it has one and no intensity with zero harmonics if it does not, which is what the
     /// core says a runtime with no estimate hands over. A dark room and a room ARKit has not got round to
     /// yet are the same answer, and both are a scene lit by nothing rather than by a guess.
+    ///
+    /// A handle this session did not hand out gets that same no-estimate answer rather than the room's
+    /// light: the handle is how a caller says which probe, and this session never made that one. It is the
+    /// answer WebXR gives an id outside its own list, and an empty estimate rather than an error because
+    /// the core's `light` has no error a caller could act on here.
     fn light(
         &mut self,
-        _probe: wxr::LightProbe,
+        probe: wxr::LightProbe,
         out: &mut wxr::LightEstimate,
     ) -> Result<(), wxr::Error> {
+        let known = self.light_probe && probe.id() == 0;
         *out = self
             .arkit
             .as_ref()
+            .filter(|_| known)
             .and_then(ArKit::light)
             .unwrap_or_default();
         Ok(())

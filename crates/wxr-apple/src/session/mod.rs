@@ -154,6 +154,10 @@ pub struct AppleSession {
     /// kind is kept beside it so that a handle whose public kind was changed is not a handle this session
     /// handed out.
     spaces: Vec<(wxr::SpaceKind, wxr::Pose)>,
+    /// Whether `light_probe` handed out a probe. This session has one estimate for the whole room, so the
+    /// handle is always zero - but a zero the caller made up is not a handle, and `light` cannot tell the two
+    /// apart without this.
+    light_probe: bool,
     /// How many hands were there the last frame, so that the set of inputs changing is news once.
     hands_seen: usize,
     /// Whether the set of inputs changed since the last poll, waiting to be said.
@@ -188,6 +192,7 @@ impl AppleSession {
             reported: (wxr::State::Ready, wxr::Visibility::Hidden),
             lost: false,
             spaces: Vec::new(),
+            light_probe: false,
             hands_seen: 0,
             inputs_changed: false,
         }
