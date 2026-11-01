@@ -59,13 +59,30 @@ impl Hands {
         if !self.pcm {
             return Err(Error::Unsupported("haptic samples".into()));
         }
+        // An empty waveform is nothing to feel, so it is the quiet no-op rather than a runtime call.
+        // `XrHapticPcmVibrationFB` valid usage wants at least one sample, and a zero-length buffer is a
+        // validation error - or, worse, a runtime that reads a pointer with nothing behind it.
+        if samples.is_empty() {
+            return Ok(());
+        }
+        // A rate that is not positive and finite describes no duration: the runtime resamples against it,
+        // so there is no honest waveform to hand over.
+        if !sample_rate.is_finite() || sample_rate <= 0.0 {
+            return Err(Error::Unsupported(
+                "haptic samples at a non-positive rate".into(),
+            ));
+        }
         let Some((action, path)) = self.output(source) else {
             return Err(Error::Unsupported("haptics on this source".into()));
         };
+        // Valid usage requires somewhere for the runtime to write the samples it consumed. The core has
+        // nowhere to report that count, but a null pointer is still invalid usage.
+        let mut consumed = 0;
         let event = xr::HapticPcmVibrationFB::new()
             .buffer(samples)
             .sample_rate(sample_rate)
-            .append(false);
+            .append(false)
+            .samples_consumed(&mut consumed);
         action
             .apply_feedback(session, path, &event)
             .map_err(|error| Error::runtime("play haptic samples", error))
