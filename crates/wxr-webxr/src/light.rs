@@ -47,8 +47,9 @@ pub fn request(session: &XrSession, slot: Rc<RefCell<Slot>>) -> Result<(), JsVal
 /// Read the frame's estimate for a probe into the core's shape.
 pub fn estimate(frame: &XrFrame, probe: &XrLightProbe, out: &mut wxr::LightEstimate) {
     let Some(estimate) = frame.get_light_estimate(probe) else {
-        // A probe the runtime has nothing to say about this frame is not a failure: a room's light does not
-        // change between frames, and the last estimate is still true.
+        // A probe the runtime has nothing to say about this frame is not a failure. The caller was handed the
+        // default estimate before this call - no intensity and zero harmonics - so leaving it alone is the
+        // answer the core documents for a frame with no estimate, rather than the previous frame's light.
         return;
     };
 
