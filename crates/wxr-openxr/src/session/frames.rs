@@ -422,16 +422,18 @@ impl OpenXrSession {
             present.push(layer.base());
         }
 
-        self.stream
+        // The runtime takes its depth image back with the frame, so the next one has to take it again - which
+        // is why [`super::OpenXrSession::depth`] takes the image on the first ask of a frame and then reads
+        // it. Cleared before the result is handed on rather than after a successful end, because a failed
+        // `xrEndFrame` ends the frame just the same: `depth_asked` left true would make the next frame's first
+        // ask read the buffer of the frame before instead of taking a new one.
+        let ended = self
+            .stream
             .end(self.predicted, self.blend, &present)
-            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
-
-        // The runtime takes its depth image back with the frame, so the next one has to take it again. This
-        // is the reason [`Self::depth`] takes the image on the first ask of a frame and then reads it: this
-        // line is what makes the first ask of the next frame the first ask rather than the second.
+            .map_err(|error| wxr::Error::Present(format!("{error:?}")));
         self.measured = None;
         self.depth_asked = false;
-        Ok(())
+        ended
     }
 }
 

@@ -362,6 +362,9 @@ impl OpenXrSession {
     /// [`wxr::DepthInfo`] has nowhere for. A renderer that wants the eye asks the frame's views, which are
     /// the same ones the measurement was taken in.
     pub(super) fn depth_impl(&mut self, view: usize) -> Option<(&DepthImage, wxr::DepthInfo)> {
+        // Only inside a frame: the acquire is a call between `xrBeginFrame` and `xrEndFrame`, and the
+        // image belongs to that pair. `end` drops `held`, so a caller between frames takes nothing.
+        self.held?;
         // The first ask of a frame is the one that tries to take the image: the runtime allows one acquire
         // between a frame's begin and its end, and a second is `XR_ERROR_LIMIT_REACHED` - even when the first
         // answered that no depth was ready. A view this frame did not locate is nothing to measure for,
@@ -444,12 +447,9 @@ fn null_swapchain() -> openxr_sys::EnvironmentDepthSwapchainMETA {
 /// Undo what had been made when a later step said no.
 ///
 /// Every early return in [`EnvironmentDepth::new`] is a case where one thing was made and the next one
-/// refused, and a provider the app never gets to see is still a provider the runtime is holding for it -
-/// which is not a leak the runtime will clean up at the end, because from its point of view the app made
-/// it. So each of them says what it is putting back, and this is the same two calls in the same order as
-/// [`Drop for EnvironmentDepth`], with the stop left out because nothing was started yet.
-///
-/// The `None` is the one return before a swapchain existed at all.
+/// refused, and a provider the app never gets to see is still one the runtime is holding for it. So each
+/// says what it is putting back: the same two calls in the same order as [`Drop for EnvironmentDepth`],
+/// with the stop left out because nothing was started. `None` is the return before a swapchain existed.
 fn undo(
     table: &xr::raw::EnvironmentDepthMETA,
     provider: openxr_sys::EnvironmentDepthProviderMETA,
