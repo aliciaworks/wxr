@@ -40,6 +40,25 @@ fn asking_for_views_twice_replaces_the_eyes() {
 }
 
 #[test]
+fn a_views_call_the_space_refused_drops_the_eyes() {
+    // The mock is the backend a caller develops against, so a failed call has to leave the frame in the same
+    // shape a real one does: no eyes, rather than the pair the last successful call put there. Otherwise a
+    // caller that ignores the error presents a frame from a space it was just told about.
+    let mut session = running();
+    let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+    let mut frame = Frame::default();
+    session.begin(Duration::ZERO, &mut frame).unwrap();
+    session.views(space, &mut frame).unwrap();
+    assert_eq!(frame.views().len(), 2);
+    let head = ReferenceSpace::new(SpaceKind::Local, 0);
+    assert!(matches!(
+        session.views(head, &mut frame),
+        Err(Error::NoSpace(SpaceKind::Local))
+    ));
+    assert!(frame.views().is_empty(), "the refused call's eyes are gone");
+}
+
+#[test]
 fn a_new_frame_does_not_carry_the_last_one_head() {
     // A frame loop reuses one `Frame`, and `begin` is what makes it this frame's. A `Wait` or a `views`
     // that could not locate the eyes leaves nothing in it - not the head from the frame before.
