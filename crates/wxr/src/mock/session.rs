@@ -372,9 +372,15 @@ impl Session for MockSession {
 
     fn pulse(&mut self, source: InputId, intensity: f32, duration: Duration) -> Result<(), Error> {
         // Clamped, not refused: the core's word is a request, and a mock that rejected an out-of-range
-        // intensity would be a mock that behaves unlike every platform.
-        self.pulses
-            .push((source, intensity.clamp(0.0, 1.0), duration));
+        // intensity would be a mock that behaves unlike every platform. A NaN is the one value `clamp`
+        // passes through, and every backend sends zero for it - so recording the NaN would be recording a
+        // request no device ever receives.
+        let intensity = if intensity.is_nan() {
+            0.0
+        } else {
+            intensity.clamp(0.0, 1.0)
+        };
+        self.pulses.push((source, intensity, duration));
         Ok(())
     }
 

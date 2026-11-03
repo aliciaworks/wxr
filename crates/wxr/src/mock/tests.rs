@@ -133,22 +133,22 @@ fn a_pulse_names_the_source_it_reaches() {
     let space = session.space(SpaceKind::LocalFloor).expect("a floor");
     let mut sources = Vec::new();
     session.inputs(space, &mut sources).unwrap();
-    // The mock's controllers are made with actuators, so this is a call it can answer - which is what makes it
-    // worth recording: a `pulse` that returned `Ok` and did nothing would pass an assertion on the result
-    // alone, and an app would find out by feeling nothing.
+    // The mock's controllers have actuators, so this is a call it can answer: a `pulse` that returned `Ok`
+    // and did nothing would pass an assertion on the result alone.
     assert!(sources[0].haptics);
     assert!(session.features().contains(crate::Features::HAPTICS));
 
     let id = sources[1].id;
     session.pulse(id, 0.5, Duration::from_millis(25)).unwrap();
-    // Clamped rather than refused, which is the one thing the mock does to the number: the core's word is a
-    // request, and every platform's own is the same.
+    // Clamped rather than refused; a NaN is the quietest request there is, which is what the backends send.
     session.pulse(id, 7.0, Duration::from_millis(5)).unwrap();
+    session.pulse(id, f32::NAN, Duration::ZERO).unwrap();
     assert_eq!(
         session.pulses(),
         &[
             (id, 0.5, Duration::from_millis(25)),
             (id, 1.0, Duration::from_millis(5)),
+            (id, 0.0, Duration::ZERO),
         ]
     );
 
