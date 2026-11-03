@@ -32,19 +32,18 @@ impl AppleSession {
         // and the other backends empty it for the same reason. A list that grows by two hands a frame is a
         // list that is mostly hands that have been put down.
         out.clear();
-        // Controllers are GameController's and hands are ARKit's, so a session whose ARKit never came up
-        // still has controllers, and an invalid space is not something the controller half dereferences.
+        // Controllers are GameController's and hands are ARKit's, so the space is checked before either: a
+        // handle this session did not hand out is refused whether or not there is a room behind it. A session
+        // whose ARKit never came up still has controllers, and still answers for a space it made.
+        if !self.has_space(space) {
+            return Err(wxr::Error::NoSpace(space.kind));
+        }
         let Some(arkit) = &self.arkit else {
             if self.controllers.read(out) {
                 self.inputs_changed = true;
             }
             return Ok(());
         };
-        // Before the controllers are read: a space this session did not hand out is an error, and an error
-        // should not leave a half-filled list behind.
-        if !self.has_space(space) {
-            return Err(wxr::Error::NoSpace(space.kind));
-        }
         if self.controllers.read(out) {
             self.inputs_changed = true;
         }
@@ -102,12 +101,13 @@ impl AppleSession {
         out: &mut wxr::Hand,
     ) -> Result<(), wxr::Error> {
         out.clear();
-        let Some(arkit) = &self.arkit else {
-            return Ok(());
-        };
+        // The space first, for the reason `inputs` gives.
         if !self.has_space(space) {
             return Err(wxr::Error::NoSpace(space.kind));
         }
+        let Some(arkit) = &self.arkit else {
+            return Ok(());
+        };
         // A controller's id is past the offset its own module starts at, and a hand's is its index in the
         // order `ArKit::hands` reports - left, then right. Written as the offset rather than as a bare
         // `< 2`, so that a controller id is refused for the reason it is actually refused: it is not one of

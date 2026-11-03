@@ -240,12 +240,14 @@ impl wxr::Session for AppleSession {
     ) -> Result<(), wxr::Error> {
         // As `inputs`: the surfaces this frame, not the ones from every frame before it.
         out.clear();
-        let Some(arkit) = &self.arkit else {
-            return Ok(());
-        };
+        // The space before ARKit: a handle this session did not hand out is refused whether or not there is a
+        // room to bring it to, and a session with no room still answers with no planes for its own space.
         if !self.has_space(space) {
             return Err(wxr::Error::NoSpace(space.kind));
         }
+        let Some(arkit) = &self.arkit else {
+            return Ok(());
+        };
         // ARKit reports planes in the session's own origin, which is this backend's `Local`; a caller asking
         // for another space gets them brought over, the same way the views are.
         let space_from_world = wxr_render::pose_from_transform(self.space_from_world(space));
@@ -264,12 +266,13 @@ impl wxr::Session for AppleSession {
         // And the same for the room's triangles: a mesh copied from this frame is the only one that is still
         // where ARKit says it is.
         out.clear();
-        let Some(arkit) = &self.arkit else {
-            return Ok(());
-        };
+        // The space first, for the reason `planes` gives.
         if !self.has_space(space) {
             return Err(wxr::Error::NoSpace(space.kind));
         }
+        let Some(arkit) = &self.arkit else {
+            return Ok(());
+        };
         // The same space the planes are brought to, and for the same reason: ARKit traces in the session's
         // own origin, which is this backend's `Local`, so a caller asking for another space gets the meshes
         // brought over rather than a refusal.
@@ -348,12 +351,13 @@ impl wxr::Session for AppleSession {
         anchor: wxr::Anchor,
         space: wxr::ReferenceSpace,
     ) -> Result<Option<wxr::Pose>, wxr::Error> {
-        let Some(arkit) = &self.arkit else {
-            return Ok(None);
-        };
+        // The space first, for the reason `planes` gives.
         if !self.has_space(space) {
             return Err(wxr::Error::NoSpace(space.kind));
         }
+        let Some(arkit) = &self.arkit else {
+            return Ok(None);
+        };
         let Some(world) = arkit.anchor_pose(anchor) else {
             return Ok(None);
         };
