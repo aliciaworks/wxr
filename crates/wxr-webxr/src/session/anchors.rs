@@ -21,14 +21,16 @@ impl WebXrSession {
         if !has_feature(&session, "anchors") {
             return Err(wxr::Error::Unsupported("anchors".into()));
         }
+        // The space before the frame, as the other two backends do: `createAnchor` needs a real space and a
+        // real frame, and a handle this session never handed out is refused as such whether or not a frame
+        // happens to be running.
+        let Some(base) = self.resolved_space(space)? else {
+            return Err(wxr::Error::Unavailable(
+                "the space has not resolved yet".into(),
+            ));
+        };
         let Some(frame) = self.frame() else {
             return Err(wxr::Error::Unavailable("a frame has not begun yet".into()));
-        };
-        let Some(base) = self
-            .space_slot(space)
-            .and_then(|slot| slot.borrow().space.clone())
-        else {
-            return Err(wxr::Error::NoSpace(space.kind));
         };
         let slot = Rc::new(RefCell::new(crate::anchors::Slot::default()));
         crate::anchors::create(&frame, &base, rigid(pose)?, slot.clone())
@@ -44,16 +46,15 @@ impl WebXrSession {
         anchor: wxr::Anchor,
         space: wxr::ReferenceSpace,
     ) -> Result<Option<wxr::Pose>, wxr::Error> {
+        // The space first, as the other two backends answer: a handle this session never handed out is not a
+        // place the anchor was lost from, and `Ok(None)` would say it was.
+        let Some(base) = self.resolved_space(space)? else {
+            return Ok(None);
+        };
         let Some(anchor) = self
             .anchors
             .get(anchor.id() as usize)
             .and_then(|slot| slot.borrow().anchor())
-        else {
-            return Ok(None);
-        };
-        let Some(base) = self
-            .space_slot(space)
-            .and_then(|slot| slot.borrow().space.clone())
         else {
             return Ok(None);
         };

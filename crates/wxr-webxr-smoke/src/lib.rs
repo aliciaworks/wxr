@@ -139,6 +139,9 @@ struct Board {
     /// Whether the viewport scale has been asked for, which is once: the request applies to the frame it is
     /// made in, and the values that matter are the ones the browser cannot convert.
     viewport_scale_checked: bool,
+    /// Whether a space handle this session never made has been asked about, which is once: the answer is the
+    /// same on every frame, and the call writes only the vector it is given.
+    forged_space_checked: bool,
 }
 
 /// The backend's own log lines, which are the ones that say *why*.
@@ -297,6 +300,7 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         checked: false,
         retry_checked: false,
         viewport_scale_checked: false,
+        forged_space_checked: false,
         stopped: false,
     }));
 

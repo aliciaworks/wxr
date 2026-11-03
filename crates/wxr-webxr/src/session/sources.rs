@@ -13,10 +13,7 @@ impl WebXrSession {
         // What is held now, not what was held last frame: the caller's vector is the one a frame loop
         // keeps, and every other list the session fills starts with the same line.
         out.clear();
-        let Some(reference) = self
-            .space_slot(space)
-            .and_then(|slot| slot.borrow().space.clone())
-        else {
+        let Some(reference) = self.resolved_space(space)? else {
             return Ok(());
         };
         let Some(frame) = self.frame() else {
@@ -120,16 +117,15 @@ impl WebXrSession {
         out: &mut wxr::Hand,
     ) -> Result<(), wxr::Error> {
         out.clear();
+        // Before the source and the hand: a handle this session never handed out is refused whether or not
+        // that source exists, which is the order the other two backends use.
+        let Some(reference) = self.resolved_space(space)? else {
+            return Ok(());
+        };
         let Some(input) = self.sources.get(source) else {
             return Ok(());
         };
         let Some(hand) = input.hand() else {
-            return Ok(());
-        };
-        let Some(reference) = self
-            .space_slot(space)
-            .and_then(|slot| slot.borrow().space.clone())
-        else {
             return Ok(());
         };
         let Some(frame) = self.frame() else {

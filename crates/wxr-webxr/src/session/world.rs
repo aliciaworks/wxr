@@ -11,10 +11,7 @@ impl WebXrSession {
         out: &mut Vec<wxr::Plane>,
     ) -> Result<(), wxr::Error> {
         out.clear();
-        let Some(reference) = self
-            .space_slot(space)
-            .and_then(|slot| slot.borrow().space.clone())
-        else {
+        let Some(reference) = self.resolved_space(space)? else {
             return Ok(());
         };
         let Some(frame) = self.frame() else {
@@ -32,10 +29,7 @@ impl WebXrSession {
         out: &mut Vec<wxr::glam::Vec2>,
     ) -> Result<(), wxr::Error> {
         out.clear();
-        let Some(space) = self
-            .space_slot(space)
-            .and_then(|slot| slot.borrow().space.clone())
-        else {
+        let Some(space) = self.resolved_space(space)? else {
             return Ok(());
         };
         // `boundsGeometry` is on the bounded-floor space and nowhere else, so a space that is not one is not
@@ -116,16 +110,15 @@ impl WebXrSession {
         out: &mut Vec<wxr::Hit>,
     ) -> Result<(), wxr::Error> {
         out.clear();
+        // The space before the source: a handle this session never handed out is refused as such, whether or
+        // not the source is still alive.
+        let Some(base) = self.resolved_space(space)? else {
+            return Ok(());
+        };
         let Some(slot) = self.hit_sources.get(source.id() as usize) else {
             return Ok(());
         };
         let Some(source) = slot.borrow().source() else {
-            return Ok(());
-        };
-        let Some(base) = self
-            .space_slot(space)
-            .and_then(|slot| slot.borrow().space.clone())
-        else {
             return Ok(());
         };
         let Some(frame) = self.frame() else {

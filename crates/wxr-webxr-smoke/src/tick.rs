@@ -232,6 +232,29 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
         }
     }
 
+    // A handle this session never handed out is refused rather than answered with nothing. The difference is
+    // the whole reason `NoSpace` exists: a caller told "no planes, no hand, no wall" believes the room, while
+    // a caller told `NoSpace` knows it asked the wrong session. `bounds` is the cheap one - it writes only the
+    // caller's vector - and the floor is asked after it so that the valid half is shown to still answer.
+    if !board.forged_space_checked {
+        board.forged_space_checked = true;
+        let forged = wxr::ReferenceSpace::new(wxr::SpaceKind::LocalFloor, 4096);
+        let mut outline = Vec::new();
+        match session.bounds(forged, &mut outline) {
+            Err(wxr::Error::NoSpace(wxr::SpaceKind::LocalFloor)) => {}
+            other => {
+                return Err(format!(
+                    "a space handle this session never made was answered as {other:?}, where NoSpace is the \
+                     answer"
+                ));
+            }
+        }
+        if let Err(error) = session.bounds(space, &mut outline) {
+            return Err(format!("the floor space's bounds: {error}"));
+        }
+        say("a space handle this session never made was refused, and the floor's was answered");
+    }
+
     let handed_over = session.image_count();
     if let Err(error) = session.end(&mut board.frame) {
         return Err(format!("end failed: {error}"));

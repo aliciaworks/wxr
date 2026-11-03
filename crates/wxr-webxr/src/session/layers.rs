@@ -89,11 +89,9 @@ impl WebXrSession {
             other => return Err(wxr::Error::Unsupported(format!("{} layers", other.name()))),
         };
         // A layer is made *in* a space, so a space that is still a promise is a layer to ask for again - the
-        // same answer `hit_test_source` gives, for the same reason.
-        let Some(reference) = self
-            .space_slot(space)
-            .and_then(|slot| slot.borrow().space.clone())
-        else {
+        // same answer `hit_test_source` gives, for the same reason. A handle this session never handed out is
+        // not a promise, though, and is the `NoSpace` every other entry that takes one answers.
+        let Some(reference) = self.resolved_space(space)? else {
             return Err(wxr::Error::Unavailable(
                 "the space has not resolved yet".into(),
             ));

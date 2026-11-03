@@ -177,10 +177,7 @@ impl WebXrSession {
             format: wxr::ColorFormat::Unknown,
             ..Default::default()
         };
-        let Some(reference) = self
-            .space_slot(space)
-            .and_then(|slot| slot.borrow().space.clone())
-        else {
+        let Some(reference) = self.resolved_space(space)? else {
             // The space is still a promise, which is not an error: it is one or two frames of a session
             // that just started.
             return Ok(());

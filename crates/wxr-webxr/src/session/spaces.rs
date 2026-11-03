@@ -85,6 +85,22 @@ impl WebXrSession {
         (slot.borrow().kind == space.kind).then(|| slot.clone())
     }
 
+    /// The browser's space behind a handle, once the browser has answered for it.
+    ///
+    /// `Err(NoSpace)` is a handle this session never handed out - an id past the list, or one whose public
+    /// kind was changed - and `Ok(None)` is a space this session did make that the browser has not settled
+    /// yet. The caller decides because the two callers differ: a creator has nothing to build from a promise
+    /// and says so, while a reader asked before the first frame has no eyes to report either way.
+    pub(super) fn resolved_space(
+        &self,
+        space: wxr::ReferenceSpace,
+    ) -> Result<Option<XrReferenceSpace>, wxr::Error> {
+        let Some(slot) = self.space_slot(space) else {
+            return Err(wxr::Error::NoSpace(space.kind));
+        };
+        Ok(slot.borrow().space.clone())
+    }
+
     pub(super) fn offset_space_impl(
         &mut self,
         space: wxr::ReferenceSpace,
