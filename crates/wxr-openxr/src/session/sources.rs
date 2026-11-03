@@ -32,8 +32,12 @@ impl OpenXrSession {
         space: wxr::ReferenceSpace,
         out: &mut wxr::Hand,
     ) -> Result<(), wxr::Error> {
+        // Before the space lookup, because that is the one path out of here that has no skeleton to write:
+        // a hand refused for a space this session never made would otherwise leave the last frame's joints in
+        // the caller's hand, which is a hand drawn where the runtime never said it was. `Hands::hand` clears
+        // too, but only once it has been reached.
+        out.clear();
         let Some(hands) = self.hands.as_ref() else {
-            out.clear();
             return Ok(());
         };
         let Some(reference) = self.spaces.get(space.id() as usize) else {
