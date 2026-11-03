@@ -146,6 +146,32 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
             }
         }
     }
+    // The viewport scale is a WebIDL `double`, so a value the browser cannot convert is a `TypeError` thrown
+    // through the wasm frame - the page stops rather than drawing. Ask with the three values that are not a
+    // scale and with one that is: NaN must leave the last request alone, an infinity must clamp to one, and a
+    // half must arrive. The answer is read back off the stub, because the request is not the answer.
+    if !board.viewport_scale_checked && !board.frame.views().is_empty() {
+        board.viewport_scale_checked = true;
+        session.request_viewport_scale(0, Some(f32::NAN));
+        if viewport_scale().is_some() {
+            return Err("a NaN viewport scale was taken for a request".into());
+        }
+        session.request_viewport_scale(0, Some(f32::INFINITY));
+        if viewport_scale() != Some(1.0) {
+            return Err(format!(
+                "an infinite viewport scale landed as {:?}, where the clamp is one",
+                viewport_scale()
+            ));
+        }
+        session.request_viewport_scale(0, Some(0.5));
+        if viewport_scale() != Some(0.5) {
+            return Err(format!(
+                "a half viewport scale landed as {:?}",
+                viewport_scale()
+            ));
+        }
+        say("a NaN viewport scale was dropped, an infinite one clamped to one, and a half arrived");
+    }
     // The sources, which are the frame's half of input: where the hands are and how they are aimed. What they
     // *do* arrives as events above, because that is where WebXR puts it.
     let mut sources = Vec::new();

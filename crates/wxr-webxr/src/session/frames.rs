@@ -262,4 +262,29 @@ impl WebXrSession {
         self.located = out_views.len();
         Ok(())
     }
+
+    /// Ask for a view to render at `scale` of its full resolution.
+    ///
+    /// The view is the current frame's `XRView`, which is why this is here beside the call that keeps them:
+    /// the request applies to the frame it is made in, and a view from the frame before is not one the
+    /// browser will take it for. `None` is ignored, which the specification says so a recommendation may be
+    /// passed unchecked.
+    pub(super) fn request_viewport_scale_impl(&mut self, view: usize, scale: Option<f32>) {
+        // `scale` is a WebIDL `double`, so a NaN or an infinity is a `TypeError` thrown through the wasm
+        // frame rather than a knob refusing a value. NaN is not a scale at all and leaves the view's last
+        // request alone - the same reading `set_foveation` gives one - and an infinity is out of the range
+        // the specification clamps into, which is what the clamp below is for. A finite value outside it is
+        // clamped the same way: the specification's own steps take `<= 0` as no request and `> 1` as one.
+        let scale = match scale {
+            None => None,
+            Some(scale) if scale.is_nan() => {
+                log::debug!("wxr-webxr: no viewport scale for {scale}, which is not a number");
+                return;
+            }
+            Some(scale) => Some(scale.clamp(0.0, 1.0) as f64),
+        };
+        if let Some(view) = self.frame_views.get(view) {
+            view.request_viewport_scale(scale);
+        }
+    }
 }

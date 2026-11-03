@@ -225,6 +225,27 @@ class XRView {
     this.recommendedViewportScale = undefined;
     this.isFirstPersonObserver = false;
   }
+
+  /**
+   * The one method that changes a viewport, and the reason it is written out rather than left missing: its
+   * argument is a WebIDL `double`, so a NaN or an infinity is a `TypeError` before the algorithm runs. A
+   * backend that passed one would stop here, which is exactly the failure this page is for.
+   */
+  requestViewportScale(scale) {
+    if (scale === undefined || scale === null) {
+      return;
+    }
+    if (typeof scale !== 'number' || !Number.isFinite(scale)) {
+      throw new TypeError('requestViewportScale: the scale is not a finite number');
+    }
+    // The specification's own steps: at or below zero is no request, and above one is one.
+    if (scale <= 0.0) {
+      return;
+    }
+    this.requestedViewportScale = Math.min(scale, 1.0);
+    // The page reads this back, because the answer to a request is not the request.
+    globalThis.__wxrViewportScale = this.requestedViewportScale;
+  }
 }
 
 class XRViewerPose {

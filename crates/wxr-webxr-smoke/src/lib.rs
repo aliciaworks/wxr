@@ -96,6 +96,16 @@ fn opened_for_images() -> bool {
         .is_some_and(|search| search.contains("gpu"))
 }
 
+/// What the stub's `XRView.requestViewportScale` last took, if it took anything.
+///
+/// The browser's answer to a request is not the request, and a view is the session's rather than the page's,
+/// so the stub records what it accepted where the page can read it. `None` before the first request.
+fn viewport_scale() -> Option<f64> {
+    js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str("__wxrViewportScale"))
+        .ok()
+        .and_then(|value| value.as_f64())
+}
+
 /// What one run is holding: the frame being built, and how far it has got.
 struct Board {
     frame: wxr::Frame,
@@ -126,6 +136,9 @@ struct Board {
     /// Whether a `views` call the browser cannot answer has been retried, which is once and after the image
     /// checks: it is the retry that must leave no picture behind, and the frame it checks is the one with eyes.
     retry_checked: bool,
+    /// Whether the viewport scale has been asked for, which is once: the request applies to the frame it is
+    /// made in, and the values that matter are the ones the browser cannot convert.
+    viewport_scale_checked: bool,
 }
 
 /// The backend's own log lines, which are the ones that say *why*.
@@ -283,6 +296,7 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         gpu,
         checked: false,
         retry_checked: false,
+        viewport_scale_checked: false,
         stopped: false,
     }));
 

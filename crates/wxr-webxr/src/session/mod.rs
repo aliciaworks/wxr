@@ -407,11 +407,7 @@ impl wxr::Session for WebXrSession {
     }
 
     fn request_viewport_scale(&mut self, view: usize, scale: Option<f32>) {
-        // `None` is ignored, which the specification says so that a recommendation may be passed unchecked.
-        // It lands when the browser next answers for this view's viewport, which is the next `views`.
-        if let Some(view) = self.frame_views.get(view) {
-            view.request_viewport_scale(scale.map(|scale| scale as f64));
-        }
+        self.request_viewport_scale_impl(view, scale)
     }
 
     fn anchor(
