@@ -123,6 +123,9 @@ struct Board {
     /// Whether the images have been asserted, which is once: every frame of a working run is the same answer,
     /// and a run whose eighth frame differs from its first has already failed.
     checked: bool,
+    /// Whether a `views` call the browser cannot answer has been retried, which is once and after the image
+    /// checks: it is the retry that must leave no picture behind, and the frame it checks is the one with eyes.
+    retry_checked: bool,
 }
 
 /// The backend's own log lines, which are the ones that say *why*.
@@ -279,6 +282,7 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         hands: Vec::new(),
         gpu,
         checked: false,
+        retry_checked: false,
         stopped: false,
     }));
 

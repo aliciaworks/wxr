@@ -104,6 +104,48 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
         board.checked = true;
         images::check_images(board, session)?;
     }
+    // A `views` retry is a new answer rather than an addition to the last one, so a space the browser refused
+    // has to leave the frame without eyes *and* without the picture those eyes were drawn through. Asked once,
+    // after the image checks above and before anything else reads the frame, and the real space is asked again
+    // below so that this tick still draws.
+    if board.gpu && board.checked && !board.retry_checked {
+        board.retry_checked = true;
+        if let Some(unbounded) = board.unbounded {
+            if let Err(error) = session.views(unbounded, &mut board.frame) {
+                return Err(format!("views of a refused space answered {error}"));
+            }
+            if !board.frame.views().is_empty() {
+                return Err(format!(
+                    "a views call for a refused space left {} eye(s) in the frame",
+                    board.frame.views().len()
+                ));
+            }
+            let meta = session.images();
+            if session.image_count() != 0
+                || session.image(0).is_some()
+                || meta.format != wxr::ColorFormat::Unknown
+                || meta.extent != wxr::Extent2d::default()
+            {
+                return Err(format!(
+                    "a views call with no eyes left a picture behind: {} image(s), {:?} at {:?}",
+                    session.image_count(),
+                    meta.format,
+                    meta.extent
+                ));
+            }
+            say("a views retry with no eyes took the picture with it");
+            if let Err(error) = session.views(space, &mut board.frame) {
+                return Err(format!("the floor space's views, asked again: {error}"));
+            }
+            if board.frame.views().len() != 2 || session.image_count() != 1 {
+                return Err(format!(
+                    "the retry left {} eye(s) and {} image(s), where the frame had two and one",
+                    board.frame.views().len(),
+                    session.image_count()
+                ));
+            }
+        }
+    }
     // The sources, which are the frame's half of input: where the hands are and how they are aimed. What they
     // *do* arrives as events above, because that is where WebXR puts it.
     let mut sources = Vec::new();

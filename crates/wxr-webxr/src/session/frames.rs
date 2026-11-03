@@ -169,6 +169,14 @@ impl WebXrSession {
         out.views_mut().clear();
         self.frame_views.clear();
         self.located = 0;
+        // Nor is the picture still this answer's: the sub-image was taken for the eyes that were just dropped,
+        // and a caller left holding it has a texture with no viewport to draw it through. Clearing here rather
+        // than at each early return is what makes every way out of the call agree.
+        self.image = None;
+        self.meta = wxr::ImageMeta {
+            format: wxr::ColorFormat::Unknown,
+            ..Default::default()
+        };
         let Some(reference) = self
             .space_slot(space)
             .and_then(|slot| slot.borrow().space.clone())
