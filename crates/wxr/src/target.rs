@@ -16,9 +16,10 @@ impl Extent2d {
         Self { width, height }
     }
 
-    /// How many pixels, which is what a viewport is checked against.
-    pub fn pixels(self) -> u32 {
-        self.width * self.height
+    /// How many pixels, as a count wide enough not to wrap: the widest extent by the tallest is still
+    /// under `u64::MAX`, where the `u32` product this used to be wrapped at four gigapixels.
+    pub fn pixels(self) -> u64 {
+        u64::from(self.width) * u64::from(self.height)
     }
 }
 
@@ -96,5 +97,14 @@ mod tests {
         };
         assert!(meta.is_layered());
         assert_eq!(meta.extent.pixels(), 2048 * 2048);
+    }
+
+    #[test]
+    fn a_pixel_count_does_not_wrap() {
+        // Two `u32`s multiply past `u32::MAX` long before the extent is too large to name, so the count is a
+        // `u64`: a caller sizing a buffer from a wrapped count asks for a quarter of the memory it needs.
+        let widest = Extent2d::new(u32::MAX, u32::MAX);
+        assert_eq!(widest.pixels(), u64::from(u32::MAX) * u64::from(u32::MAX));
+        assert_eq!(Extent2d::new(65_536, 65_536).pixels(), 4_294_967_296);
     }
 }
