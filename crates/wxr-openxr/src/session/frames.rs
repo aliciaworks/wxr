@@ -252,6 +252,15 @@ impl OpenXrSession {
         // app that gets an error here is still going to ask for the next frame. The images that could be
         // released are; the empty end is what says this frame has nothing to draw and closes the pair.
         self.held = None;
+        // Which layers this frame took an image for, taken before the release below clears `held`. A layer
+        // made between `begin` and now is not one of them: nothing has been drawn into it, and its swapchain
+        // has no image this frame for a sub-image to name - the runtime refuses one, and a picture nobody drew
+        // is not a picture. It is acquired for the first time on the next frame, and submitted then.
+        let held: Vec<bool> = self
+            .layers
+            .iter()
+            .map(|layer| layer.as_ref().is_some_and(|layer| layer.held.is_some()))
+            .collect();
         let mut failed = None;
         if let Err(error) = self.swapchain.release_image() {
             failed = Some(wxr::Error::Present(format!("{error:?}")));
@@ -322,8 +331,12 @@ impl OpenXrSession {
         let built: Vec<Built<'_>> = self
             .layers
             .iter()
-            .flatten()
-            .filter_map(|layer| {
+            .zip(&held)
+            .filter_map(|(layer, &held)| {
+                if !held {
+                    return None;
+                }
+                let layer = layer.as_ref()?;
                 let space = self.spaces.get(layer.space)?;
                 let flags = xr::CompositionLayerFlags::BLEND_TEXTURE_SOURCE_ALPHA;
                 let rect = xr::Rect2Di {
