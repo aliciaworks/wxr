@@ -99,7 +99,7 @@ impl Backend for MockBackend {
             stereo: self.stereo,
             quad_layers: self.quad_layers,
             hands: self.hands,
-            spaces: 0,
+            spaces: Vec::new(),
             frames: 0,
             image: 0,
             layers: Vec::new(),
@@ -132,7 +132,9 @@ pub struct MockSession {
     pending: VecDeque<Event>,
     extent: Extent2d,
     stereo: bool,
-    spaces: u32,
+    /// The kind of each space handed out, indexed by the handle's id. The core's handle carries its kind, so
+    /// both halves have to agree for the mock to treat it as one of its own.
+    spaces: Vec<SpaceKind>,
     frames: u64,
     /// The image this frame hands out. It changes every frame because a compositor's handles do - a drawable's
     /// textures, a swapchain's acquired image - and a mock that handed out one handle forever would let a

@@ -301,6 +301,33 @@ fn a_space_can_be_offset_from_another() {
 }
 
 #[test]
+fn a_space_this_session_never_made_is_refused() {
+    // A handle is an id and a public kind, so a caller can hold one that no session made. Every real backend
+    // answers `NoSpace` rather than inventing a place, and a mock that did otherwise would let code ship that
+    // works only against a session with no runtime behind it.
+    let mut session = running();
+    let floor = session.space(SpaceKind::LocalFloor).expect("a floor");
+    let past_the_end = ReferenceSpace::new(floor.kind, floor.id() + 1);
+    assert!(matches!(
+        session.offset_space(past_the_end, Pose::IDENTITY),
+        Err(Error::NoSpace(SpaceKind::LocalFloor))
+    ));
+    let changed_kind = ReferenceSpace::new(SpaceKind::BoundedFloor, floor.id());
+    assert!(matches!(
+        session.offset_space(changed_kind, Pose::IDENTITY),
+        Err(Error::NoSpace(SpaceKind::BoundedFloor))
+    ));
+    // And a frame does not get eyes from one, because a view has no space behind it to be measured in.
+    let mut frame = Frame::default();
+    session.begin(Duration::ZERO, &mut frame).unwrap();
+    assert!(matches!(
+        session.views(past_the_end, &mut frame),
+        Err(Error::NoSpace(SpaceKind::LocalFloor))
+    ));
+    assert!(frame.views().is_empty(), "a refused space places nothing");
+}
+
+#[test]
 fn a_mock_says_nothing_about_the_display_and_that_is_opaque() {
     // The default in the trait, and the right assumption: a session that does not say is one that fills
     // the display, which is what both ways of presenting into one do.

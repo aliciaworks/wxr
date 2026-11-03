@@ -6,6 +6,15 @@
 
 use super::*;
 
+impl MockSession {
+    /// Whether this session handed out the handle, which is both halves of it: an id in the list, and the kind
+    /// that id was made as. The id is an index and the kind is public, so a caller can hold either half of a
+    /// handle that was never this session's.
+    fn has_space(&self, space: ReferenceSpace) -> bool {
+        self.spaces.get(space.id() as usize) == Some(&space.kind)
+    }
+}
+
 impl Session for MockSession {
     type Image = u32;
     type Depth = ();
@@ -81,6 +90,9 @@ impl Session for MockSession {
         if !self.quad_layers || !matches!(shape, LayerShape::Quad { .. }) {
             return Err(Error::Unsupported(format!("{} layers", shape.name())));
         }
+        if !self.has_space(space) {
+            return Err(Error::NoSpace(space.kind));
+        }
         self.layers.push(Some(MockLayer {
             shape,
             space,
@@ -141,8 +153,8 @@ impl Session for MockSession {
             // a head origin where it asked for a floor would put the scene at eye height.
             return Err(Error::NoSpace(kind));
         }
-        self.spaces += 1;
-        Ok(ReferenceSpace::new(kind, self.spaces))
+        self.spaces.push(kind);
+        Ok(ReferenceSpace::new(kind, (self.spaces.len() - 1) as u32))
     }
 
     fn offset_space(
@@ -151,9 +163,17 @@ impl Session for MockSession {
         _offset: Pose,
     ) -> Result<ReferenceSpace, Error> {
         // Every mock space is the same place, so an offset one is a second name for it - which is enough to
-        // hold one, and holding one is the thing a caller is testing.
-        self.spaces += 1;
-        Ok(ReferenceSpace::new(space.kind, self.spaces))
+        // hold one, and holding one is the thing a caller is testing. The base still has to be one this
+        // session handed out: a mock that made a space from any handle would let a caller ship code that only
+        // works against a session which never checks.
+        if !self.has_space(space) {
+            return Err(Error::NoSpace(space.kind));
+        }
+        self.spaces.push(space.kind);
+        Ok(ReferenceSpace::new(
+            space.kind,
+            (self.spaces.len() - 1) as u32,
+        ))
     }
 
     fn begin(&mut self, now: Duration, out: &mut Frame) -> Result<(), Error> {
@@ -180,7 +200,7 @@ impl Session for MockSession {
         // The eyes go before the space is checked, so that a call that fails does not leave the caller
         // drawing the last call's pair at a head pose from a space this one refused.
         out.views_mut().clear();
-        if !matches!(space.kind, SpaceKind::LocalFloor | SpaceKind::BoundedFloor) {
+        if !self.has_space(space) {
             return Err(Error::NoSpace(space.kind));
         }
         // The head is between the eyes and the eyes are level with it, which is the one place a mock can be
@@ -240,10 +260,13 @@ impl Session for MockSession {
         Ok(())
     }
 
-    fn inputs(&mut self, _space: ReferenceSpace, out: &mut Vec<InputSource>) -> Result<(), Error> {
+    fn inputs(&mut self, space: ReferenceSpace, out: &mut Vec<InputSource>) -> Result<(), Error> {
         // The caller's vector is the frame loop's, so it holds the last frame's sources until this says
         // otherwise - and two sources a frame is a list that is mostly the past.
         out.clear();
+        if !self.has_space(space) {
+            return Err(Error::NoSpace(space.kind));
+        }
         // Two controllers, because a mock's job is to be *a* session rather than a plausible one - and because
         // two is what makes an id worth having: an event has to be able to say which.
         for (id, handedness, x) in [
@@ -280,13 +303,16 @@ impl Session for MockSession {
     fn hand(
         &mut self,
         source: InputId,
-        _space: ReferenceSpace,
+        space: ReferenceSpace,
         out: &mut Hand,
     ) -> Result<(), Error> {
         // Asked for whoever said it had one, and recorded either way. A backend that asked a controller would
         // be a backend doing a round trip for an answer it already knew, and this is the call that shows it.
         self.hand_asks.push(source);
         out.clear();
+        if !self.has_space(space) {
+            return Err(Error::NoSpace(space.kind));
+        }
         if !self.hands {
             return Ok(());
         }
@@ -316,11 +342,14 @@ impl Session for MockSession {
         Ok(())
     }
 
-    fn meshes(&mut self, _space: ReferenceSpace, out: &mut Vec<Mesh>) -> Result<(), Error> {
+    fn meshes(&mut self, space: ReferenceSpace, out: &mut Vec<Mesh>) -> Result<(), Error> {
         // One flat square a metre across, a metre up: a mock's room is the smallest thing that has the shape
         // of one - triangles, a place, and a label - so a caller that reads meshes has something to read on
         // the backend it is developed against.
         out.clear();
+        if !self.has_space(space) {
+            return Err(Error::NoSpace(space.kind));
+        }
         let half = 0.5;
         out.push(Mesh {
             id: 0,
