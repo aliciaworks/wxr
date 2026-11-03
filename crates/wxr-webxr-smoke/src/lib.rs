@@ -100,6 +100,11 @@ fn opened_for_images() -> bool {
 struct Board {
     frame: wxr::Frame,
     space: Option<wxr::ReferenceSpace>,
+    /// A space the browser refuses, asked for alongside the floor: the stub has no `unbounded`, and a request
+    /// that settles without a space is the one shape an offset has to refuse rather than wait on forever.
+    unbounded: Option<wxr::ReferenceSpace>,
+    /// Whether that refusal has been checked, which is once - after the promise has had a frame to settle.
+    refusal_checked: bool,
     drawn: u32,
     ticks: u32,
     /// Set once the run has said its verdict, so the last requested frame draws nothing.
@@ -263,6 +268,8 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
     let board = Rc::new(RefCell::new(Board {
         frame: wxr::Frame::default(),
         space: None,
+        unbounded: None,
+        refusal_checked: false,
         drawn: 0,
         ticks: 0,
         state: wxr::State::default(),

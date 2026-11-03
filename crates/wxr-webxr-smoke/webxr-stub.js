@@ -444,7 +444,9 @@ class XRSession {
     if (type === 'viewer') {
       return Promise.resolve(new XRReferenceSpace(type, null));
     }
-    if (type === 'local' || type === 'local-floor' || type === 'bounded-floor' || type === 'unbounded') {
+    // `unbounded` is deliberately absent: it is the one kind the core can ask for that this stub settles
+    // without a space, which is what gives the offset of a refused space something to be checked against.
+    if (type === 'local' || type === 'local-floor' || type === 'bounded-floor') {
       const origin = type === 'local' ? [0, EYE_HEIGHT, 0, 0, 0, 0, 1] : [0, 0, 0, 0, 0, 0, 1];
       return Promise.resolve(new XRReferenceSpace(type, origin));
     }

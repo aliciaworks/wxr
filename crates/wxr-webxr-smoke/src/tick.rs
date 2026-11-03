@@ -32,6 +32,20 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
         say(&format!("features: {:?}", session.features()));
     }
 
+    // Asked before the floor is, so that a check of the answer runs on the tick after the request settles.
+    if !board.refusal_checked
+        && let Some(unbounded) = board.unbounded
+    {
+        board.refusal_checked = true;
+        match session.offset_space(unbounded, wxr::Pose::IDENTITY) {
+            Err(wxr::Error::NoSpace(wxr::SpaceKind::Unbounded)) => {
+                say("an offset of the space the browser refused is NoSpace");
+            }
+            Err(error) => return Err(format!("an offset of a refused space answered {error}")),
+            Ok(_) => return Err("an offset of the space the browser refused was accepted".into()),
+        }
+    }
+
     if board.space.is_none() && session.visibility().can_render() {
         match session.space(wxr::SpaceKind::LocalFloor) {
             Ok(space) => {
@@ -41,6 +55,14 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
             Err(error) => {
                 return Err(format!("no floor space: {error}"));
             }
+        }
+        // The stub has no unbounded space, so this request settles without one. Nothing is drawn in it; it is
+        // here for the offset check above, which is the one thing a refused request has to get right.
+        match session.space(wxr::SpaceKind::Unbounded) {
+            Ok(space) => board.unbounded = Some(space),
+            Err(error) => say(&format!(
+                "the unbounded space was refused outright: {error}"
+            )),
         }
     }
     let Some(space) = board.space else {

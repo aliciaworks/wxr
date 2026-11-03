@@ -23,7 +23,8 @@ pub(super) struct Inner {
 /// A reference space, which the browser hands over as a promise rather than as an object.
 ///
 /// The promise is kept while it is pending because an offset space is made *from* another one and has to wait
-/// for the same answer - which is the only reason this is not just an `Option`.
+/// for the same answer. It is `None` once the browser has settled the request, whether it answered with a space
+/// or refused, because the promise will not resolve again.
 pub(super) struct Space {
     /// The kind this slot was made as. A handle names it only when its own kind matches.
     pub(super) kind: SpaceKind,

@@ -47,19 +47,27 @@ impl WebXrSession {
         let fill = slot.clone();
         let reset = self.reset.clone();
         wasm_bindgen_futures::spawn_local(async move {
-            if let Ok(value) = JsFuture::from(promise).await
-                && let Ok(space) = value.dyn_into::<XrReferenceSpace>()
-            {
-                // The space itself says when its origin was recentered, and every pose measured in it is stale
-                // afterwards - so it is passed on as the session's news, because a core event has no space to
-                // arrive on.
-                let handler = reset_handler(reset, kind, id);
-                space.set_onreset(Some(handler.as_ref().unchecked_ref()));
-                let mut slot = fill.borrow_mut();
-                slot.space = Some(space);
-                slot.promise = None;
-                slot.on_reset = Some(handler);
-            }
+            // A rejected promise and an answer that is not a space are the same thing here: the browser has
+            // settled the request without a space, and it will never settle it again. The promise is cleared
+            // either way, because an offset of a space that is still *waiting* waits on the same promise - and
+            // an offset of a space that was refused would then hand back a handle that never resolves instead
+            // of the `NoSpace` the caller can act on.
+            let space = match JsFuture::from(promise).await {
+                Ok(value) => value.dyn_into::<XrReferenceSpace>().ok(),
+                Err(_) => None,
+            };
+            let mut slot = fill.borrow_mut();
+            slot.promise = None;
+            let Some(space) = space else {
+                return;
+            };
+            // The space itself says when its origin was recentered, and every pose measured in it is stale
+            // afterwards - so it is passed on as the session's news, because a core event has no space to
+            // arrive on.
+            let handler = reset_handler(reset, kind, id);
+            space.set_onreset(Some(handler.as_ref().unchecked_ref()));
+            slot.space = Some(space);
+            slot.on_reset = Some(handler);
         });
 
         self.spaces.push(slot);
