@@ -23,6 +23,9 @@ use crate::session::{
 use crate::space::{Pose, ReferenceSpace, SpaceKind};
 use crate::target::{ColorFormat, Extent2d, ImageMeta};
 
+/// How many sources the mock hands out: two controllers, or two hands when it has them.
+const INPUT_COUNT: u32 = 2;
+
 /// How far apart the mock eyes are: a real interpupillary distance, near enough to be worth rendering.
 pub const IPD: f32 = 0.063;
 

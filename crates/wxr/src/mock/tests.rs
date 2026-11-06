@@ -3,6 +3,7 @@
 use super::*;
 
 mod frames;
+mod inputs;
 
 /// Drive the mock the way an app would: poll to `Visible`, then run frames.
 fn running() -> MockSession {
@@ -133,8 +134,7 @@ fn a_pulse_names_the_source_it_reaches() {
     let space = session.space(SpaceKind::LocalFloor).expect("a floor");
     let mut sources = Vec::new();
     session.inputs(space, &mut sources).unwrap();
-    // The mock's controllers have actuators, so this is a call it can answer: a `pulse` that returned `Ok`
-    // and did nothing would pass an assertion on the result alone.
+    // The controllers have actuators, so this call can be answered; `Ok` alone would not say it moved.
     assert!(sources[0].haptics);
     assert!(session.features().contains(crate::Features::HAPTICS));
 

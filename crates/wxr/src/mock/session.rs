@@ -382,6 +382,11 @@ impl Session for MockSession {
         // intensity would be a mock that behaves unlike every platform. A NaN is the one value `clamp`
         // passes through, and every backend sends zero for it - so recording the NaN would be recording a
         // request no device ever receives.
+        // An id past the set `inputs` hands out names no source at all, and every backend says so -
+        // recording it would let a caller keep an id it never had.
+        if source.get() >= INPUT_COUNT {
+            return Err(Error::Unsupported("haptics on this source".into()));
+        }
         let intensity = if intensity.is_nan() {
             0.0
         } else {
@@ -397,6 +402,9 @@ impl Session for MockSession {
         samples: &[f32],
         sample_rate: f32,
     ) -> Result<(), Error> {
+        if source.get() >= INPUT_COUNT {
+            return Err(Error::Unsupported("haptics on this source".into()));
+        }
         self.waveforms.push((source, samples.len(), sample_rate));
         Ok(())
     }
