@@ -286,13 +286,15 @@ impl OpenXrSession {
         out: &mut Vec<wxr::Hit>,
     ) -> Result<(), wxr::Error> {
         out.clear();
+        // The space first, for the reason `planes` gives: a forged handle is refused the same way on a
+        // runtime with raycasting and one without.
+        let Some(base) = self.spaces.get(space.id() as usize) else {
+            return Err(wxr::Error::NoSpace(space.kind));
+        };
         let Some(raycast) = self.raycast.as_ref() else {
             return Err(wxr::Error::Unsupported(
                 "hit testing: this runtime has no XR_META_environment_raycast".into(),
             ));
-        };
-        let Some(base) = self.spaces.get(space.id() as usize) else {
-            return Err(wxr::Error::NoSpace(space.kind));
         };
         // A source whose space was released, or the raycaster still being made: an empty list, which is
         // what "the ray has not been cast yet" looks like to a caller.

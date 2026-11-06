@@ -108,11 +108,13 @@ impl OpenXrSession {
         out: &mut Vec<wxr::Plane>,
     ) -> Result<(), wxr::Error> {
         out.clear();
-        let Some(detector) = self.planes.as_mut() else {
-            return Ok(());
-        };
+        // The space first: a handle this session never made is `NoSpace` whether or not the runtime can
+        // detect planes at all, so the answer does not change with the extensions a device happens to have.
         let Some(reference) = self.spaces.get(space.id() as usize) else {
             return Err(wxr::Error::NoSpace(space.kind));
+        };
+        let Some(detector) = self.planes.as_mut() else {
+            return Ok(());
         };
         // `FATAL` is terminal - the spec says the detector must not be used again - and a pass that ended in
         // it can leave `running` true or hand back `ERROR` later. Both would otherwise begin a second pass
