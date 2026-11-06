@@ -101,6 +101,7 @@ impl Backend for MockBackend {
             hands: self.hands,
             spaces: Vec::new(),
             frames: 0,
+            frame_open: false,
             image: 0,
             layers: Vec::new(),
             pulses: Vec::new(),
@@ -136,6 +137,8 @@ pub struct MockSession {
     /// both halves have to agree for the mock to treat it as one of its own.
     spaces: Vec<SpaceKind>,
     frames: u64,
+    /// Whether `begin` has opened a frame the caller can draw into and has not ended it yet.
+    frame_open: bool,
     /// The image this frame hands out. It changes every frame because a compositor's handles do - a drawable's
     /// textures, a swapchain's acquired image - and a mock that handed out one handle forever would let a
     /// renderer cache it and still look right.

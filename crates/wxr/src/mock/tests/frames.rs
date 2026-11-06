@@ -101,3 +101,38 @@ fn a_stopped_session_asks_to_exit() {
     session.begin(Duration::ZERO, &mut frame).unwrap();
     assert_eq!(frame.state, FrameState::Exit);
 }
+
+#[test]
+fn a_picture_belongs_to_a_frame_that_is_open() {
+    // The handle is the frame's: a compositor gives one for the frame and takes it back at the end. A mock
+    // that answered outside that window would let a renderer keep a texture a real backend has withdrawn.
+    let mut session = running();
+    assert!(session.image(0).is_none(), "before any frame");
+    let mut frame = Frame::default();
+    session.begin(Duration::ZERO, &mut frame).unwrap();
+    assert!(session.image(0).is_some(), "the frame is open");
+    session.end(&mut frame).unwrap();
+    assert!(session.image(0).is_none(), "and it is over");
+}
+
+#[test]
+fn a_layer_picture_belongs_to_a_frame_that_is_open() {
+    let mut session = with_layers();
+    let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+    let layer = session
+        .layer(
+            space,
+            LayerShape::Quad {
+                width: 1.0,
+                height: 1.0,
+            },
+            Extent2d::new(64, 64),
+        )
+        .expect("a quad layer");
+    assert!(session.layer_image(layer).is_none(), "before any frame");
+    let mut frame = Frame::default();
+    session.begin(Duration::ZERO, &mut frame).unwrap();
+    assert!(session.layer_image(layer).is_some(), "the frame is open");
+    session.end(&mut frame).unwrap();
+    assert!(session.layer_image(layer).is_none(), "and it is over");
+}

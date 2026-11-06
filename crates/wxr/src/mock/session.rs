@@ -76,7 +76,9 @@ impl Session for MockSession {
     }
 
     fn image(&self, index: usize) -> Option<&Self::Image> {
-        (index == 0).then_some(&self.image)
+        // The handle is the frame's, so a frame that is not being drawn has none - the same answer OpenXR
+        // and WebXR give between `begin` and `end`, and the one a renderer that asks too early has to see.
+        (self.frame_open && index == 0).then_some(&self.image)
     }
 
     fn layer(
@@ -104,6 +106,10 @@ impl Session for MockSession {
     }
 
     fn layer_image(&mut self, layer: Layer) -> Option<(&Self::Image, LayerImage)> {
+        // A layer's picture is acquired for a frame like the session's own, so there is none outside one.
+        if !self.frame_open {
+            return None;
+        }
         let frames = self.frames;
         let slot = self.layers.get_mut(layer.id() as usize)?.as_mut()?;
         // Unlike the session's own image, this one carries its name as well: two layers are two pictures, and a
@@ -192,6 +198,7 @@ impl Session for MockSession {
                 Visibility::Visible | Visibility::VisibleBlurred => FrameState::Render,
             },
         };
+        self.frame_open = out.state == FrameState::Render;
         out.reset();
         Ok(())
     }
@@ -395,6 +402,7 @@ impl Session for MockSession {
     }
 
     fn end(&mut self, _frame: &mut Frame) -> Result<(), Error> {
+        self.frame_open = false;
         Ok(())
     }
 }
