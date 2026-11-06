@@ -39,7 +39,16 @@ pub fn perspective(fov: FieldOfView, near: f32, far: f32, depth: Depth) -> Mat4 
     let (up, down) = (fov.up.tan(), fov.down.tan());
     let width = right + left;
     let height = up + down;
-    if width <= 0.0 || height <= 0.0 || near <= 0.0 || far <= near {
+    // `NaN <= 0.0` is false, so a range check alone lets NaN and infinity through and the matrix comes out
+    // NaN - a frame that disappears with nothing for the caller to see. Everything unusable gets the same
+    // answer the degenerate cases already give.
+    let finite = fov.left.is_finite()
+        && fov.right.is_finite()
+        && fov.up.is_finite()
+        && fov.down.is_finite()
+        && near.is_finite()
+        && far.is_finite();
+    if !finite || width <= 0.0 || height <= 0.0 || near <= 0.0 || far <= near {
         return Mat4::IDENTITY;
     }
 
@@ -171,6 +180,33 @@ mod tests {
         assert!(close(back.down, fov.down), "{back:?}");
         assert!(close(back.left, fov.left), "{back:?}");
         assert!(close(back.right, fov.right), "{back:?}");
+    }
+
+    #[test]
+    fn a_field_of_view_that_is_not_a_number_is_not_a_projection() {
+        // A runtime that hands back NaN or infinity is not a runtime with an unusual lens. The identity is
+        // what this function already answers for a degenerate opening; it is also the only answer that keeps
+        // the bad number out of the matrix the scene multiplies by.
+        let ok = FieldOfView::symmetric(FRAC_PI_2, FRAC_PI_2);
+        for (fov, near, far) in [
+            (FieldOfView { up: f32::NAN, ..ok }, 0.1, 10.0),
+            (
+                FieldOfView {
+                    left: f32::INFINITY,
+                    ..ok
+                },
+                0.1,
+                10.0,
+            ),
+            (ok, f32::NAN, 10.0),
+            (ok, 0.1, f32::INFINITY),
+        ] {
+            assert_eq!(
+                perspective(fov, near, far, Depth::ZeroToOne),
+                Mat4::IDENTITY,
+                "{fov:?} {near} {far}"
+            );
+        }
     }
 
     #[test]
