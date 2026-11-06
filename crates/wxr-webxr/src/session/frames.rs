@@ -101,7 +101,6 @@ impl WebXrSession {
     /// is a frame `views`, `depth` or `anchor` would answer from after the browser had taken it back.
     fn clear_frame(&mut self) {
         self.current = None;
-        self.located = 0;
         self.frame_views.clear();
         self.layer_images.clear();
         self.image = None;
@@ -168,7 +167,6 @@ impl WebXrSession {
         // that names views no longer in the frame.
         out.views_mut().clear();
         self.frame_views.clear();
-        self.located = 0;
         // Nor is the picture still this answer's: the sub-image was taken for the eyes that were just dropped,
         // and a caller left holding it has a texture with no viewport to draw it through. Clearing here rather
         // than at each early return is what makes every way out of the call agree.
@@ -256,7 +254,6 @@ impl WebXrSession {
                     .map(|scale| scale as f32),
             });
         }
-        self.located = out_views.len();
         Ok(())
     }
 

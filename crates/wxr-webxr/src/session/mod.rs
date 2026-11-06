@@ -76,7 +76,6 @@ impl WebXrSession {
             anchors: Vec::new(),
             frame_views: Vec::new(),
             reset: Rc::new(RefCell::new(VecDeque::new())),
-            located: 0,
             device: Some(device),
             gpu: None,
             image: None,
