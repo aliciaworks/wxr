@@ -160,11 +160,13 @@ impl wxr::Session for OpenXrSession {
             )));
         }
         // The kind this session recorded for the id, not the public half of the handle: a layer keeps the
-        // kind because a translated cube is placed by making a reference space of that kind, and a caller
-        // that changed the kind would otherwise have its cube placed in a space the runtime never made.
-        let Some(space_kind) = self.kinds.get(space.id() as usize).copied() else {
+        // kind because a translated cube is placed by making a reference space of that kind. Both halves are
+        // checked first, though, because a kind the caller changed is not a space this session handed out -
+        // answering `NoSpace` is the same thing every other entry taking a space says about it.
+        let Some(space_id) = self.space_index(space) else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
+        let space_kind = self.kinds[space_id];
         let swapchain = self
             .session
             .create_swapchain(&xr::SwapchainCreateInfo {
@@ -195,7 +197,7 @@ impl wxr::Session for OpenXrSession {
         self.layers.push(Some(Layer {
             swapchain,
             images,
-            space: space.id() as usize,
+            space: space_id,
             space_kind,
             pose: xr::Posef::IDENTITY,
             placed: None,
