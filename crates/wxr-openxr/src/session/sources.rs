@@ -17,9 +17,10 @@ impl OpenXrSession {
         // The space before the input extension: a handle this session never made is refused whether or not
         // there are hands to read with it, which is the same answer `views` gives. A session with no hands
         // still has spaces of its own, and still answers with no sources for them.
-        let Some(reference) = self.spaces.get(space.id() as usize) else {
+        let Some(index) = self.space_index(space) else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
+        let reference = &self.spaces[index];
         let Some(hands) = self.hands.as_mut() else {
             return Ok(());
         };
@@ -41,9 +42,10 @@ impl OpenXrSession {
         // too, but only once it has been reached.
         out.clear();
         // The space first, for the reason `inputs` gives.
-        let Some(reference) = self.spaces.get(space.id() as usize) else {
+        let Some(index) = self.space_index(space) else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
+        let reference = &self.spaces[index];
         let Some(hands) = self.hands.as_ref() else {
             return Ok(());
         };

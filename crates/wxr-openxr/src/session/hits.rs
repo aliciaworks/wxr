@@ -247,19 +247,22 @@ impl OpenXrSession {
         &mut self,
         space: wxr::ReferenceSpace,
     ) -> Result<wxr::HitTestSource, wxr::Error> {
+        // The space first, for the reason `hits` gives: a handle this session never made is refused whether
+        // or not the runtime can raycast at all, rather than one error turning into the other depending on
+        // which extensions a device happens to have.
+        let Some(index) = self.space_index(space) else {
+            return Err(wxr::Error::NoSpace(space.kind));
+        };
         let Some(raycast) = self.raycast.as_mut() else {
             return Err(wxr::Error::Unsupported(
                 "hit testing: this runtime has no XR_META_environment_raycast".into(),
             ));
         };
-        if self.spaces.get(space.id() as usize).is_none() {
-            return Err(wxr::Error::NoSpace(space.kind));
-        }
         // The first source is what makes the raycaster, and then it is a frame or two before any of them
         // answer - which is the core's "a frame or two with no source" rather than a silent failure.
         raycast.start();
         let id = raycast.sources.len() as u32;
-        raycast.sources.push(Some(space.id() as usize));
+        raycast.sources.push(Some(index));
         Ok(wxr::HitTestSource::new(id))
     }
 
@@ -288,9 +291,10 @@ impl OpenXrSession {
         out.clear();
         // The space first, for the reason `planes` gives: a forged handle is refused the same way on a
         // runtime with raycasting and one without.
-        let Some(base) = self.spaces.get(space.id() as usize) else {
+        let Some(base) = self.space_index(space) else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
+        let base = &self.spaces[base];
         let Some(raycast) = self.raycast.as_ref() else {
             return Err(wxr::Error::Unsupported(
                 "hit testing: this runtime has no XR_META_environment_raycast".into(),

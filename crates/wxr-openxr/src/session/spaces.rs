@@ -25,12 +25,20 @@ impl OpenXrSession {
 }
 
 impl OpenXrSession {
+    /// The index a handle names, when this session is the one that handed it out.
+    ///
+    /// Both halves of a handle have to agree: the id is this session's index into its own list and the kind
+    /// is public on the handle, so an id past the end is another session's space and a kind changed since it
+    /// was made is not the space at that id. Every entry that takes a space goes through here, which is what
+    /// makes a handle from another session `NoSpace` whichever call it reached rather than only in the two
+    /// calls that happen to look at the kind as well.
+    pub(super) fn space_index(&self, space: wxr::ReferenceSpace) -> Option<usize> {
+        owns(&self.kinds, space).then(|| space.id() as usize)
+    }
+
     /// The runtime space a handle names, when this session is the one that handed it out.
     pub(super) fn reference(&self, space: wxr::ReferenceSpace) -> Option<&xr::Space> {
-        if !owns(&self.kinds, space) {
-            return None;
-        }
-        self.spaces.get(space.id() as usize)
+        self.spaces.get(self.space_index(space)?)
     }
 
     pub(super) fn offset_space_impl(
@@ -75,13 +83,14 @@ impl OpenXrSession {
         out: &mut Vec<wxr::glam::Vec2>,
     ) -> Result<(), wxr::Error> {
         out.clear();
+        // A space this session never handed out has no boundary to ask about, and asking the runtime about one
+        // it does not know is a fault rather than an empty answer. Both halves are checked before the kind is:
+        // a handle with a kind this session did not give it is foreign whether or not that kind has a wall.
+        if self.space_index(space).is_none() {
+            return Err(wxr::Error::NoSpace(space.kind));
+        }
         if space.kind != wxr::SpaceKind::BoundedFloor {
             return Ok(());
-        }
-        // A space this session never handed out has no boundary to ask about, and asking the runtime about one
-        // it does not know is a fault rather than an empty answer.
-        if self.reference(space).is_none() {
-            return Err(wxr::Error::NoSpace(space.kind));
         }
 
         // `xrGetReferenceSpaceBoundsRect`, which answers `SPACE_BOUNDS_UNAVAILABLE` as a `None` - the runtime

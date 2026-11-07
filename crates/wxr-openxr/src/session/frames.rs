@@ -171,9 +171,10 @@ impl OpenXrSession {
         out.views_mut().clear();
         self.located.clear();
         self.view_space = None;
-        let Some(reference) = self.spaces.get(space.id() as usize) else {
+        let Some(index) = self.space_index(space) else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
+        let reference = &self.spaces[index];
         let (state, located) = self
             .session
             .locate_views(

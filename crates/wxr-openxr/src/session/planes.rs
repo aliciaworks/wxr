@@ -110,9 +110,10 @@ impl OpenXrSession {
         out.clear();
         // The space first: a handle this session never made is `NoSpace` whether or not the runtime can
         // detect planes at all, so the answer does not change with the extensions a device happens to have.
-        let Some(reference) = self.spaces.get(space.id() as usize) else {
+        let Some(index) = self.space_index(space) else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
+        let reference = &self.spaces[index];
         let Some(detector) = self.planes.as_mut() else {
             return Ok(());
         };

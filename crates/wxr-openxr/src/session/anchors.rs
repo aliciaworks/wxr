@@ -115,9 +115,10 @@ impl OpenXrSession {
     ) -> Result<wxr::Anchor, wxr::Error> {
         // The space first: an anchor is made in it, and a handle this session never made is `NoSpace`
         // whether or not the runtime has anchors.
-        let Some(base) = self.spaces.get(space.id() as usize) else {
+        let Some(base) = self.space_index(space) else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
+        let base = &self.spaces[base];
         let Some(anchors) = self.anchors.as_mut() else {
             return Err(wxr::Error::Unsupported(
                 "anchors: this runtime has no XR_FB_spatial_entity".into(),
@@ -159,9 +160,10 @@ impl OpenXrSession {
         space: wxr::ReferenceSpace,
     ) -> Result<Option<wxr::Pose>, wxr::Error> {
         // The space first, for the reason `planes` gives.
-        let Some(base) = self.spaces.get(space.id() as usize) else {
+        let Some(base) = self.space_index(space) else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
+        let base = &self.spaces[base];
         let Some(anchors) = self.anchors.as_ref() else {
             return Err(wxr::Error::Unsupported(
                 "anchors: this runtime has no XR_FB_spatial_entity".into(),
