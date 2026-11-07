@@ -323,6 +323,12 @@ impl Session for MockSession {
         if !self.hands {
             return Ok(());
         }
+        // An id outside the two `inputs` hands out is not a hand this session has: a controller's id, or a
+        // number a caller kept from somewhere else. Every backend answers that with an empty hand rather
+        // than a skeleton, so a mock that filled one would let code ship that asks the wrong source.
+        if source.get() >= INPUT_COUNT {
+            return Ok(());
+        }
         // A wrist and a fingertip, two sides of a line: the smallest skeleton that has a direction, which is
         // what a caller drawing a finger has to be able to see. The left is on the left of the right, so that
         // two sources in one frame are two answers rather than one answer twice.
