@@ -47,6 +47,19 @@ mod sh;
 /// The six faces of a cubemap, which is what one of ARKit's textures is.
 const FACES: usize = 6;
 
+/// What the handler has read, and when it was taken.
+///
+/// The timestamp lives beside the estimate rather than only inside one pass. ARKit calls the handler once
+/// per batch of probe updates and promises nothing about the order two batches arrive in, so a batch that
+/// carried only its own best timestamp could replace a newer photograph of the room with an older one -
+/// and the estimate would then go backwards.
+#[derive(Default)]
+struct Seen {
+    /// The timestamp of the photograph `estimate` was read from, or zero before the first one.
+    timestamp: f64,
+    estimate: Option<wxr::LightEstimate>,
+}
+
 /// Light estimation: the provider, and the slot its handler writes estimates into.
 pub(super) struct Lights {
     /// Kept for its lifetime, the way the other providers are: releasing it is how a session stops being
@@ -55,7 +68,7 @@ pub(super) struct Lights {
     /// Kept because ARKit only holds a queue for as long as it is calling on it.
     _queue: DispatchRetained<DispatchQueue>,
     /// The freshest estimate, and `None` for every frame before ARKit has seen a lit room.
-    estimate: &'static Mutex<Option<wxr::LightEstimate>>,
+    estimate: &'static Mutex<Seen>,
 }
 
 impl Lights {
@@ -75,10 +88,10 @@ impl Lights {
     pub(super) fn estimate(&self) -> Option<wxr::LightEstimate> {
         // A poisoned slot means something panicked while writing one, and the only writer is a handler
         // that cannot panic - so this is unreachable, and a frame is the wrong place to find that out.
-        *self
-            .estimate
+        self.estimate
             .lock()
             .expect("the light slot is only ever written by a handler that cannot panic")
+            .estimate
     }
 
     /// Start the provider and the queue its handler runs on, or `None` if the device cannot.
@@ -108,8 +121,7 @@ impl Lights {
             // finished with. Forty bytes, once per session, is the cheap end of that trade: the other end
             // is a handler writing into a session that has already been dropped, which is a crash on a
             // device and nowhere else.
-            let estimate: &'static Mutex<Option<wxr::LightEstimate>> =
-                Box::leak(Box::new(Mutex::new(None)));
+            let estimate: &'static Mutex<Seen> = Box::leak(Box::new(Mutex::new(Seen::default())));
             ar_environment_light_estimation_provider_t::set_update_handler_f(
                 &provider,
                 Some(&queue),
@@ -138,8 +150,17 @@ unsafe extern "C-unwind" fn probe_updated(
     _removed: &ar_environment_probe_anchors_t,
 ) {
     // SAFETY: the context is the address `start` leaked, which lives as long as the process does.
-    let slot = unsafe { &*context.cast::<Mutex<Option<wxr::LightEstimate>>>() };
-    let mut freshest = Freshest::default();
+    let slot = unsafe { &*context.cast::<Mutex<Seen>>() };
+    // The baseline is what the slot already holds, so a batch carrying an older photograph than the one
+    // the estimate came from is not a fresher reading of the room. The lock is taken only to read it:
+    // holding it across the read below would put a frame's `light` behind a GPU blit, which is the wait
+    // this provider exists to keep off the frame thread.
+    let mut freshest = {
+        let held = slot
+            .lock()
+            .expect("the light slot is only ever written by a handler that cannot panic");
+        Freshest::after(&held)
+    };
     // SAFETY: both collections are live for the call, and the enumerator only reads the anchor ARKit
     // hands it. Added is walked before updated so that an anchor appearing in both is answered by the
     // newer of the two.
@@ -159,6 +180,10 @@ unsafe extern "C-unwind" fn probe_updated(
 }
 
 /// The freshest photograph ARKit has offered: when it was taken, and what it came to once it was read.
+///
+/// A pass begins at the timestamp already in the slot rather than at zero. That is what makes two batches
+/// arriving out of order harmless: the older one finds nothing newer than what the room's estimate already
+/// came from, reads nothing, and leaves it alone.
 #[derive(Default)]
 struct Freshest {
     timestamp: f64,
@@ -169,14 +194,36 @@ struct Freshest {
 }
 
 impl Freshest {
+    /// A pass that considers only photographs newer than what the room's estimate already came from.
+    fn after(slot: &Seen) -> Self {
+        Self {
+            timestamp: slot.timestamp,
+            ..Self::default()
+        }
+    }
+
+    /// Whether a photograph taken at `timestamp` is newer than the one this pass has already kept.
+    ///
+    /// The comparison is against the slot's timestamp as well as this pass's, because the pass starts at
+    /// the slot's: a batch that arrives after a newer photograph has already been read is not news.
+    fn newer(&self, timestamp: f64) -> bool {
+        timestamp > self.timestamp
+    }
+
     /// Put this pass into the session's slot, if it read a photograph at all.
     ///
     /// An unreadable photograph is a room whose light is no longer known, so it clears the estimate rather
     /// than leaving the last readable one in place. A pass with no photograph is not news about the room
     /// and leaves the estimate where it was.
-    fn keep(&self, slot: &mut Option<wxr::LightEstimate>) {
-        if let Some(estimate) = self.estimate {
-            *slot = estimate;
+    fn keep(&self, slot: &mut Seen) {
+        // The slot is read again here rather than trusted from the baseline: another batch may have landed
+        // between the two locks, and the older of two passes must not move the estimate backwards. Equality
+        // is the same photograph read twice, which is not a step either way.
+        if let Some(estimate) = self.estimate
+            && self.timestamp >= slot.timestamp
+        {
+            slot.timestamp = self.timestamp;
+            slot.estimate = estimate;
         }
     }
 }
@@ -194,7 +241,7 @@ unsafe extern "C-unwind" fn take_photograph(
     let freshest = unsafe { &mut *context.cast::<Freshest>() };
     // SAFETY: the anchor is live, and asking when a photograph was taken consumes nothing.
     let timestamp = unsafe { ar_environment_probe_anchor_t::timestamp(anchor) };
-    if timestamp <= freshest.timestamp {
+    if !freshest.newer(timestamp) {
         return true;
     }
     // ARKit hands over no texture for a room it cannot photograph well enough, and says so itself. That
@@ -389,105 +436,4 @@ fn half(bits: u16) -> f32 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The bits a `half` is, from the value - which is the arithmetic above, run backwards, so that the
-    /// test does not agree with itself by construction.
-    fn bits(value: f32) -> u16 {
-        let bits = value.to_bits();
-        let sign = ((bits >> 16) & 0x8000) as u16;
-        let mantissa = ((bits >> 13) & 0x3ff) as u16;
-        let exponent = ((bits >> 23) & 0xff) as i32;
-        // A zero float is a zero half, and a float exponent below the half's would shift the other way.
-        if exponent == 0 {
-            return sign | mantissa;
-        }
-        sign | (((exponent - 127 + 15) as u16) << 10) | mantissa
-    }
-
-    /// The values an environment photograph is made of, and the two ends that would silently ruin it: a
-    /// subnormal and an infinity.
-    #[test]
-    fn halves_are_read_as_floats() {
-        for value in [0.0, 1.0, 0.5, 2.0, 0.333_25, 6.103_515_6e-5, 65_504.0] {
-            assert!(
-                (half(bits(value)) - value).abs() <= value * 0.001,
-                "{value} came back as {}",
-                half(bits(value))
-            );
-        }
-        assert_eq!(half(0), 0.0);
-        assert_eq!(half(0x8000), -0.0);
-        assert_eq!(half(0x7c00), f32::INFINITY);
-        assert!(half(0x7e00).is_nan());
-    }
-
-    /// A row of `rgba16float` texels is four channels of half, and a row of `rgba32float` is four of
-    /// float - which is the whole of what the two arms of `decode` do.
-    #[test]
-    fn texels_are_four_channels() {
-        let mut half_bytes = Vec::new();
-        for channel in [1.0f32, -2.0, 0.25, 4.0] {
-            half_bytes.extend_from_slice(&bits(channel).to_le_bytes());
-        }
-        assert_eq!(rgba16(&half_bytes), [1.0, -2.0, 0.25, 4.0]);
-
-        let mut float_bytes = Vec::new();
-        for channel in [0.5f32, 3.0, 0.0, 1.5] {
-            float_bytes.extend_from_slice(&channel.to_le_bytes());
-        }
-        assert_eq!(rgba32(&float_bytes), [0.5, 3.0, 0.0, 1.5]);
-    }
-
-    /// A pass with no photograph is not news, so it keeps the estimate. A photograph that could not be
-    /// read is news that the room is no longer known, so it clears it. Leaving the old estimate in that
-    /// second case is lighting a changed room with yesterday's light.
-    #[test]
-    fn an_unreadable_photograph_clears_the_estimate() {
-        let mut slot = Some(wxr::LightEstimate::default());
-
-        Freshest::default().keep(&mut slot);
-        assert!(
-            slot.is_some(),
-            "no photograph at all leaves the last estimate alone"
-        );
-
-        Freshest {
-            estimate: Some(None),
-            ..Default::default()
-        }
-        .keep(&mut slot);
-        assert!(
-            slot.is_none(),
-            "a photograph that could not be read is no estimate"
-        );
-    }
-
-    /// A readable photograph replaces the last one, so the slot is always the freshest estimate and never
-    /// the first one that happened to arrive.
-    #[test]
-    fn a_readable_photograph_replaces_the_estimate() {
-        let mut slot = Some(wxr::LightEstimate::default());
-        let lit = wxr::LightEstimate {
-            primary_intensity: Vec3::ONE,
-            ..Default::default()
-        };
-
-        Freshest {
-            estimate: Some(Some(lit)),
-            ..Default::default()
-        }
-        .keep(&mut slot);
-        assert_eq!(slot.unwrap().primary_intensity, Vec3::ONE);
-    }
-
-    /// A buffer shorter than the faces it is supposed to hold reads as black rather than as whatever
-    /// follows it, which is the promise `Faces::at` makes about a texel that is not there.
-    #[test]
-    fn a_short_read_is_black_rather_than_rubbish() {
-        let faces = decode(MTLPixelFormat::RGBA32Float, &[0u8; 4], 2, 16);
-        assert_eq!(faces.at(0, 0, 0), [0.0; 4]);
-        assert_eq!(faces.at(5, 1, 1), [0.0; 4]);
-    }
-}
+mod tests;
