@@ -52,6 +52,11 @@ impl WebXrSession {
         &mut self,
         space: wxr::ReferenceSpace,
     ) -> Result<wxr::HitTestSource, wxr::Error> {
+        // The space first, for the reason `hits` gives: a handle this session never handed out is refused
+        // as such, whether or not the session was granted hit testing at all.
+        let Some(base) = self.space_slot(space) else {
+            return Err(wxr::Error::NoSpace(space.kind));
+        };
         let Some(session) = self.inner.borrow().session.clone() else {
             return Err(wxr::Error::Unavailable(
                 "the session has not started yet".into(),
@@ -63,9 +68,6 @@ impl WebXrSession {
         if !has_feature(&session, "hit-test") {
             return Err(wxr::Error::Unsupported("hit-test".into()));
         }
-        let Some(base) = self.space_slot(space) else {
-            return Err(wxr::Error::NoSpace(space.kind));
-        };
         let slot = Rc::new(RefCell::new(hit::Slot::default()));
         // The space may still be a promise, and a ray out of a space that is not here is not here either - so
         // the request waits on the same promise the space does.

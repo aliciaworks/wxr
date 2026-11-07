@@ -10,9 +10,15 @@ impl WebXrSession {
         space: wxr::ReferenceSpace,
         pose: wxr::Pose,
     ) -> Result<wxr::Anchor, wxr::Error> {
-        // An anchor is a feature, and a session that did not ask for `anchors` cannot make one. Say so here,
-        // rather than returning a handle for a request the browser will only reject: a handle that never
-        // answers is the one shape this backend already refuses for every other asynchronous resource.
+        // The space before the frame, as the other two backends do: `createAnchor` needs a real space and a
+        // real frame, and a handle this session never handed out is refused as such whether or not a frame
+        // happens to be running - and before the feature, so the answer does not depend on what this session
+        // asked the browser for.
+        let Some(base) = self.resolved_space(space)? else {
+            return Err(wxr::Error::Unavailable(
+                "the space has not resolved yet".into(),
+            ));
+        };
         let Some(session) = self.inner.borrow().session.clone() else {
             return Err(wxr::Error::Unavailable(
                 "the session has not started yet".into(),
@@ -21,14 +27,6 @@ impl WebXrSession {
         if !has_feature(&session, "anchors") {
             return Err(wxr::Error::Unsupported("anchors".into()));
         }
-        // The space before the frame, as the other two backends do: `createAnchor` needs a real space and a
-        // real frame, and a handle this session never handed out is refused as such whether or not a frame
-        // happens to be running.
-        let Some(base) = self.resolved_space(space)? else {
-            return Err(wxr::Error::Unavailable(
-                "the space has not resolved yet".into(),
-            ));
-        };
         let Some(frame) = self.frame() else {
             return Err(wxr::Error::Unavailable("a frame has not begun yet".into()));
         };
