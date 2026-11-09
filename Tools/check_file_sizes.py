@@ -34,7 +34,10 @@ def source_files():
 def main() -> int:
     over = []
     for path in sorted(source_files()):
-        lines = path.read_text(errors="ignore").count("\n")
+        text = path.read_text(errors="ignore")
+        # A last line with no newline after it is still a line, and a file with nothing in it is none: counting
+        # newlines alone would let a 501-line file through for being written without a trailing one.
+        lines = text.count("\n") + (1 if text and not text.endswith("\n") else 0)
         if lines > LIMIT:
             over.append((lines, path.relative_to(ROOT)))
     if over:
