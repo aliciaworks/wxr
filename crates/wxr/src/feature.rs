@@ -37,9 +37,11 @@ impl Features {
     /// Six faces of a cube in one image: [`crate::LayerShape::Cube`].
     pub const LAYER_CUBE: Self = Self(1 << 9);
 
-    /// The display's refresh rate can be asked for - `XR_FB_display_refresh_rate` on a Quest, and its like
-    /// elsewhere. Not a WebXR member: the browser picks the rate and a page cannot, so this is one of the
-    /// places the core is wider than the specification it is named after, the way [`crate::Presentation`] is.
+    /// The display's refresh rate can be asked for - `XR_FB_display_refresh_rate` on a Quest, WebXR's
+    /// `supportedFrameRates` and `updateTargetFrameRate`, and their like.
+    ///
+    /// It is not one bit per platform's spelling: what an app does with it is the same everywhere - read the
+    /// list, pick one, ask - and a backend that has no way to change the rate has nothing to say here.
     pub const REFRESH_RATE: Self = Self(1 << 10);
 
     /// A source that can be made to buzz: [`crate::Session::pulse`] and [`crate::Session::play_pcm`].

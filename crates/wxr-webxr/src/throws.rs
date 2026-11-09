@@ -64,6 +64,15 @@ extern "C" {
         state: &XrRenderStateInit,
     ) -> Result<(), JsValue>;
 
+    /// `XRSession.updateTargetFrameRate`, whose `float` argument is converted before the call hands back a
+    /// promise: a NaN or an infinity is a `TypeError` thrown synchronously rather than a rejected promise.
+    /// A number that is not a rate the session lists is the rejection, which is the caller's to read.
+    #[wasm_bindgen(method, catch, js_name = "updateTargetFrameRate")]
+    fn update_target_frame_rate_caught(
+        this: &XrSession,
+        rate: f32,
+    ) -> Result<js_sys::Promise, JsValue>;
+
     /// `XRGPUBinding.createProjectionLayer`: `NotSupportedError` for a format the device will not take, and
     /// `InvalidStateError` for a session that has ended.
     #[wasm_bindgen(method, catch, js_name = "createProjectionLayer")]
@@ -141,6 +150,14 @@ pub fn request_animation_frame(
 /// `XRSession.updateRenderState`, caught.
 pub fn update_render_state(session: &XrSession, state: &XrRenderStateInit) -> Result<(), JsValue> {
     session.update_render_state_caught(state)
+}
+
+/// `XRSession.updateTargetFrameRate`, caught.
+pub fn update_target_frame_rate(
+    session: &XrSession,
+    rate: f32,
+) -> Result<js_sys::Promise, JsValue> {
+    session.update_target_frame_rate_caught(rate)
 }
 
 /// `XRSession.end`, caught.

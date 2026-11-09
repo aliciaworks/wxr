@@ -436,7 +436,10 @@ class XRSession {
       controller('right', 0.2),
     ];
     this.maxRenderLayers = 4;
+    this.frameRate = 90;
+    this.supportedFrameRates = new Float32Array([72, 90, 120]);
     this.onend = null;
+    this.onframeratechange = null;
     this.onselect = null;
     this.onselectstart = null;
     this.onselectend = null;
@@ -511,6 +514,24 @@ class XRSession {
 
   cancelAnimationFrame(handle) {
     window.cancelAnimationFrame(handle);
+  }
+
+  updateTargetFrameRate(rate) {
+    // The request count is what tells the page whether a value that is not a number of hertz ever reached the
+    // display: the backend is expected to drop those before the call, and a stub that counted only accepted
+    // rates could not tell a dropped request from one that arrived and was refused.
+    globalThis.__wxrFrameRateRequests = (globalThis.__wxrFrameRateRequests || 0) + 1;
+    if (this._ended) {
+      return Promise.reject(new DOMException('the session has ended', 'InvalidStateError'));
+    }
+    if (!this.supportedFrameRates.includes(rate)) {
+      return Promise.reject(
+        new DOMException(`${rate} is not a rate this display offers`, 'TypeError'),
+      );
+    }
+    this.frameRate = rate;
+    globalThis.__wxrFrameRate = rate;
+    return Promise.resolve();
   }
 
   end() {

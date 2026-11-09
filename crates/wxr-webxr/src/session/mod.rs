@@ -406,6 +406,14 @@ impl wxr::Session for WebXrSession {
         self.apply_foveation();
     }
 
+    fn refresh_rates(&mut self, out: &mut Vec<f32>) {
+        self.refresh_rates_impl(out);
+    }
+
+    fn set_refresh_rate(&mut self, rate: f32) {
+        self.set_refresh_rate_impl(rate);
+    }
+
     fn request_viewport_scale(&mut self, view: usize, scale: Option<f32>) {
         self.request_viewport_scale_impl(view, scale)
     }

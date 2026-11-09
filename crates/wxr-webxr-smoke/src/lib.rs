@@ -106,6 +106,24 @@ fn viewport_scale() -> Option<f64> {
         .and_then(|value| value.as_f64())
 }
 
+/// What the stub's `XRSession.updateTargetFrameRate` last took, if it took anything.
+fn frame_rate() -> Option<f64> {
+    js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str("__wxrFrameRate"))
+        .ok()
+        .and_then(|value| value.as_f64())
+}
+
+/// How many times `XRSession.updateTargetFrameRate` was called at all, taken or refused.
+fn frame_rate_requests() -> Option<u32> {
+    js_sys::Reflect::get(
+        &js_sys::global(),
+        &JsValue::from_str("__wxrFrameRateRequests"),
+    )
+    .ok()
+    .and_then(|value| value.as_f64())
+    .map(|count| count as u32)
+}
+
 /// What one run is holding: the frame being built, and how far it has got.
 struct Board {
     frame: wxr::Frame,
@@ -139,6 +157,9 @@ struct Board {
     /// Whether the viewport scale has been asked for, which is once: the request applies to the frame it is
     /// made in, and the values that matter are the ones the browser cannot convert.
     viewport_scale_checked: bool,
+    /// Whether the display's refresh rates have been read and asked for, which is once: the list is the
+    /// session's, and the rate a request leaves behind is the stub's record.
+    refresh_rate_checked: bool,
     /// Whether a space handle this session never made has been asked about, which is once: the answer is the
     /// same on every frame, and the call writes only the vector it is given.
     forged_space_checked: bool,
@@ -300,6 +321,7 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         checked: false,
         retry_checked: false,
         viewport_scale_checked: false,
+        refresh_rate_checked: false,
         forged_space_checked: false,
         stopped: false,
     }));

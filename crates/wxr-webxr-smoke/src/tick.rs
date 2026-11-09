@@ -65,6 +65,59 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
             )),
         }
     }
+    // The refresh rate is a `float` on the way in and a promise on the way out, and both halves are the
+    // browser's: the list it offers, the rate it took, and the two values that are not numbers of hertz at
+    // all. Asked once, because the list is the session's rather than the frame's - and read back off the stub,
+    // because a request is not the answer. It is before the frame for that reason: no frame is needed.
+    if !board.refresh_rate_checked {
+        board.refresh_rate_checked = true;
+        if !session.features().contains(wxr::Features::REFRESH_RATE) {
+            return Err(format!(
+                "the stub offers frame rates, where the session reports {:?}",
+                session.features()
+            ));
+        }
+        // Seeded with a caller's own value, because the contract is that a list is appended to: a backend
+        // that replaced the vector would drop the 60 here and look right in a run that passed an empty one.
+        let mut rates = vec![60.0];
+        session.refresh_rates(&mut rates);
+        if rates != [60.0, 72.0, 90.0, 120.0] {
+            return Err(format!(
+                "the refresh rates were {rates:?}, where the stub's list is 72, 90 and 120 after the caller's 60"
+            ));
+        }
+        session.set_refresh_rate(f32::NAN);
+        session.set_refresh_rate(f32::INFINITY);
+        if frame_rate_requests().unwrap_or(0) != 0 {
+            return Err(format!(
+                "a NaN and an infinity asked for a refresh rate, where neither is a number of hertz: {} request(s)",
+                frame_rate_requests().unwrap_or(u32::MAX)
+            ));
+        }
+        // The rate the display offers, which the stub's own `frameRate` says it is - and then one it does
+        // not, whose promise rejection this backend has to read rather than leave unhandled on the page.
+        session.set_refresh_rate(90.0);
+        if frame_rate() != Some(90.0) {
+            return Err(format!(
+                "a 90 Hz request landed as {:?}, where the display offers 90",
+                frame_rate()
+            ));
+        }
+        session.set_refresh_rate(60.0);
+        if frame_rate() != Some(90.0) {
+            return Err(format!(
+                "a rate the display does not offer changed it to {:?}",
+                frame_rate()
+            ));
+        }
+        if frame_rate_requests() != Some(2) {
+            return Err(format!(
+                "{} refresh-rate request(s) reached the display, where only the two finite ones should have",
+                frame_rate_requests().unwrap_or(u32::MAX)
+            ));
+        }
+        say("the display offers 72, 90 and 120 Hz: 90 was taken and 60 was refused");
+    }
     let Some(space) = board.space else {
         return Ok(());
     };

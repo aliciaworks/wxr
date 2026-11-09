@@ -85,6 +85,11 @@ impl WebXrSession {
                 features = features.union(bit);
             }
         }
+        // A session that reports `supportedFrameRates` is one whose display can be asked to run at another
+        // rate, and a browser that reports null there is one where the display picks and a page cannot.
+        if session.supported_frame_rates().is_some() {
+            features = features.union(wxr::Features::REFRESH_RATE);
+        }
         // Depth is granted by a feature and readable only through the binding that gives a texture: a browser
         // that granted it and no binding is a depth this backend cannot hand over. The usage matters too,
         // because a CPU-optimised session delivers bytes rather than the texture [`wxr::Session::Depth`] is.
@@ -113,5 +118,56 @@ impl WebXrSession {
             }
         }
         features
+    }
+}
+
+impl WebXrSession {
+    /// The rates this display offers, appended to `out` as the core's contract says.
+    pub(super) fn refresh_rates_impl(&mut self, out: &mut Vec<f32>) {
+        let Some(session) = self.inner.borrow().session.clone() else {
+            return;
+        };
+        // `supportedFrameRates` is a `Float32Array?`: null is a display that cannot be asked, and the list is
+        // the whole of the answer when it can.
+        match session.supported_frame_rates() {
+            Some(rates) => out.extend(rates),
+            None => log::debug!("wxr-webxr: this display does not let a page choose its rate"),
+        }
+    }
+
+    /// Ask the display to run at `rate` hertz.
+    pub(super) fn set_refresh_rate_impl(&mut self, rate: f32) {
+        // `updateTargetFrameRate` takes a WebIDL `float`, and the conversion of a NaN or an infinity is a
+        // `TypeError` thrown through the wasm frame rather than a rejected promise. The specification has no
+        // range to clamp into - a rate the display does not list is a rejection, not a clamp - so these are
+        // not requests at all and leave the display's rate alone.
+        if !rate.is_finite() {
+            log::debug!("wxr-webxr: no refresh rate for {rate}, which is not a number of hertz");
+            return;
+        }
+        let Some(session) = self.inner.borrow().session.clone() else {
+            return;
+        };
+        // A null list is a display the page cannot choose for, so the request would be one the specification
+        // rejects without the display ever hearing it. The rate it has is the answer, and nothing is sent.
+        if session.supported_frame_rates().is_none() {
+            log::debug!("wxr-webxr: this display does not let a page choose {rate} Hz");
+            return;
+        }
+        let promise = match throws::update_target_frame_rate(&session, rate) {
+            Ok(promise) => promise,
+            Err(error) => {
+                log::debug!("wxr-webxr: asking for {rate} Hz: {error:?}");
+                return;
+            }
+        };
+        // The promise is the answer to the request, and either rejection is one: `TypeError` for a rate this
+        // display does not offer, `InvalidStateError` for a session that has ended. Read and dropped, because
+        // an unhandled rejection on the page is a report of something the app already asked to be a request.
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Err(error) = JsFuture::from(promise).await {
+                log::debug!("wxr-webxr: the display kept its rate: {error:?}");
+            }
+        });
     }
 }

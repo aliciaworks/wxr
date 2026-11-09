@@ -268,8 +268,6 @@ DEFAULT_IS_ENOUGH = {
     "session that has found no meshes is a session whose list is empty",
     ("wxr-webxr", "play_pcm"): "no browser has it: `GamepadHapticActuator` documents `pulse`, `playEffect` "
     "and `reset`, and MDN has no `playPCM` page at all - the binding generated into `sys/` is a trap",
-    ("wxr-webxr", "refresh_rates"): "nothing in WebXR asks a display what it can do",
-    ("wxr-webxr", "set_refresh_rate"): "nothing in WebXR asks a display to change what it does",
     ("wxr-openxr", "interaction_mode"): "only a browser is ever `ScreenSpace`",
     ("wxr-openxr", "request_viewport_scale"): "OpenXR's resolution is the swapchain's to choose, and a "
     "runtime that recommends nothing is a runtime at full resolution - which is what the request would "
