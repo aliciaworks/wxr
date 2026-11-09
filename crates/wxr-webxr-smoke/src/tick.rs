@@ -233,6 +233,9 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
         }
         say("a NaN viewport scale was dropped, an infinite one clamped to one, and a half arrived");
     }
+    // The layers the timer handed over, read back in a frame: an image per layer, and the shapes' own numbers
+    // as the setters landed them. Read once, because a working layer is the same picture every frame.
+    layers::check_frame(board, session)?;
     // The sources, which are the frame's half of input: where the hands are and how they are aimed. What they
     // *do* arrives as events above, because that is where WebXR puts it.
     let mut sources = Vec::new();

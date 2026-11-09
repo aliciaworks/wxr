@@ -100,9 +100,15 @@ impl WebXrSession {
             features = features.union(wxr::Features::DEPTH);
         }
         // Layers need two things and the session has to have both: the binding, which is what makes one, and the
-        // feature descriptor, which is what lets a non-projection layer be composited at all.
+        // feature descriptor, which is what lets a non-projection layer be composited at all. A session with
+        // both can make every shape the specification defines, so every shape bit is set rather than a quad's
+        // alone.
         if self.gpu.is_some() && has_feature(&session, "layers") {
-            features = features.union(wxr::Features::LAYER_QUAD);
+            features = features
+                .union(wxr::Features::LAYER_QUAD)
+                .union(wxr::Features::LAYER_CYLINDER)
+                .union(wxr::Features::LAYER_EQUIRECT)
+                .union(wxr::Features::LAYER_CUBE);
         }
         // Haptics is the gamepad's rather than the session's: an actuator belongs to a controller, so the only
         // place the answer exists is the controllers that are connected. An empty list, and a list of

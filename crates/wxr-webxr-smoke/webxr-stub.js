@@ -34,6 +34,14 @@
  */
 const GPU = new URLSearchParams(globalThis.location ? globalThis.location.search : '').has('gpu');
 
+/**
+ * Every picture the binding made that is not the projection layer, in the order it made them.
+ *
+ * The page keeps them because a layer's attributes are what the backend set on it, not what it was asked for:
+ * a run can only tell a radius from an aspect ratio by reading the object the setters landed on.
+ */
+globalThis.__wxrLayerSaid = [];
+
 /** A rigid transform, as seven numbers: position first, then the quaternion. */
 function invert(t) {
   const iq = [-t[3], -t[4], -t[5], t[6]];
@@ -813,13 +821,95 @@ class XRProjectionLayer {
 }
 
 /** One texture of the frame's size, in the format and usage a layer asked for. */
-function frameTexture(device, format, layers, usage) {
+function frameTexture(device, format, layers, usage, width = FRAME.width, height = FRAME.height) {
   return device.createTexture({
-    size: [FRAME.width, FRAME.height, layers],
+    size: [width, height, layers],
     format,
     usage,
     dimension: '2d',
   });
+}
+
+/**
+ * A picture the compositor places, which is every layer that is not the projection one.
+ *
+ * The specification gives each shape its own class over one base class, and the attributes are the whole of
+ * what `wxr-webxr` sets: a plain object would take every assignment and prove nothing, so the fields are
+ * declared here and read back by the run. A cube's `orientation` is a point rather than a transform because
+ * the specification places a cube around the viewer and gives it no position to set.
+ */
+class XRCompositionLayer {
+  constructor(binding, init, kind, faces) {
+    this._binding = binding;
+    this.kind = kind;
+    this.session = binding.session;
+    this.space = init.space;
+    this.layout = init.layout === undefined ? 'mono' : init.layout;
+    this.blendTextureSourceAlpha = false;
+    this.opacity = 1;
+    this.mipLevels = 1;
+    this.needsRedraw = true;
+    this.destroyed = false;
+    this.transform = rigid([0, 0, 0, 0, 0, 0, 1]);
+    this.orientation = { x: 0, y: 0, z: 0, w: 1 };
+    this.width = 0;
+    this.height = 0;
+    this.radius = 0;
+    this.centralAngle = 0;
+    this.aspectRatio = 1;
+    this.centralHorizontalAngle = 0;
+    this.upperVerticalAngle = 0;
+    this.lowerVerticalAngle = 0;
+    this._width = init.viewPixelWidth;
+    this._height = init.viewPixelHeight;
+    this._faces = faces;
+    this._format = init.colorFormat === undefined ? COLOR_FORMAT : init.colorFormat;
+    this._usage = init.textureUsage === undefined ? USAGE.RENDER_ATTACHMENT : init.textureUsage;
+    this._color = null;
+  }
+
+  /** The textures, made on first ask: one per face for a cube and one otherwise. */
+  get colorTextures() {
+    if (this._color === null) {
+      this._color = frameTexture(
+        this._binding.device, this._format, this._faces, this._usage, this._width, this._height);
+    }
+    return [this._color];
+  }
+
+  destroy() {
+    this.destroyed = true;
+    this.session._layers.delete(this);
+  }
+}
+
+class XRQuadLayer extends XRCompositionLayer {}
+class XRCylinderLayer extends XRCompositionLayer {}
+class XREquirectLayer extends XRCompositionLayer {}
+class XRCubeLayer extends XRCompositionLayer {}
+
+/** The sub-image of a non-projection layer: the whole of its texture, and the first face of a cube. */
+class XRLayerSubImage {
+  constructor(layer) {
+    this._layer = layer;
+    this._texture = layer.colorTextures[0];
+    this.viewport = { x: 0, y: 0, width: layer._width, height: layer._height };
+  }
+
+  get colorTexture() { return this._texture; }
+  get depthStencilTexture() { return null; }
+  get motionVectorTexture() { return null; }
+
+  getViewDescriptor() {
+    return {
+      format: this._layer._format,
+      dimension: '2d',
+      baseMipLevel: 0,
+      mipLevelCount: 1,
+      baseArrayLayer: 0,
+      arrayLayerCount: 1,
+    };
+  }
 }
 
 /**
@@ -884,6 +974,108 @@ class XRGPUBinding {
       throw new DOMException('that is not a view of this frame', 'InvalidStateError');
     }
     return new XRGPUSubImage(layer, view.eye);
+  }
+
+  /**
+   * The checks every non-projection layer runs, before one is made.
+   *
+   * They are the specification's, and they are here rather than only in the backend because this is the
+   * browser in the run: a backend that skipped its own check would still be refused here, and the answer a
+   * page sees would be the same. The space is checked by its kind, which is the stub's own record of what
+   * `requestReferenceSpace` was asked for.
+   */
+  _validate(init, kind) {
+    if (this.session._ended) {
+      throw new DOMException('the session has ended', 'InvalidStateError');
+    }
+    if (!this.session.enabledFeatures.includes('layers')) {
+      throw new DOMException('the session was not granted layers', 'NotSupportedError');
+    }
+    if (init.layout === 'default') {
+      throw new TypeError('a layer cannot have the default layout');
+    }
+    if (kind === 'cube' && init.layout !== undefined
+      && init.layout !== 'mono' && init.layout !== 'stereo') {
+      throw new TypeError(`a cube layer has no ${init.layout} layout`);
+    }
+    if ((kind === 'cube' || kind === 'equirect')
+      && init.space instanceof XRReferenceSpace && init.space._type === 'viewer') {
+      throw new TypeError(`an ${kind} layer cannot live in a viewer space`);
+    }
+    if (kind === 'cube' && init.viewPixelWidth !== init.viewPixelHeight) {
+      throw new TypeError(
+        `a cube's faces are square, where ${init.viewPixelWidth}x${init.viewPixelHeight} is not`);
+    }
+  }
+
+  /** Keep a layer the way the specification does: this session's, and in the run's record. */
+  _remember(layer) {
+    this.session._layers.add(layer);
+    globalThis.__wxrLayerSaid.push(layer);
+    return layer;
+  }
+
+  createQuadLayer(init = {}) {
+    this._validate(init, 'quad');
+    const layer = new XRQuadLayer(this, init, 'quad', 1);
+    layer.width = init.width === undefined ? 1 : init.width;
+    layer.height = init.height === undefined ? 1 : init.height;
+    return this._remember(layer);
+  }
+
+  createCylinderLayer(init = {}) {
+    this._validate(init, 'cylinder');
+    const layer = new XRCylinderLayer(this, init, 'cylinder', 1);
+    layer.radius = init.radius === undefined ? 2 : init.radius;
+    layer.centralAngle = init.centralAngle === undefined ? Math.PI / 3 : init.centralAngle;
+    layer.aspectRatio = init.aspectRatio === undefined ? 1 : init.aspectRatio;
+    return this._remember(layer);
+  }
+
+  createEquirectLayer(init = {}) {
+    this._validate(init, 'equirect');
+    const layer = new XREquirectLayer(this, init, 'equirect', 1);
+    layer.radius = init.radius === undefined ? 2 : init.radius;
+    layer.centralHorizontalAngle = init.centralHorizontalAngle === undefined
+      ? Math.PI : init.centralHorizontalAngle;
+    layer.upperVerticalAngle = init.upperVerticalAngle === undefined
+      ? Math.PI / 2 : init.upperVerticalAngle;
+    layer.lowerVerticalAngle = init.lowerVerticalAngle === undefined
+      ? -Math.PI / 2 : init.lowerVerticalAngle;
+    return this._remember(layer);
+  }
+
+  createCubeLayer(init = {}) {
+    this._validate(init, 'cube');
+    const layer = new XRCubeLayer(this, init, 'cube', 6);
+    if (init.orientation !== undefined && init.orientation !== null) {
+      layer.orientation = init.orientation;
+    }
+    return this._remember(layer);
+  }
+
+  /**
+   * One eye's (or a mono layer's) sub-image.
+   *
+   * `eye` is `"none"` for the core, which draws a layer once rather than per eye: a stereo layout would make
+   * `"none"` a `TypeError`, and this backend only ever asks for a mono one.
+   */
+  getSubImage(layer, frame, eye) {
+    requireActiveFrame(this.session);
+    if (!(layer instanceof XRCompositionLayer) || !this.session._layers.has(layer)) {
+      throw new DOMException("that is not this session's layer", 'InvalidStateError');
+    }
+    if (layer.session !== this.session || layer.destroyed) {
+      throw new DOMException('that layer is not one this session can draw', 'InvalidStateError');
+    }
+    if (!Array.isArray(this.session.renderState.layers)
+      || !this.session.renderState.layers.includes(layer)) {
+      throw new TypeError('that layer is not in this session\'s render state');
+    }
+    if (layer.layout !== 'mono' && eye === 'none') {
+      throw new TypeError(`a ${layer.layout} layer has no single sub-image`);
+    }
+    return new XRLayerSubImage(layer);
   }
 
   /**

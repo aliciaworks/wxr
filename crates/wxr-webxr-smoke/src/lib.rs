@@ -32,6 +32,7 @@ use wxr::{Backend as _, Session as _};
 
 mod hands;
 mod images;
+mod layers;
 mod tick;
 
 /// How many frames to draw before saying so and stopping.
@@ -163,6 +164,18 @@ struct Board {
     /// Whether a space handle this session never made has been asked about, which is once: the answer is the
     /// same on every frame, and the call writes only the vector it is given.
     forged_space_checked: bool,
+    /// The viewer space, kept because the refusal of an environment layer in it is checked once and a space
+    /// made twice is two slots for one answer.
+    viewer: Option<wxr::ReferenceSpace>,
+    /// Whether the layers that must be refused have been, which is once and before any is made.
+    layers_refused: bool,
+    /// Whether the four shapes have been handed over, which happens between frames: the timer makes them, and
+    /// the frame loop only reads them back.
+    layers_prepared: bool,
+    /// Whether the layers have been read back in a frame, which is once and after they were made.
+    layers_checked: bool,
+    /// The layers the compositor was given, in the order they were made.
+    layers: Vec<wxr::Layer>,
 }
 
 /// The backend's own log lines, which are the ones that say *why*.
@@ -323,6 +336,12 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         viewport_scale_checked: false,
         refresh_rate_checked: false,
         forged_space_checked: false,
+        viewer: None,
+        layers_refused: false,
+        // A run without a binding has no picture to place, so it has nothing to prepare and nothing to check.
+        layers_prepared: !gpu,
+        layers_checked: !gpu,
+        layers: Vec::new(),
         stopped: false,
     }));
 
@@ -342,7 +361,7 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         // One verdict, and it is a line rather than a status: a driver that had to read the page would be a
         // driver reading a page that might not have started yet.
         let verdict = match tick::tick(&mut board, &mut session) {
-            Ok(()) if board.drawn >= FRAMES => Some("done".to_string()),
+            Ok(()) if board.drawn >= FRAMES && board.layers_checked => Some("done".to_string()),
             Ok(()) if !session.state().is_alive() => Some(format!(
                 "FAILED: the session ended after {} frame(s)",
                 board.drawn
@@ -366,19 +385,26 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
     let ticking = session.clone();
     let interval: Rc<RefCell<Option<i32>>> = Rc::new(RefCell::new(None));
     let stop = interval.clone();
+    let pumping = board.clone();
     let pump = Closure::<dyn FnMut()>::new(move || {
         let mut session = ticking.borrow_mut();
         while let Some(event) = session.poll() {
             say(&format!("event: {event:?}"));
-        }
-        if session.state().is_alive() && session.state() != wxr::State::Ready {
-            return;
         }
         if !session.state().is_alive() {
             say(&format!(
                 "FAILED: the session ended before it was ready ({:?})",
                 session.state()
             ));
+        } else {
+            // A layer is handed over between frames and only then, so this is where it happens: the timer is
+            // outside every animation frame by construction, where the frame loop is inside one.
+            let mut board = pumping.borrow_mut();
+            match layers::prepare(&mut board, &mut session) {
+                Ok(true) => {}
+                Ok(false) => return,
+                Err(reason) => say(&format!("FAILED: {reason}")),
+            }
         }
         if let (Some(id), Some(window)) = (stop.borrow_mut().take(), web_sys::window()) {
             window.clear_interval_with_handle(id);

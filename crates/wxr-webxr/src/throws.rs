@@ -13,9 +13,10 @@
 use wasm_bindgen::prelude::*;
 
 use crate::sys::{
-    XrAnchor, XrCompositionLayer, XrEye, XrFrame, XrProjectionLayer, XrReferenceSpace,
-    XrRenderStateInit, XrRigidTransform, XrSession, XrSpace, XrView, XrgpuBinding,
-    XrgpuDepthInformation, XrgpuProjectionLayerInit, XrgpuQuadLayerInit, XrgpuSubImage,
+    XrAnchor, XrCompositionLayer, XrCubeLayer, XrCylinderLayer, XrEquirectLayer, XrEye, XrFrame,
+    XrProjectionLayer, XrReferenceSpace, XrRenderStateInit, XrRigidTransform, XrSession, XrSpace,
+    XrView, XrgpuBinding, XrgpuCubeLayerInit, XrgpuCylinderLayerInit, XrgpuDepthInformation,
+    XrgpuEquirectLayerInit, XrgpuProjectionLayerInit, XrgpuQuadLayerInit, XrgpuSubImage,
 };
 
 #[wasm_bindgen]
@@ -87,6 +88,28 @@ extern "C" {
         this: &XrgpuBinding,
         init: &XrgpuQuadLayerInit,
     ) -> Result<crate::sys::XrQuadLayer, JsValue>;
+
+    /// `XRGPUBinding.createCylinderLayer`, throwing for the same reasons.
+    #[wasm_bindgen(method, catch, js_name = "createCylinderLayer")]
+    fn create_cylinder_layer_caught(
+        this: &XrgpuBinding,
+        init: &XrgpuCylinderLayerInit,
+    ) -> Result<XrCylinderLayer, JsValue>;
+
+    /// `XRGPUBinding.createEquirectLayer`, which refuses a space that is not a non-viewer reference space
+    /// with a `TypeError` - the one shape whose placement the specification narrows.
+    #[wasm_bindgen(method, catch, js_name = "createEquirectLayer")]
+    fn create_equirect_layer_caught(
+        this: &XrgpuBinding,
+        init: &XrgpuEquirectLayerInit,
+    ) -> Result<XrEquirectLayer, JsValue>;
+
+    /// `XRGPUBinding.createCubeLayer`, which refuses the same spaces and a face extent that is not square.
+    #[wasm_bindgen(method, catch, js_name = "createCubeLayer")]
+    fn create_cube_layer_caught(
+        this: &XrgpuBinding,
+        init: &XrgpuCubeLayerInit,
+    ) -> Result<XrCubeLayer, JsValue>;
 
     /// `XRGPUBinding.getViewSubImage`, which throws when the layer is not the projection layer of this session.
     #[wasm_bindgen(method, catch, js_name = "getViewSubImage")]
@@ -179,6 +202,30 @@ pub fn create_quad_layer(
     init: &XrgpuQuadLayerInit,
 ) -> Result<crate::sys::XrQuadLayer, JsValue> {
     binding.create_quad_layer_caught(init)
+}
+
+/// `XRGPUBinding.createCylinderLayer`, caught.
+pub fn create_cylinder_layer(
+    binding: &XrgpuBinding,
+    init: &XrgpuCylinderLayerInit,
+) -> Result<XrCylinderLayer, JsValue> {
+    binding.create_cylinder_layer_caught(init)
+}
+
+/// `XRGPUBinding.createEquirectLayer`, caught.
+pub fn create_equirect_layer(
+    binding: &XrgpuBinding,
+    init: &XrgpuEquirectLayerInit,
+) -> Result<XrEquirectLayer, JsValue> {
+    binding.create_equirect_layer_caught(init)
+}
+
+/// `XRGPUBinding.createCubeLayer`, caught.
+pub fn create_cube_layer(
+    binding: &XrgpuBinding,
+    init: &XrgpuCubeLayerInit,
+) -> Result<XrCubeLayer, JsValue> {
+    binding.create_cube_layer_caught(init)
 }
 
 /// `XRGPUBinding.getViewSubImage`, caught.

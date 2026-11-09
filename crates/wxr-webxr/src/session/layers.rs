@@ -3,6 +3,10 @@
 //! Delegated from `wxr::Session`, which gets one implementation per type: the bodies live here.
 
 use super::*;
+use crate::sys::{
+    DomPointInit, XrCompositionLayer, XrCubeLayer, XrCylinderLayer, XrEquirectLayer, XrQuadLayer,
+    XrgpuCubeLayerInit, XrgpuCylinderLayerInit, XrgpuEquirectLayerInit,
+};
 
 impl WebXrSession {
     pub(super) fn binding_impl(&mut self, layer: wxr::Layer) -> Result<wxr::Binding, wxr::Error> {
@@ -82,12 +86,37 @@ impl WebXrSession {
                 "this session has no binding to make a layer from".into(),
             ));
         };
-        // A quad is the one shape this backend makes. The bit is per shape on the platform too, so a session
-        // with one shape and not another is the ordinary case rather than an odd one.
-        let (width, height) = match shape {
-            wxr::LayerShape::Quad { width, height } => (width, height),
-            other => return Err(wxr::Error::Unsupported(format!("{} layers", other.name()))),
+        // Every shape here is a non-projection layer, and the specification makes them all part of the
+        // `layers` feature: a session that was granted only `webgpu` has a projection layer and nothing else,
+        // and a create call would be a `NotSupportedError` rather than a layer.
+        let session = self.inner.borrow().session.clone();
+        let Some(session) = session else {
+            return Err(wxr::Error::Unavailable(
+                "the session has not arrived yet".into(),
+            ));
         };
+        if !has_feature(&session, "layers") {
+            return Err(wxr::Error::Unsupported("layers were not granted".into()));
+        }
+        // An equirect and a cube are environment layers, and the specification restricts them to a reference
+        // space that is not the viewer: a skybox locked to the head defeats the reprojection it is for.
+        if matches!(
+            shape,
+            wxr::LayerShape::Cube | wxr::LayerShape::Equirect { .. }
+        ) && space.kind == wxr::SpaceKind::Viewer
+        {
+            return Err(wxr::Error::Rejected(
+                "an environment layer cannot live in a viewer space".into(),
+            ));
+        }
+        // A cube's six faces are faces of a cube, so the one texture holds squares: the specification refuses
+        // an extent that is not, and a non-square request is a picture the compositor would stretch.
+        if matches!(shape, wxr::LayerShape::Cube) && pixels.width != pixels.height {
+            return Err(wxr::Error::Rejected(format!(
+                "a cube layer's faces are square, where {}x{} is not",
+                pixels.width, pixels.height
+            )));
+        }
         // A layer is made *in* a space, so a space that is still a promise is a layer to ask for again - the
         // same answer `hit_test_source` gives, for the same reason. A handle this session never handed out is
         // not a promise, though, and is the `NoSpace` every other entry that takes one answers.
@@ -96,23 +125,82 @@ impl WebXrSession {
                 "the space has not resolved yet".into(),
             ));
         };
-        let init = XrgpuQuadLayerInit::new(
-            &gpu.binding.get_preferred_color_format(),
-            &reference,
-            pixels.height,
-            pixels.width,
-        );
-        // Set again by name, because the constructor takes them in the IDL's order and this is the one place a
+        let preferred = gpu.binding.get_preferred_color_format();
+        // Each shape has its own init dictionary, and each one is made with the same four required members.
+        // The constructors take them in the IDL's order, and the setters below are by name so that a
         // transposed pair would still compile.
-        init.set_view_pixel_height(pixels.height);
-        init.set_view_pixel_width(pixels.width);
-        // One picture for both eyes, which is the thing that makes a quad worth handing to a compositor at all -
-        // and the only layout this backend asks for, though it is also the default.
-        init.set_layout(XrLayerLayout::Mono);
-        init.set_width(width);
-        init.set_height(height);
-        let layer = throws::create_quad_layer(&gpu.binding, &init)
-            .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?;
+        let layer: XrCompositionLayer = match shape {
+            wxr::LayerShape::Quad { width, height } => {
+                let init =
+                    XrgpuQuadLayerInit::new(&preferred, &reference, pixels.height, pixels.width);
+                init.set_view_pixel_height(pixels.height);
+                init.set_view_pixel_width(pixels.width);
+                // One picture for both eyes, which is the thing that makes a quad worth handing to a
+                // compositor at all - and the only layout this backend asks for, though it is also the default.
+                init.set_layout(XrLayerLayout::Mono);
+                init.set_width(width);
+                init.set_height(height);
+                throws::create_quad_layer(&gpu.binding, &init)
+                    .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?
+                    .unchecked_into()
+            }
+            wxr::LayerShape::Cylinder {
+                radius,
+                central_angle,
+                aspect,
+            } => {
+                let init = XrgpuCylinderLayerInit::new(
+                    &preferred,
+                    &reference,
+                    pixels.height,
+                    pixels.width,
+                );
+                init.set_view_pixel_height(pixels.height);
+                init.set_view_pixel_width(pixels.width);
+                init.set_layout(XrLayerLayout::Mono);
+                init.set_radius(radius);
+                init.set_central_angle(central_angle);
+                init.set_aspect_ratio(aspect);
+                throws::create_cylinder_layer(&gpu.binding, &init)
+                    .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?
+                    .unchecked_into()
+            }
+            wxr::LayerShape::Equirect {
+                radius,
+                central_horizontal,
+                upper_vertical,
+                lower_vertical,
+            } => {
+                let init = XrgpuEquirectLayerInit::new(
+                    &preferred,
+                    &reference,
+                    pixels.height,
+                    pixels.width,
+                );
+                init.set_view_pixel_height(pixels.height);
+                init.set_view_pixel_width(pixels.width);
+                init.set_layout(XrLayerLayout::Mono);
+                init.set_radius(radius);
+                init.set_central_horizontal_angle(central_horizontal);
+                init.set_upper_vertical_angle(upper_vertical);
+                init.set_lower_vertical_angle(lower_vertical);
+                throws::create_equirect_layer(&gpu.binding, &init)
+                    .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?
+                    .unchecked_into()
+            }
+            wxr::LayerShape::Cube => {
+                let init =
+                    XrgpuCubeLayerInit::new(&preferred, &reference, pixels.height, pixels.width);
+                init.set_view_pixel_height(pixels.height);
+                init.set_view_pixel_width(pixels.width);
+                // Six faces in one texture, which is a mono layout: a stereo cube would be twelve faces and
+                // two pictures, and this backend draws the same picture for both eyes everywhere else.
+                init.set_layout(XrLayerLayout::Mono);
+                throws::create_cube_layer(&gpu.binding, &init)
+                    .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?
+                    .unchecked_into()
+            }
+        };
         // A layer is a picture *over* what is already there, so its alpha is part of the picture: a panel drawn
         // with a transparent background is transparent, which it is not if the compositor ignores the channel.
         // Opaque content says the same thing with every alpha at one.
@@ -120,15 +208,22 @@ impl WebXrSession {
         let id = self.layers.len() as u32;
         self.layers.push(Some(crate::layers::Slot {
             layer,
+            shape,
             pose: wxr::Pose::IDENTITY,
         }));
         // The browser composites what the render state names, so a layer it has not been told about is a
-        // texture nothing reads.
+        // texture nothing reads - which is not a layer the core hands back. The one way to get here is to make
+        // one from inside a frame, where `updateRenderState` throws; it is taken back out rather than left as a
+        // handle to something no compositor will ever place.
         if let Err(error) = self.present_layers() {
-            log::warn!("wxr-webxr: the new layer was not presented: {error}");
+            if let Some(Some(slot)) = self.layers.pop() {
+                slot.layer.destroy();
+            }
+            return Err(error);
         }
         log::info!(
-            "wxr-webxr: a quad layer, {width}x{height} m at {}x{} px",
+            "wxr-webxr: a {} layer at {}x{} px",
+            shape.name(),
             pixels.width,
             pixels.height
         );
@@ -192,8 +287,33 @@ impl WebXrSession {
             return Err(wxr::Error::Unsupported("no such layer".into()));
         };
         // Relative to the layer's own space, which is why the slot keeps the space it was made in rather than
-        // taking one here.
-        slot.layer.set_transform(&rigid(pose)?);
+        // taking one here. A cube is the exception: it has an orientation and no transform, because the
+        // compositor always draws it around the viewer - the specification says only the orientation of its
+        // space is considered - so a pose's rotation is what there is to honour, and its position is not.
+        match slot.shape {
+            wxr::LayerShape::Cube => {
+                let cube: &XrCubeLayer = slot.layer.unchecked_ref();
+                let point = DomPointInit::new();
+                point.set_x(pose.orientation.x as f64);
+                point.set_y(pose.orientation.y as f64);
+                point.set_z(pose.orientation.z as f64);
+                point.set_w(pose.orientation.w as f64);
+                let orientation: crate::sys::DomPointReadOnly = point.unchecked_into();
+                cube.set_orientation(&orientation);
+            }
+            wxr::LayerShape::Quad { .. } => {
+                let layer: &XrQuadLayer = slot.layer.unchecked_ref();
+                layer.set_transform(&rigid(pose)?);
+            }
+            wxr::LayerShape::Cylinder { .. } => {
+                let layer: &XrCylinderLayer = slot.layer.unchecked_ref();
+                layer.set_transform(&rigid(pose)?);
+            }
+            wxr::LayerShape::Equirect { .. } => {
+                let layer: &XrEquirectLayer = slot.layer.unchecked_ref();
+                layer.set_transform(&rigid(pose)?);
+            }
+        }
         slot.pose = pose;
         Ok(())
     }
