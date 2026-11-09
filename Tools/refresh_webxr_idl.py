@@ -1,0 +1,214 @@
+#!/usr/bin/env python3
+"""Refresh the WebXR bindings under `crates/wxr-webxr/src/sys`.
+
+`web-sys` has WebXR's *core* and none of its Layers module, nor any of the WebGPU binding - and the core it
+does have is behind `--cfg web_sys_unstable_apis`, a flag that would apply to every crate in any graph that
+contains this one. So the whole WebXR API is generated here instead, the way wgpu generates `webgpu_sys`: from
+the IDL, into Rust that is committed and pinned.
+
+There are two inputs, and only one of them is ours:
+
+* `crates/wxr-webxr/webidl/enabled/*.webidl` - the WebXR specifications' IDL, verbatim from webref, which is
+  W3C's machine-readable IDL and is also what `web-sys` itself consumes. Pinned to `WEBREF` rather than to
+  `main`, because `main` moves.
+* `crates/wxr-webxr/webidl/enabled/externs.webidl` - ours. WebXR's IDL names the DOM it inherits from and the
+  WebGPU and WebGL objects it hands over, and neither is WebXR's to define.
+
+The generator is `wasm-bindgen-webidl`, the same program `web-sys` is built from. It is `publish = false`
+upstream, so it has to come from a checkout of the wasm-bindgen repository:
+
+    git clone --depth 1 --branch <tag matching this workspace's wasm-bindgen> \\
+        https://github.com/wasm-bindgen/wasm-bindgen /tmp/wasm-bindgen
+    cargo build --manifest-path /tmp/wasm-bindgen/Cargo.toml -p wasm-bindgen-webidl
+
+and then point this script at the binary it built, by `--webidl-bin` or by `WASM_BINDGEN_WEBIDL`.
+
+    python3 Tools/refresh_webxr_idl.py                 # generate from the committed IDL
+    python3 Tools/refresh_webxr_idl.py --fetch         # re-fetch the IDL from webref, then generate
+"""
+
+import argparse
+import html
+import os
+import re
+import subprocess
+import sys
+import urllib.request
+from pathlib import Path
+
+# The webref commit the IDL in `webidl/` was taken from. Bump it deliberately: a spec change is a change to
+# what this backend can rely on, and reading the diff is the point of pinning it.
+WEBREF = "7fc4c84bdc356eab59dccb571643c8a1e1f703dd"
+
+# The WebXR specifications that have IDL in webref. The two below it do not: they are Community Group drafts
+# webref has not picked up, so their IDL is cut out of the Bikeshed source instead.
+SPECS = [
+    "webxr",
+    "webxrlayers",
+    "webxr-webgpu-binding",
+    "webxr-ar-module",
+    "webxr-depth-sensing",
+    "webxr-dom-overlays",
+    "webxr-gamepads-module",
+    "webxr-hand-input",
+    "webxr-hit-test",
+    "webxr-lighting-estimation",
+    "webxr-plane-detection",
+]
+
+# (file name, repository, commit) for the specifications webref does not carry. Each is a Bikeshed source with
+# its IDL in `<script type="idl">` blocks, which is a convention the extraction below knows and nothing else
+# does - so the day one of them is in webref, it moves up to `SPECS` and this disappears with it.
+EXTRAS = [
+    (
+        "webxr-anchors",
+        "immersive-web/anchors",
+        "d9c6266d5e28caf98bff046dcbba31abd0b6d3f1",
+    ),
+    (
+        "webxr-raw-camera-access",
+        "immersive-web/raw-camera-access",
+        "52d2f29b8a42f935646170143905b0117998db4b",
+    ),
+    (
+        # The haptic output a gamepad can play - a joint Community Group and WebApps draft. It is the one of
+        # these that the safe OpenXR crate can also reach: `XR_FB_haptic_pcm` is in its extension set, so a
+        # core word for it has a backend on this side and a member of the WebXR API on that one.
+        "webxr-gamepad-haptics",
+        "immersive-web/gamepad-haptics",
+        "944e1b12683653f1d6b5fe639cab0a0590ab5493",
+    ),
+    (
+        # Face tracking, which two of the platforms have: Meta's `XR_FB_face_tracking2` and Android XR's
+        # `XR_ANDROID_face_tracking`. Written in `<pre class="idl">`, which is why the extractor reads both.
+        "webxr-face-tracking",
+        "immersive-web/webxr-face-tracking-1",
+        "5d4412e454d68f8f9dbb31b509e5ffe769ffa739",
+    ),
+    (
+        # Body tracking, which Meta has - `XR_FB_body_tracking` and its full-body sibling.
+        "webxr-body-tracking",
+        "immersive-web/body-tracking",
+        "9d44b6f3ba3b3d745a9ed2f566c7b0c6d9ca792d",
+    ),
+    (
+        # Tracking an image, a marker or a QR code, which Android XR has as its trackables.
+        "webxr-image-tracking",
+        "immersive-web/image-tracking",
+        "5c2eebf3e8b2be93ce8788c72206db9ee08d50a2",
+    ),
+    (
+        # The Community Group's meshing draft, which is the same situation as the two above: webref does not
+        # carry it, so it is pinned to a commit. There is no `XR` namespace of its own to pin it against -
+        # the group is where it lives and `CG-DRAFT` is what its status line says.
+        "webxr-real-world-meshing",
+        "immersive-web/real-world-meshing",
+        "539768590eb39cdff665d8e7a63f37b85eb6440b",
+    ),
+]
+
+# `<script type="idl">` and `<script type=idl>` are both in use across these repositories - and one of them
+# writes its IDL in `<pre class="idl">` instead, which is the other way a Bikeshed specification carries it.
+# Both are read, and the blocks are unescaped, because a specification's IDL is as likely to have been written
+# with `&lt;` in it as with a `<`.
+IDL_BLOCK = re.compile(r'<script\s+type="?idl"?\s*>(.*?)</script>', re.S)
+IDL_PRE = re.compile(r'<pre\s+class="?idl"?\s*>(.*?)</pre>', re.S)
+
+
+BANNER = """\
+//! The WebXR API, as Rust.
+//!
+//! Generated from the IDL in `crates/wxr-webxr/webidl/` by `Tools/refresh_webxr_idl.py` - do not edit by
+//! hand. Everything below is one `mod` and one `pub use` per interface, dictionary and enum the WebXR
+//! specifications declare, under the names the generator derives from them (`XRGPUBinding` becomes
+//! `XrgpuBinding`, which is why every generated `js_name` is a checkable fact rather than a guess).
+//!
+//! Regenerating is `python3 Tools/refresh_webxr_idl.py`; it says what it needs.
+
+"""
+
+
+def repo_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+def webidl_dir() -> Path:
+    return repo_root() / "crates" / "wxr-webxr" / "webidl"
+
+
+def out_dir() -> Path:
+    return repo_root() / "crates" / "wxr-webxr" / "src" / "sys"
+
+
+def fetch() -> None:
+    enabled = webidl_dir() / "enabled"
+    enabled.mkdir(parents=True, exist_ok=True)
+    (webidl_dir() / "unstable").mkdir(parents=True, exist_ok=True)
+    for spec in SPECS:
+        url = f"https://raw.githubusercontent.com/w3c/webref/{WEBREF}/ed/idl/{spec}.idl"
+        with urllib.request.urlopen(url) as response:
+            body = response.read()
+        path = enabled / f"{spec}.webidl"
+        path.write_bytes(body)
+        print(f"fetched {url} -> {path.relative_to(repo_root())} ({len(body)} bytes)")
+
+    for name, repository, commit in EXTRAS:
+        url = f"https://raw.githubusercontent.com/{repository}/{commit}/index.bs"
+        with urllib.request.urlopen(url) as response:
+            source = response.read().decode("utf-8")
+        blocks = IDL_BLOCK.findall(source) + IDL_PRE.findall(source)
+        if not blocks:
+            sys.exit(f"{url} has no IDL blocks, so the extraction below is wrong for it")
+        body = "\n\n".join(html.unescape(block).strip() for block in blocks) + "\n"
+        path = enabled / f"{name}.webidl"
+        path.write_text(body)
+        print(f"fetched {url} -> {path.relative_to(repo_root())} ({len(blocks)} blocks)")
+
+
+def generator(args: argparse.Namespace) -> Path:
+    binary = args.webidl_bin or os.environ.get("WASM_BINDGEN_WEBIDL")
+    if not binary:
+        sys.exit(
+            "no generator: pass --webidl-bin or set WASM_BINDGEN_WEBIDL (see this script's docstring)"
+        )
+    path = Path(binary)
+    if not path.exists():
+        sys.exit(f"no generator at {path}")
+    return path
+
+
+def generate(binary: Path) -> None:
+    # The generator reads `<input>/enabled` and `<input>/unstable` and writes one file per interface into
+    # `<output>`, which it deletes first. `--no-features` is what keeps it from writing a `#[cfg(feature =
+    # "XrSession")]` per type: every one of them is in this crate, so there is nothing to gate.
+    subprocess.run(
+        [
+            str(binary),
+            str(webidl_dir()),
+            str(out_dir()),
+            "--no-features",
+        ],
+        check=True,
+    )
+    module = out_dir() / "mod.rs"
+    module.write_text(BANNER + module.read_text())
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--fetch",
+        action="store_true",
+        help="re-fetch the IDL from webref before generating",
+    )
+    parser.add_argument("--webidl-bin", help="the wasm-bindgen-webidl binary to run")
+    args = parser.parse_args()
+
+    if args.fetch:
+        fetch()
+    generate(generator(args))
+    print(f"generated {len(list(out_dir().glob('*.rs')))} files into {out_dir().relative_to(repo_root())}")
+
+
+if __name__ == "__main__":
+    main()

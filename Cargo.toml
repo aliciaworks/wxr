@@ -1,0 +1,87 @@
+# An XR core.
+#
+# The workspace, and why it is shaped this way, is in the README. What matters here is the one dependency
+# every crate shares: the math, because a pose is a position and an orientation and both sides of every
+# boundary have to agree on what those are.
+[workspace]
+resolver = "3"
+members = [
+    "crates/wxr",
+    "crates/wxr-openxr",
+    "crates/wxr-webxr",
+    "crates/wxr-webxr-smoke",
+    "crates/wxr-conformance",
+    "crates/wxr-render",
+    "crates/wxr-apple",
+]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+# The oldest rustc this is claimed to build with, and the floor edition 2024 itself sets: `cargo msrv` puts
+# `wxr` at 1.85.1, which is that edition's first release. It is a *claim*, and a claim nobody builds against
+# is the kind this repository has been removing rather than adding, so CI holds a job on exactly this
+# version - see the `msrv` job, which is what keeps the number honest.
+#
+# Only `wxr` inherits it, and that is decided crate by crate rather than once here:
+#
+# * `wxr-render` and `wxr-openxr` pull `wgpu`, whose own `ordered-float` wants 1.90 today. A rust-version on
+#   them would be both false and - under this workspace's resolver v3, which is rust-version aware - a
+#   constraint on versions they cannot downgrade past, since `wgpu` is pinned to a git revision rather than a
+#   version range. Their MSRV is `wgpu`'s to move, and it moves without anything here being wrong.
+# * `wxr-webxr` measures 1.85.1, but only on a host where it is an empty crate: everything it has is under
+#   `cfg(target_family = "wasm")`, and there it takes `wxr-render` and so `wgpu`. The version that would be
+#   declared is the one for the target it does nothing on.
+# * The rest have not been measured, and a number nobody measured is a guess wearing a field's clothing.
+rust-version = "1.85"
+
+[workspace.dependencies]
+# A pose is not a bevy transform or an OpenXR `XrPosef`; it is a position and an orientation, and the crates
+# that carry one across a boundary should not have to convert between three spellings of that.
+glam = "0.30"
+# The renderer's layer, and the reason the core does not need one: a backend is *given* a device, and what
+# it is given is a wgpu device.
+#
+# 30, because `wgpu-hal`'s backends grew `texture_from_raw` in it - Vulkan's `Device::texture_from_raw`, and
+# Metal's - and without it there is no way to wrap a compositor's image as a wgpu texture, which is the whole
+# of what an OpenXR or an Apple backend has to do with one.
+#
+# **From the registry, and that is the point.** A WebXR *app* needs one field upstream does not have -
+# `RequestAdapterOptions::xr_compatible`, without which a wgpu device cannot be an XR-compatible one and
+# `XRGPUBinding` refuses it - and a fork carries it, since the field has been proposed upstream and not landed.
+# *library* that depends on a git wgpu is a library no wgpu renderer can be handed a device by: two sources are
+# two packages, so two `wgpu::Device`s that are different types. A game on bevy is exactly that case, and bevy
+# builds `RequestAdapterOptions` field by field, so it could not take the fork even if it wanted to.
+#
+# So the fork is a `[patch.crates-io]` below, which is this workspace's own builds and nobody else's: the smoke
+# page - the one crate here that *asks* for an XR-compatible adapter - gets the field, and a crate that depends
+# on wxr resolves `wgpu` from the registry and unifies with the renderer it already has. An app that wants a
+# WebXR session patches it in the same way; the README says so.
+wgpu = "30"
+thiserror = "2"
+log = "0.4"
+
+# The one thing a WebXR app needs that upstream wgpu does not have, and a patch rather than a dependency so
+# that it reaches this workspace's builds and stops at its edge.
+#
+# It is based on the `v30.0.1` release and carries one commit on top of it, which is not a detail: the fork used
+# to sit on a `main` commit from before that release, where `Device::create_texture_from_hal` still took a
+# `cleared` argument that the released `30.0.1` does not. A patch whose API differs from the crate it replaces
+# is a patch that only builds here - `wxr-openxr` compiled against the fork and against the registry can be two
+# different crates, and this is what keeps them one. When upstream grows the field, the branch has nothing left
+# to carry.
+[patch.crates-io]
+wgpu = { git = "https://github.com/aliciaworks/wgpu", rev = "cd49dae62f799f455b8786a409abea6bd24c57bb" }
+
+# `objc2-ar-kit` is generated in a fork of `objc2`, and a generated crate carries the objc2 it was
+# built with - so the fork reaches the registry `objc2` too, as a patch, and one `objc2` is shared by
+# the registry crates and the generated ones instead of two that cannot pass a type between them.
+objc2 = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b" }
+# wgpu-hal reads its Metal layer through this crate, which is written against the objc2 the
+# registry has - so the ivars API it uses is the one the registry has. The fork's objc2 moved
+# that API, so the two call sites are adapted here, in a vendored copy, rather than giving up
+# the generated bindings over a layer wrapper.
+raw-window-metal = { git = "https://github.com/aliciaworks/raw-window-metal", rev = "03f16839804d07fa63d4db07d4b7d2b907b56167" }
+
+[profile.dev]
+opt-level = 1

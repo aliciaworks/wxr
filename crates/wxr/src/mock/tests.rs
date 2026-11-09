@@ -1,0 +1,500 @@
+//! What a session is, exercised on the mock one - which is the point of having it.
+
+use super::*;
+
+mod frames;
+mod inputs;
+
+/// Drive the mock the way an app would: poll to `Visible`, then run frames.
+fn running() -> MockSession {
+    let mut session = MockBackend::default()
+        .connect((), SessionMode::ImmersiveVr)
+        .expect("the mock connects");
+    while let Some(event) = session.poll() {
+        if let Event::VisibilityChanged(Visibility::Visible) = event {
+            break;
+        }
+    }
+    session
+}
+
+#[test]
+fn the_lifecycle_and_the_visibility_are_two_ladders() {
+    let mut session = MockBackend::default()
+        .connect((), SessionMode::ImmersiveVr)
+        .unwrap();
+    assert_eq!(session.state(), State::Connecting);
+    assert_eq!(session.visibility(), Visibility::Hidden);
+
+    // The session arrives, which is the whole of the lifecycle ladder in WebXR's terms...
+    session.poll();
+    assert_eq!(session.state(), State::Ready);
+    assert!(!session.state().is_connecting());
+    assert!(session.state().is_alive());
+
+    // ...and then it is shown, in rungs of its own.
+    session.poll();
+    assert_eq!(session.visibility(), Visibility::Hidden);
+    session.poll();
+    assert_eq!(session.visibility(), Visibility::Visible);
+    assert!(session.visibility().can_render());
+    session.poll();
+    assert_eq!(session.visibility(), Visibility::VisibleBlurred);
+    assert!(
+        session.visibility().can_render(),
+        "blurred is still on a display, and a frame not drawn is a hole in it"
+    );
+    assert!(session.poll().is_none());
+}
+
+#[test]
+fn an_ended_session_is_not_one_to_draw_into() {
+    let mut session = MockBackend {
+        states: vec![State::Ready, State::Ended],
+        ..Default::default()
+    }
+    .connect((), SessionMode::ImmersiveVr)
+    .unwrap();
+    while session.poll().is_some() {}
+    assert_eq!(session.state(), State::Ended);
+    assert!(
+        session.visibility().can_render(),
+        "the last visibility rung is still one a display shows"
+    );
+    assert!(
+        !crate::should_render(&session),
+        "but the session it belonged to is over"
+    );
+}
+
+#[test]
+fn the_escape_hatch_hands_back_the_backends_own_type() {
+    let mut session = MockBackend::default()
+        .connect((), SessionMode::ImmersiveVr)
+        .unwrap();
+
+    // The core's type says one thing...
+    assert_eq!(session.state(), State::Connecting);
+    // ...and the backend's own type is reachable through the seam, which is what a program needs when
+    // the platform has something the core has decided not to say.
+    let same: &MockSession = session
+        .as_backend::<MockSession>()
+        .expect("the mock is this backend");
+    assert_eq!(same.state(), State::Connecting);
+
+    // A different backend's type is `None` - not a panic, and not a lie.
+    assert!(session.as_backend::<MockBackend>().is_none());
+
+    // And the mutable half, which is how an app sets the platform's own knobs.
+    let mutable: &mut MockSession = session
+        .as_backend_mut::<MockSession>()
+        .expect("the mock is this backend");
+    mutable.poll();
+    assert_eq!(session.state(), State::Ready);
+}
+
+#[test]
+fn inputs_replace_the_last_frame_rather_than_pile_up() {
+    // The vector is the caller's, and a frame loop keeps one across frames - so what `inputs` leaves in it is
+    // this frame's sources and not this frame's plus every frame before it.
+    let mut session = running();
+    let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+    let mut sources = Vec::new();
+    session.inputs(space, &mut sources).unwrap();
+    let first = sources.clone();
+    session.inputs(space, &mut sources).unwrap();
+    assert_eq!(sources, first, "the second frame's two, not four");
+}
+
+#[test]
+fn a_press_is_a_start_an_end_and_a_selection() {
+    let mut session = running();
+    let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+    let mut sources = Vec::new();
+    session.inputs(space, &mut sources).unwrap();
+    assert_eq!(sources.len(), 2);
+    assert_eq!(sources[0].id, InputId::new(0));
+    assert_eq!(sources[0].handedness, Handedness::Left);
+    assert_eq!(sources[1].id, InputId::new(1));
+    assert_eq!(sources[0].target_ray_mode, TargetRayMode::TrackedPointer);
+
+    let id = sources[1].id;
+    // Nothing else is news, so the three below are the press and only the press.
+    while session.poll().is_some() {}
+    session.press(id);
+    assert_eq!(session.poll(), Some(Event::SelectStart(id)));
+    assert_eq!(session.poll(), Some(Event::SelectEnd(id)));
+    assert_eq!(session.poll(), Some(Event::Select(id)));
+    assert_eq!(session.poll(), None);
+}
+
+#[test]
+fn a_pulse_names_the_source_it_reaches() {
+    let mut session = running();
+    let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+    let mut sources = Vec::new();
+    session.inputs(space, &mut sources).unwrap();
+    // The controllers have actuators, so this call can be answered; `Ok` alone would not say it moved.
+    assert!(sources[0].haptics);
+    assert!(session.features().contains(crate::Features::HAPTICS));
+
+    let id = sources[1].id;
+    session.pulse(id, 0.5, Duration::from_millis(25)).unwrap();
+    // Clamped rather than refused; a NaN is the quietest request there is, which is what the backends send.
+    session.pulse(id, 7.0, Duration::from_millis(5)).unwrap();
+    session.pulse(id, f32::NAN, Duration::ZERO).unwrap();
+    assert_eq!(
+        session.pulses(),
+        &[
+            (id, 0.5, Duration::from_millis(25)),
+            (id, 1.0, Duration::from_millis(5)),
+            (id, 0.0, Duration::ZERO),
+        ]
+    );
+
+    session.play_pcm(id, &[0.0, 1.0, 0.0], 800.0).unwrap();
+    assert_eq!(session.waveforms(), &[(id, 3, 800.0)]);
+}
+
+#[test]
+fn the_mock_room_has_triangles_in_it() {
+    let mut session = running();
+    let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+    let mut meshes = Vec::new();
+    session.meshes(space, &mut meshes).unwrap();
+    assert!(session.features().contains(crate::Features::MESH));
+    assert_eq!(meshes.len(), 1);
+    let mesh = &meshes[0];
+    assert_eq!(mesh.kind, crate::MeshKind::Table);
+    // Three at a time, and every one of them names a corner: the shape a mesh has to have to be worth
+    // anything, which is also the shape a mock that fabricated one would get wrong.
+    assert_eq!(mesh.indices.len() % 3, 0);
+    assert!(
+        mesh.indices
+            .iter()
+            .all(|i| (*i as usize) < mesh.vertices.len())
+    );
+}
+
+#[test]
+fn a_recentered_space_is_stale_and_says_so() {
+    let mut session = running();
+    let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+    while session.poll().is_some() {}
+    session.reset(space);
+    assert_eq!(session.poll(), Some(Event::Reset(space)));
+}
+
+#[test]
+fn a_space_with_no_boundary_has_an_empty_one() {
+    let mut session = running();
+    let space = session
+        .space(SpaceKind::BoundedFloor)
+        .expect("a bounded floor");
+    let mut bounds = Vec::new();
+    session.bounds(space, &mut bounds).unwrap();
+    assert!(bounds.is_empty());
+}
+
+#[test]
+fn a_backend_without_depth_sensing_answers_none() {
+    let mut session = running();
+    assert!(session.depth(0).is_none());
+    // Not `Features::NONE`: the mock's controllers have actuators now, so haptics is a bit it does have. What
+    // this test is about is the bit it does not.
+    assert!(!session.features().contains(crate::Features::DEPTH));
+
+    // Anchors are the same shape: a backend that cannot make one says so rather than handing back a name that
+    // never resolves.
+    let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+    assert!(matches!(
+        session.anchor(space, Pose::IDENTITY),
+        Err(Error::Unsupported(_))
+    ));
+    assert_eq!(
+        session.anchor_pose(crate::Anchor::new(0), space).unwrap(),
+        None
+    );
+}
+
+#[test]
+fn a_backend_without_light_estimation_says_so() {
+    let mut session = running();
+    assert!(matches!(session.light_probe(), Err(Error::Unsupported(_))));
+    // And a light nobody estimated is no light, not the last frame's.
+    let mut light = crate::LightEstimate {
+        primary_intensity: Vec3::X,
+        ..Default::default()
+    };
+    session
+        .light(crate::LightProbe::new(0), &mut light)
+        .expect("no estimate is not an error");
+    assert_eq!(light.primary_intensity, Vec3::ZERO);
+}
+
+#[test]
+fn a_backend_without_hit_testing_says_so() {
+    let mut session = running();
+    let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+    assert!(matches!(
+        session.hit_test_source(space),
+        Err(Error::Unsupported(_))
+    ));
+    // And a hit test that never happened is no hits, not a failure.
+    let mut hits = Vec::new();
+    session
+        .hits(crate::HitTestSource::new(0), space, &mut hits)
+        .expect("an empty hit test is not an error");
+    assert!(hits.is_empty());
+}
+
+#[test]
+fn a_session_is_asked_for_in_a_mode_and_the_mock_remembers_it() {
+    let session = MockBackend::default()
+        .connect((), SessionMode::ImmersiveAr)
+        .expect("the mock connects");
+    assert_eq!(session.mode(), SessionMode::ImmersiveAr);
+}
+
+#[test]
+fn a_controller_has_no_skeleton() {
+    let mut session = running();
+    let space = session.space(SpaceKind::LocalFloor).expect("a floor");
+    let mut sources = Vec::new();
+    session.inputs(space, &mut sources).unwrap();
+    assert!(!sources[0].hand, "a controller is not a hand");
+
+    let mut hand = crate::Hand::default();
+    session.hand(sources[0].id, space, &mut hand).unwrap();
+    assert!(!hand.is_tracked());
+    assert_eq!(hand.joint(crate::HandJoint::Wrist), None);
+    // Asked, and answered with nothing - which is the whole difference between "no hand" and "hands not on".
+    // The first is a hand out of view; the second is a floor-level session.
+    assert_eq!(session.hand_asks(), &[sources[0].id]);
+}
+
+#[test]
+fn the_set_of_inputs_changing_is_an_event_of_its_own() {
+    let mut session = running();
+    while session.poll().is_some() {}
+    session.inputs_changed();
+    assert_eq!(session.poll(), Some(Event::InputsChanged));
+    assert_eq!(session.poll(), None);
+}
+
+#[test]
+fn a_space_can_be_offset_from_another() {
+    let mut session = running();
+    let floor = session.space(SpaceKind::LocalFloor).expect("a floor");
+    let table = session
+        .offset_space(
+            floor,
+            Pose {
+                position: Vec3::new(0.0, 0.75, 0.0),
+                orientation: Quat::IDENTITY,
+            },
+        )
+        .expect("an offset space");
+    // Same kind, different handle: the offset is a new space that follows the one it was made from.
+    assert_eq!(table.kind, floor.kind);
+    assert_ne!(table.id(), floor.id());
+}
+
+#[test]
+fn a_space_this_session_never_made_is_refused() {
+    // A handle is an id and a public kind, so a caller can hold one that no session made. Every real backend
+    // answers `NoSpace` rather than inventing a place, and a mock that did otherwise would let code ship that
+    // works only against a session with no runtime behind it.
+    let mut session = running();
+    let floor = session.space(SpaceKind::LocalFloor).expect("a floor");
+    let past_the_end = ReferenceSpace::new(floor.kind, floor.id() + 1);
+    assert!(matches!(
+        session.offset_space(past_the_end, Pose::IDENTITY),
+        Err(Error::NoSpace(SpaceKind::LocalFloor))
+    ));
+    let changed_kind = ReferenceSpace::new(SpaceKind::BoundedFloor, floor.id());
+    assert!(matches!(
+        session.offset_space(changed_kind, Pose::IDENTITY),
+        Err(Error::NoSpace(SpaceKind::BoundedFloor))
+    ));
+    // And a frame does not get eyes from one, because a view has no space behind it to be measured in.
+    let mut frame = Frame::default();
+    session.begin(Duration::ZERO, &mut frame).unwrap();
+    assert!(matches!(
+        session.views(past_the_end, &mut frame),
+        Err(Error::NoSpace(SpaceKind::LocalFloor))
+    ));
+    assert!(frame.views().is_empty(), "a refused space places nothing");
+}
+
+#[test]
+fn a_mock_says_nothing_about_the_display_and_that_is_opaque() {
+    // The default in the trait, and the right assumption: a session that does not say is one that fills
+    // the display, which is what both ways of presenting into one do.
+    let session = running();
+    assert_eq!(session.blend(), crate::Blend::Opaque);
+}
+
+#[test]
+fn a_space_without_a_floor_is_refused_rather_than_downgraded() {
+    let mut session = running();
+    assert!(matches!(
+        session.space(SpaceKind::Viewer),
+        Err(Error::NoSpace(SpaceKind::Viewer))
+    ));
+}
+
+#[test]
+fn a_session_without_the_layer_feature_refuses_one() {
+    let mut session = running();
+    let space = session.space(SpaceKind::LocalFloor).unwrap();
+    let refused = session.layer(
+        space,
+        LayerShape::Quad {
+            width: 1.0,
+            height: 1.0,
+        },
+        Extent2d::new(256, 256),
+    );
+    // Refused, and not handed back a layer that nothing would ever place - which is what the capability bit is
+    // for: an app that branches on `features` never sees this, and one that does not gets an error rather than a
+    // silent nothing.
+    assert!(matches!(refused, Err(Error::Unsupported(_))));
+    assert!(!session.features().contains(Features::LAYER_QUAD));
+    assert_eq!(session.layer_count(), 0);
+}
+
+/// The mock with the one capability it can have, polled to `Visible` like a real session.
+fn with_layers() -> MockSession {
+    let mut session = MockBackend {
+        quad_layers: true,
+        ..Default::default()
+    }
+    .connect((), SessionMode::ImmersiveVr)
+    .unwrap();
+    while let Some(event) = session.poll() {
+        if let Event::VisibilityChanged(Visibility::Visible) = event {
+            break;
+        }
+    }
+    session
+}
+
+#[test]
+fn a_layer_is_made_placed_drawn_into_and_released() {
+    let mut session = with_layers();
+    assert!(session.features().contains(Features::LAYER_QUAD));
+
+    let space = session.space(SpaceKind::LocalFloor).unwrap();
+    let shape = LayerShape::Quad {
+        width: 1.2,
+        height: 0.8,
+    };
+    let pixels = Extent2d::new(512, 384);
+    let layer = session.layer(space, shape, pixels).unwrap();
+    assert_eq!(session.layer_count(), 1);
+    assert_eq!(session.layer_shape(layer), Some((shape, pixels)));
+    assert_eq!(session.layer_space(layer), Some(space));
+
+    let placed = Pose {
+        position: Vec3::new(0.0, 1.5, -1.0),
+        orientation: Quat::IDENTITY,
+    };
+    session.set_layer_pose(layer, placed).unwrap();
+    assert_eq!(session.layer_pose(layer), Some(placed));
+
+    // A frame hands out an image, and the next frame hands out a different one: a layer's picture belongs to the
+    // frame, and a renderer that kept the first would draw into a picture the compositor has taken back.
+    let mut frame = Frame::default();
+    session.begin(Duration::ZERO, &mut frame).unwrap();
+    let (first, image) = session.layer_image(layer).unwrap();
+    let first = *first;
+    assert_eq!(image.meta.extent, pixels);
+    assert_eq!(image.meta.layers, 1, "a quad is one picture for both eyes");
+    assert!(image.is_whole(), "a layer gets a texture of its own");
+
+    let mut frame = Frame::default();
+    session.begin(Duration::ZERO, &mut frame).unwrap();
+    let (second, _) = session.layer_image(layer).unwrap();
+    assert_ne!(first, *second);
+
+    session.release_layer(layer);
+    assert_eq!(session.layer_count(), 0);
+    assert!(session.layer_image(layer).is_none());
+}
+
+#[test]
+fn a_shape_the_session_does_not_have_is_refused_even_with_layers() {
+    let mut session = with_layers();
+    let space = session.space(SpaceKind::LocalFloor).unwrap();
+    let refused = session.layer(space, LayerShape::Cube, Extent2d::new(256, 256));
+    // The bit is per shape on both platforms, so a session with a quad and no cube is the normal case rather
+    // than an odd one.
+    assert!(matches!(refused, Err(Error::Unsupported(_))));
+    assert_eq!(session.layer_count(), 0);
+}
+
+/// The mock with hands instead of controllers, polled to `Visible` like a real session.
+fn with_hands() -> MockSession {
+    let mut session = MockBackend {
+        hands: true,
+        ..Default::default()
+    }
+    .connect((), SessionMode::ImmersiveVr)
+    .unwrap();
+    while let Some(event) = session.poll() {
+        if let Event::VisibilityChanged(Visibility::Visible) = event {
+            break;
+        }
+    }
+    session
+}
+
+#[test]
+fn a_hand_is_a_skeleton_and_a_controller_is_not() {
+    let mut session = with_hands();
+    let space = session.space(SpaceKind::LocalFloor).unwrap();
+
+    // A session with hands is a session that says it has them, which is the question a caller asks before it
+    // asks for one - and the only reason it is worth asking is that the answer can be no.
+    assert!(session.features().contains(Features::HAND_TRACKING));
+    let mut sources = Vec::new();
+    session.inputs(space, &mut sources).unwrap();
+    assert_eq!(sources.len(), 2);
+    assert!(sources.iter().all(|source| source.hand));
+
+    let mut left = Hand::default();
+    session.hand(sources[0].id, space, &mut left).unwrap();
+    let mut right = Hand::default();
+    session.hand(sources[1].id, space, &mut right).unwrap();
+    assert!(left.is_tracked() && right.is_tracked());
+
+    // Two sources, two places: a left wrist at the right wrist is one answer handed out twice, and a game
+    // drawing both hands would draw one.
+    let left_wrist = left.joint(HandJoint::Wrist).unwrap();
+    let right_wrist = right.joint(HandJoint::Wrist).unwrap();
+    assert_ne!(left_wrist.pose.position, right_wrist.pose.position);
+
+    // And a skeleton has a direction, which is what a fingertip a little way along the hand from the wrist
+    // gives it: a joint at the origin of the one next to it is a dot, not a finger.
+    let tip = left.joint(HandJoint::IndexFingerTip).unwrap();
+    assert!(tip.pose.position.z < left_wrist.pose.position.z);
+    assert!(tip.radius < left_wrist.radius, "a fingertip is thinner");
+
+    // Both were asked for, by id, and nothing else was.
+    assert_eq!(session.hand_asks(), &[sources[0].id, sources[1].id]);
+}
+
+#[test]
+fn a_session_without_hands_is_asked_nothing_about_them() {
+    // The default, and the floor: `inputs` says the sources are controllers, so the round trip never happens -
+    // which is what `hand_asks` is there to show, since a `hand` that returned an empty skeleton for a
+    // controller would look identical to one that returned nothing for a hand out of view.
+    let mut session = running();
+    let space = session.space(SpaceKind::LocalFloor).unwrap();
+    let mut sources = Vec::new();
+    session.inputs(space, &mut sources).unwrap();
+    assert!(sources.iter().all(|source| !source.hand));
+    assert!(!session.features().contains(Features::HAND_TRACKING));
+    assert!(session.hand_asks().is_empty());
+}

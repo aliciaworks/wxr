@@ -1,0 +1,258 @@
+#![cfg(not(target_family = "wasm"))]
+
+//! Where two readings of the WebXR API agree, and where they must.
+//!
+//! A specification fixes some things exactly - how many session modes there are, what an eye is - and those
+//! are the things a second implementation can be compared against without hardware. Each test names the part
+//! of the specification it is about, so that a failure says which sentence moved.
+
+/// `XRSessionMode` - <https://immersive-web.github.io/webxr/#enumdef-xrsessionmode>
+///
+/// Three modes and no fourth: `inline` is a session drawn in the page, and the two immersive ones differ in
+/// whether the picture *is* the world or is drawn over it. The comparison is variant by variant rather than
+/// by count, so a mode added on either side is a failure and not a silently-covered case.
+#[test]
+fn the_session_modes_are_the_same_three() {
+    let ours = [
+        wxr::SessionMode::Inline,
+        wxr::SessionMode::ImmersiveVr,
+        wxr::SessionMode::ImmersiveAr,
+    ];
+    let theirs = [
+        servo_webxr_api::SessionMode::Inline,
+        servo_webxr_api::SessionMode::ImmersiveVR,
+        servo_webxr_api::SessionMode::ImmersiveAR,
+    ];
+
+    assert_eq!(ours.len(), theirs.len(), "a mode was added on one side");
+    for (ours, theirs) in ours.iter().zip(&theirs) {
+        // The names differ only in casing, which is each project's own convention for its own words - the
+        // point is that nothing else about them differs, which is what an equal name here says.
+        assert_eq!(
+            format!("{ours:?}").to_ascii_lowercase(),
+            format!("{theirs:?}").to_ascii_lowercase(),
+        );
+    }
+}
+
+/// A name set, sorted - the shape a comparison of two enums with the same variants in different orders
+/// wants, and the one that fails when a variant is added rather than quietly passing.
+fn names<T: std::fmt::Debug>(variants: &[T]) -> Vec<String> {
+    let mut names: Vec<String> = variants
+        .iter()
+        .map(|variant| format!("{variant:?}"))
+        .collect();
+    names.sort();
+    names
+}
+
+/// `XRTargetRayMode` - <https://immersive-web.github.io/webxr/#enumdef-xrtargetraymode>
+///
+/// Four, and the two readings list them in different orders and agree on all four names.
+#[test]
+fn the_target_ray_modes_are_the_same_four() {
+    let ours = names(&[
+        wxr::TargetRayMode::TrackedPointer,
+        wxr::TargetRayMode::Gaze,
+        wxr::TargetRayMode::Screen,
+        wxr::TargetRayMode::TransientPointer,
+    ]);
+    let theirs = names(&[
+        servo_webxr_api::TargetRayMode::Gaze,
+        servo_webxr_api::TargetRayMode::TrackedPointer,
+        servo_webxr_api::TargetRayMode::Screen,
+        servo_webxr_api::TargetRayMode::TransientPointer,
+    ]);
+    assert_eq!(ours, theirs);
+}
+
+/// `XRHandedness` - <https://immersive-web.github.io/webxr/#enumdef-xrhandedness>
+///
+/// The two hands are spelled the same. The third value is WebXR's `"none"` - a runtime that does not say, or
+/// a source that is not a hand - and it is the one place the two readings name the same thing differently:
+/// this core's has always been `Unknown`, because it is also what a source with no hand at all gets.
+#[test]
+fn the_hands_are_the_same_two_and_the_absence_is_spelled_out() {
+    assert_eq!(
+        names(&[wxr::Handedness::Left, wxr::Handedness::Right]),
+        names(&[
+            servo_webxr_api::Handedness::Left,
+            servo_webxr_api::Handedness::Right
+        ])
+    );
+    let ours = names(&[wxr::Handedness::Unknown]);
+    let theirs = names(&[servo_webxr_api::Handedness::None]);
+    assert_eq!(
+        ours.len(),
+        theirs.len(),
+        "the third value is one value on both sides"
+    );
+}
+
+/// `XRLayerLayout` - <https://immersive-web.github.io/webxr/#enumdef-xrlayerlayout>
+///
+/// Five values in the specification; Servo names three of them and this core names all five, so what can be
+/// compared is that its three are spelled the same here - a layer laid out left-right means the same thing in
+/// both readings, which is the part a picture would show.
+#[test]
+fn the_layer_layouts_agree_where_both_name_them() {
+    let ours = names(&[
+        wxr::layer::LayerLayout::Mono,
+        wxr::layer::LayerLayout::StereoLeftRight,
+        wxr::layer::LayerLayout::StereoTopBottom,
+    ]);
+    let theirs = names(&[
+        servo_webxr_api::LayerLayout::Mono,
+        servo_webxr_api::LayerLayout::StereoLeftRight,
+        servo_webxr_api::LayerLayout::StereoTopBottom,
+    ]);
+    assert_eq!(ours, theirs);
+}
+
+/// `XREnvironmentBlendMode` - <https://immersive-web.github.io/webxr/#enumdef-xrenvironmentblendmode>
+///
+/// Three: an opaque session's picture replaces the world, an additive one adds light to it, and an
+/// alpha-blending one mixes the two. Both readings name all three, in different orders.
+#[test]
+fn the_environment_blend_modes_are_the_same_three() {
+    let ours = names(&[
+        wxr::Blend::Opaque,
+        wxr::Blend::Additive,
+        wxr::Blend::AlphaBlend,
+    ]);
+    let theirs = names(&[
+        servo_webxr_api::EnvironmentBlendMode::Opaque,
+        servo_webxr_api::EnvironmentBlendMode::AlphaBlend,
+        servo_webxr_api::EnvironmentBlendMode::Additive,
+    ]);
+    assert_eq!(ours, theirs);
+}
+
+/// `XRSessionVisibilityState` - <https://immersive-web.github.io/webxr/#enumdef-xrsessionvisibilitystate>
+///
+/// Three, and both readings have all three: `visible`, `visible-blurred` - on a display, with something else
+/// holding the person's attention - and `hidden`.
+///
+/// A note in an earlier commit here said this core was missing the middle rung. It was wrong, and the way it
+/// was wrong is worth keeping: the grep that produced it dropped comment lines and cut off before the variant,
+/// so the conclusion came from a reading of the output rather than from the output. This test is the check
+/// that claim should have been.
+#[test]
+fn the_visibility_states_are_the_same_three() {
+    let ours = names(&[
+        wxr::Visibility::Visible,
+        wxr::Visibility::VisibleBlurred,
+        wxr::Visibility::Hidden,
+    ]);
+    let theirs = names(&[
+        servo_webxr_api::Visibility::Visible,
+        servo_webxr_api::Visibility::VisibleBlurred,
+        servo_webxr_api::Visibility::Hidden,
+    ]);
+    assert_eq!(ours, theirs);
+}
+
+/// The hand's joints - <https://immersive-web.github.io/webxr-hand-input/#skeleton-joints-section>
+///
+/// Twenty-five, and the specification names them exactly: a wrist, five thumb joints, and five on each of
+/// the four fingers. The list here is the specification's own, and it is written out rather than compared to
+/// the other implementation - which is the one place in this file where that is the right way round, because
+/// Servo builds its joints as `Index(FingerJoint)` and spells two of them differently (`ThumbPhalanxTip` and
+/// `Little` where the specification says `thumb-tip` and `pinky-finger-*`). A comparison against Servo here
+/// would be asking which of the two readings is right, and the answer is neither of them: it is the
+/// specification, so the test spells it.
+#[test]
+fn the_hand_has_the_twenty_five_joints_the_specification_names() {
+    let spec = [
+        "Wrist",
+        "ThumbMetacarpal",
+        "ThumbPhalanxProximal",
+        "ThumbPhalanxDistal",
+        "ThumbTip",
+        "IndexFingerMetacarpal",
+        "IndexFingerPhalanxProximal",
+        "IndexFingerPhalanxIntermediate",
+        "IndexFingerPhalanxDistal",
+        "IndexFingerTip",
+        "MiddleFingerMetacarpal",
+        "MiddleFingerPhalanxProximal",
+        "MiddleFingerPhalanxIntermediate",
+        "MiddleFingerPhalanxDistal",
+        "MiddleFingerTip",
+        "RingFingerMetacarpal",
+        "RingFingerPhalanxProximal",
+        "RingFingerPhalanxIntermediate",
+        "RingFingerPhalanxDistal",
+        "RingFingerTip",
+        "PinkyFingerMetacarpal",
+        "PinkyFingerPhalanxProximal",
+        "PinkyFingerPhalanxIntermediate",
+        "PinkyFingerPhalanxDistal",
+        "PinkyFingerTip",
+    ];
+
+    let ours = names(&[
+        wxr::HandJoint::Wrist,
+        wxr::HandJoint::ThumbMetacarpal,
+        wxr::HandJoint::ThumbPhalanxProximal,
+        wxr::HandJoint::ThumbPhalanxDistal,
+        wxr::HandJoint::ThumbTip,
+        wxr::HandJoint::IndexFingerMetacarpal,
+        wxr::HandJoint::IndexFingerPhalanxProximal,
+        wxr::HandJoint::IndexFingerPhalanxIntermediate,
+        wxr::HandJoint::IndexFingerPhalanxDistal,
+        wxr::HandJoint::IndexFingerTip,
+        wxr::HandJoint::MiddleFingerMetacarpal,
+        wxr::HandJoint::MiddleFingerPhalanxProximal,
+        wxr::HandJoint::MiddleFingerPhalanxIntermediate,
+        wxr::HandJoint::MiddleFingerPhalanxDistal,
+        wxr::HandJoint::MiddleFingerTip,
+        wxr::HandJoint::RingFingerMetacarpal,
+        wxr::HandJoint::RingFingerPhalanxProximal,
+        wxr::HandJoint::RingFingerPhalanxIntermediate,
+        wxr::HandJoint::RingFingerPhalanxDistal,
+        wxr::HandJoint::RingFingerTip,
+        wxr::HandJoint::PinkyFingerMetacarpal,
+        wxr::HandJoint::PinkyFingerPhalanxProximal,
+        wxr::HandJoint::PinkyFingerPhalanxIntermediate,
+        wxr::HandJoint::PinkyFingerPhalanxDistal,
+        wxr::HandJoint::PinkyFingerTip,
+    ]);
+    let mut theirs: Vec<String> = spec.iter().map(|name| name.to_string()).collect();
+    theirs.sort();
+    assert_eq!(ours.len(), 25, "a hand has twenty-five joints");
+    assert_eq!(ours, theirs);
+}
+
+/// `XRReferenceSpaceType` - <https://immersive-web.github.io/webxr/#enumdef-xrreferencespacetype>
+///
+/// Five: `viewer`, `local`, `local-floor`, `bounded-floor` and `unbounded`. This core has all five, and the
+/// comparison with the other reading is one-sided for a reason worth writing down: Servo keeps its reference
+/// spaces in the same enum as the spaces that belong to an input source (`TargetRay`, `Grip`, `Joint`), names
+/// `local-floor` `Floor`, and has no `unbounded` - so what can be checked is that each of the four it does
+/// have is one of the five here, which is the part a wrong name would break.
+#[test]
+fn the_reference_space_types_are_the_same_five() {
+    let ours = names(&[
+        wxr::SpaceKind::Viewer,
+        wxr::SpaceKind::Local,
+        wxr::SpaceKind::LocalFloor,
+        wxr::SpaceKind::BoundedFloor,
+        wxr::SpaceKind::Unbounded,
+    ]);
+    let mut spec: Vec<String> = ["BoundedFloor", "Local", "LocalFloor", "Unbounded", "Viewer"]
+        .iter()
+        .map(|name| name.to_string())
+        .collect();
+    spec.sort();
+    assert_eq!(ours, spec, "the specification's five, by name");
+
+    // Each of Servo's four, under the name this core gives the same space.
+    for name in ["Viewer", "Local", "Floor", "BoundedFloor"] {
+        let ours_name = if name == "Floor" { "LocalFloor" } else { name };
+        assert!(
+            ours.contains(&ours_name.to_string()),
+            "{name} has no counterpart here",
+        );
+    }
+}

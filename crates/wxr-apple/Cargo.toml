@@ -1,0 +1,45 @@
+[package]
+name = "wxr-apple"
+description = "The Apple backend for wxr: CompositorServices to present, Metal to draw, ARKit for tracking."
+version.workspace = true
+edition.workspace = true
+
+# The app calls in through a C ABI (`ffi`), so this crate is a static library for it to link as well as the
+# rlib the workspace's own builds want. Not `cdylib`: what an app links is a static lib and a set of
+# frameworks, and a dylib would only add a load path to install.
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+# Apple only, and empty everywhere else, for the same reason `wxr-openxr` is empty on the web: there is no
+# CompositorServices off an Apple platform, and a build machine should not have to know what one is.
+[target.'cfg(target_vendor = "apple")'.dependencies]
+wxr = { path = "../wxr" }
+# The renderer's formats, so that the two backends cannot disagree about what a colour format is.
+wxr-render = { path = "../wxr-render" }
+wgpu = { workspace = true, features = ["metal"] }
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSObject"] }
+objc2-metal = "0.3"
+# The compositor's own bindings, from the same family as the Metal ones - so the C surface is Apple's
+# headers as a generator read them rather than as this crate remembers them.
+objc2-compositor-services = "0.3"
+objc2-ar-kit = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b" }
+# Controllers, and the haptics they can be asked for. Both come from the same fork as ARKit, and the reason
+# the foundation above is a second entry rather than this one: a git dependency is a *different crate* from
+# the crates.io one with the same name, so the `NSArray` inside `GCController::controllers()` is the fork's
+# and not this crate's - and naming it needs a dependency that says which. Renamed so both can be named, and
+# only this module uses it.
+objc2-foundation-visionos = { package = "objc2-foundation", git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b", features = ["NSObject", "NSArray"] }
+objc2-metal-visionos = { package = "objc2-metal", git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b" }
+# ARKit's update handlers are handed a queue to run on, and naming one needs the crate that declares it.
+# The same fork as ARKit above, for the same reason as the two renames beside it: a git dependency is a
+# *different crate* from the crates.io one of the same name, so `DispatchQueue` here has to be the fork's
+# or it is not the type `ar_environment_light_estimation_provider_set_update_handler_f` takes. No rename
+# needed, because only this crate's copy is named.
+dispatch2 = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b" }
+objc2-game-controller = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b", features = ["objc2-core-haptics"] }
+objc2-core-haptics = { git = "https://github.com/aliciaworks/objc2", rev = "5830107141eb819d0df01c1ead2b43ee54637a0b" }
+log = { workspace = true }
+# Blocking the wgpu handshake for the device this crate makes for an app: `request_adapter` and
+# `request_device` are futures, and the C ABI entry has no executor to await them on.
+pollster = "1"

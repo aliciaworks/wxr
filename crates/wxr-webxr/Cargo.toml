@@ -1,0 +1,37 @@
+[package]
+name = "wxr-webxr"
+description = "A WebXR backend for wxr, for the browser."
+version.workspace = true
+edition.workspace = true
+
+# Everything is under the target, because on anything but wasm this crate is empty: there is no WebXR
+# outside a browser, and a desktop build should not have to build a browser to know that.
+[target.'cfg(target_family = "wasm")'.dependencies]
+wxr = { path = "../wxr" }
+# The importer's trait and the one colour-format mapping, so that this backend cannot disagree with the
+# other two about what a texture is.
+wxr-render = { path = "../wxr-render" }
+thiserror = { workspace = true }
+log = { workspace = true }
+wgpu = { workspace = true }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    # The DOM this backend still uses, and nothing else. WebXR is generated here rather than taken from
+    # `web-sys`, and taking both would be two Rust types for one JavaScript object - which `wasm-bindgen` does
+    # not merely dislike, it refuses: two enums with the same JavaScript name are a duplicate it reports when
+    # the bindings are generated, which is how this list was found to be too long.
+    #
+    # This list is only half of that condition. It is the *graph* that decides which of `web-sys`'s enums exist,
+    # and some other crate in a game's graph can enable one of these without asking here - which is what a
+    # `PermissionState` collision turned out to be. The names in the generated module are the specification's
+    # and cannot be changed, so the answer is to keep the overlap at nothing.
+    #
+    # What is left is the page (`window`, `navigator`), and the gamepad, which is a stable interface with a
+    # stable shape and nobody's to mirror.
+    "Window",
+    "Navigator",
+    "Gamepad",
+    "GamepadButton",
+] }

@@ -1,0 +1,32 @@
+[package]
+name = "wxr-openxr"
+description = "An OpenXR backend for wxr, rendering with wgpu."
+version.workspace = true
+edition.workspace = true
+
+# The same rule as `wxr-webxr`, the other way round: OpenXR is a native API, so on a browser this crate is
+# empty rather than broken.
+[target.'cfg(all(not(target_family = "wasm"), not(target_vendor = "apple")))'.dependencies]
+wxr = { path = "../wxr" }
+wxr-render = { path = "../wxr-render" }
+# The renderer's layer. The device a session is given is a wgpu device; nothing here creates one.
+wgpu = { workspace = true, features = ["vulkan"] }
+# `loaded` (the default) loads the runtime at run time rather than linking it, so this builds on a machine
+# with no XR runtime and says so when it connects.
+openxr = { version = "0.22", default-features = false, features = ["loaded"] }
+# The one raw structure the typed crate keeps to itself: a foveation profile is put on a swapchain with
+# `XR_FB_swapchain_update_state`, whose state struct is crate-private there. Same version as `openxr` depends
+# on, so the handles are the same types - and a bump that broke that would be a compile error, not a subtle
+# one.
+openxr-sys = "0.14"
+thiserror = { workspace = true }
+log = { workspace = true }
+
+# The one Vulkan thing in the workspace, and its job is to *read* rather than to make: wgpu's HAL hands out
+# `ash` handle types and `openxr-sys` wants `*const c_void`, and those fields are private on one side and
+# raw pointers on the other, so the trait in between is the only way across. See `hal.rs`.
+ash = "0.38"
+
+# The examples block on async device creation, which is all this is for.
+[dev-dependencies]
+pollster = "0.4"
