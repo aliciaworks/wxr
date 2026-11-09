@@ -129,6 +129,14 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
     if !board.frame.is_render() {
         return Ok(());
     }
+    // The stub's `XRFrame` predicts 12.3455 s and its callback's own timestamp is never that, so this is true
+    // only if `begin` read the frame's clock rather than the animation callback's.
+    let predicted = board.frame.predicted_display_time.as_secs_f64();
+    if (predicted - 12.3455).abs() > 1e-9 {
+        return Err(format!(
+            "the frame's predicted display time is {predicted} s, where the stub predicts 12.3455 s"
+        ));
+    }
     if let Err(error) = session.views(space, &mut board.frame) {
         say(&format!("views failed: {error}"));
     }

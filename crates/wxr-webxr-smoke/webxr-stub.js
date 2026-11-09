@@ -572,6 +572,9 @@ class XRFrame {
   constructor(session, time) {
     this.session = session;
     this.time = time;
+    // When the picture is meant to be on the display, which is not when the callback ran: the page reads it
+    // to sample the scene for the moment it will be seen. A constant here so a run can tell the two apart.
+    this.predictedDisplayTime = 12345.5;
   }
 
   /** Whether this is still the frame the browser is inside, i.e. its callback has not returned. */

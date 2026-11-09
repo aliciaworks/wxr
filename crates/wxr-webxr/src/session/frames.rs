@@ -44,12 +44,11 @@ impl WebXrSession {
         }
         if self.callback.is_none() {
             let callback_inner = inner.clone();
-            self.callback = Some(Closure::wrap(Box::new(move |time: f64, frame: XrFrame| {
-                // Milliseconds from the page's origin, which is the only clock a browser has.
+            self.callback = Some(Closure::wrap(Box::new(move |_time: f64, frame: XrFrame| {
                 {
                     let mut inner = callback_inner.borrow_mut();
                     inner.awaiting = false;
-                    inner.frame = Some((frame, Duration::from_secs_f64(time / 1000.0)));
+                    inner.frame = Some(frame);
                 }
                 // The frame is only active until this callback returns, so the app loop must run here.
                 // The handler is taken out first: it borrows the session, and with it this same `Inner`.
@@ -130,16 +129,18 @@ impl WebXrSession {
             return Ok(());
         }
 
-        // The frame is whatever the last callback left behind, and the clock is the callback's own: WebXR
-        // has no other.
-        let Some((frame, time)) = self.inner.borrow_mut().frame.take() else {
+        // The frame is whatever the last callback left behind, and its clock is the runtime's prediction of
+        // when the picture will be shown - which is what the core's `predicted_display_time` is for, and not
+        // the callback's own timestamp, which is when the frame began.
+        let Some(frame) = self.inner.borrow_mut().frame.take() else {
             out.state = wxr::FrameState::Wait;
             // Asked for again, because a callback that is not re-requested is a session that stops.
             self.request_frame();
             return Ok(());
         };
+        out.predicted_display_time =
+            Duration::from_secs_f64(frame.predicted_display_time() / 1000.0);
         self.current = Some(frame);
-        out.predicted_display_time = time;
         out.state = wxr::FrameState::Render;
         Ok(())
     }

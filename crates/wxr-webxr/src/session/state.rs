@@ -5,8 +5,8 @@ use super::*;
 #[derive(Default)]
 pub(super) struct Inner {
     pub(super) session: Option<XrSession>,
-    /// The frame the animation callback put here, and the time it was for, until `begin` takes it.
-    pub(super) frame: Option<(XrFrame, Duration)>,
+    /// The frame the animation callback put here until `begin` takes it.
+    pub(super) frame: Option<XrFrame>,
     /// Whether a frame has been asked for and has not arrived.
     ///
     /// It is what keeps `request_frame` from asking twice: the browser holds one callback at a time, and the
