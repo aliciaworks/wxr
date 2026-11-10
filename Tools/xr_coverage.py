@@ -520,10 +520,12 @@ def spellings(name: str):
     snake = re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
     if snake != name:
         yield snake
-        # A dictionary member and an attribute are set through a setter, and a generated binding names that
-        # `set_<snake>`: `init.set_aspect_ratio(...)` is a backend naming `aspectRatio` as much as a bare
-        # `aspect_ratio` would be. The prefix is a word, so the boundary rule still refuses `my_aspect_ratio`.
-        yield "set_" + snake
+    # A dictionary member and an attribute are set through a setter, and a generated binding names that
+    # `set_<snake>`: `init.set_aspect_ratio(...)` is a backend naming `aspectRatio` as much as a bare
+    # `aspect_ratio` would be. The prefix is a word, so the boundary rule still refuses `my_aspect_ratio`.
+    # It does not depend on the name having capitals: `onframeratechange` and `onreset` are one word each,
+    # and the binding still calls the setter `set_onframeratechange`.
+    yield "set_" + snake
 
 
 def reached(name: str, source: str, aliases=None) -> bool:
