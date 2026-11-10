@@ -30,6 +30,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use wxr::{Backend as _, Session as _};
 
+mod anchors;
 mod hands;
 mod images;
 mod layers;
@@ -184,6 +185,15 @@ struct Board {
     layers_checked: bool,
     /// The layers the compositor was given, in the order they were made.
     layers: Vec<wxr::Layer>,
+    /// The anchor this run made, if it has, and how far through the checks it is: zero until it asks, and
+    /// four once the released anchor has been seen to be gone.
+    anchor: Option<wxr::Anchor>,
+    anchor_step: u8,
+    /// Whether asking for an anchor with no frame open has been refused, which is once and before any frame.
+    anchor_unframed_checked: bool,
+    /// Whether the floor space has resolved. A space is a promise, so the tick that asks for one has no pose
+    /// to make an anchor at - and an anchor asked for in an unresolved space is a different refusal.
+    space_resolved: bool,
 }
 
 /// Record the events that are checked later rather than as they arrive.
@@ -365,6 +375,10 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         layers_prepared: !gpu,
         layers_checked: !gpu,
         layers: Vec::new(),
+        anchor: None,
+        anchor_step: 0,
+        anchor_unframed_checked: false,
+        space_resolved: false,
         stopped: false,
     }));
 
@@ -384,7 +398,16 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         // One verdict, and it is a line rather than a status: a driver that had to read the page would be a
         // driver reading a page that might not have started yet.
         let verdict = match tick::tick(&mut board, &mut session) {
-            Ok(()) if board.drawn >= FRAMES && board.layers_checked => Some("done".to_string()),
+            // The anchors are last because they are the newest: a run that drew its frames without them has
+            // not exercised the anchor path, and a verdict that said `done` would be one that never did.
+            Ok(())
+                if board.drawn >= FRAMES
+                    && board.layers_checked
+                    && (!session.features().contains(wxr::Features::ANCHORS)
+                        || board.anchor_step == 4) =>
+            {
+                Some("done".to_string())
+            }
             Ok(()) if !session.state().is_alive() => Some(format!(
                 "FAILED: the session ended after {} frame(s)",
                 board.drawn

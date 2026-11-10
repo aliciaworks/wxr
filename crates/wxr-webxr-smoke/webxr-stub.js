@@ -214,6 +214,54 @@ class XRReferenceSpace extends XRSpace {
   }
 }
 
+/**
+ * A place the browser is keeping fixed, as this stub keeps one: a world transform it never re-tracks.
+ *
+ * `anchorSpace` throws once the anchor is deleted, which is the throw `wxr-webxr` catches - a place that is
+ * gone is `None` from `anchor_pose` rather than a frame that stops happening.
+ */
+class XRAnchor {
+  constructor(world) {
+    this._world = world;
+    this._space = new XRSpace(world);
+    this._deleted = false;
+  }
+
+  get anchorSpace() {
+    if (this._deleted) {
+      throw new DOMException('the anchor has been deleted', 'InvalidStateError');
+    }
+    return this._space;
+  }
+
+  /**
+   * The name that outlives the session, which here is a UUID made from how many have been asked for.
+   *
+   * Counted on the global object because what the page checks is that the backend asked once and not once per
+   * frame: a stub that answered with a constant could not tell the two apart, and one that counted only the
+   * answers could not tell a second ask that read the same name from a first.
+   */
+  requestPersistentHandle() {
+    if (this._deleted) {
+      return Promise.reject(new DOMException('the anchor has been deleted', 'InvalidStateError'));
+    }
+    globalThis.__wxrPersistentHandleRequests = (globalThis.__wxrPersistentHandleRequests || 0) + 1;
+    return Promise.resolve(anchorUUID(globalThis.__wxrPersistentHandleRequests));
+  }
+
+  delete() {
+    if (!this._deleted) {
+      this._deleted = true;
+      globalThis.__wxrAnchorsDeleted = (globalThis.__wxrAnchorsDeleted || 0) + 1;
+    }
+  }
+}
+
+/** The text form of a UUID, numbered so that two anchors do not share a name. */
+function anchorUUID(count) {
+  return `00000000-0000-4000-8000-${count.toString(16).padStart(12, '0')}`;
+}
+
 /** The dictionary `updateRenderState` is handed, and the only shape it has to have. */
 class XRRenderStateInit {
   constructor() {
@@ -604,6 +652,30 @@ class XRFrame {
     return new XRViewerPose(relative(headAt(this.time), space.at(this.time)), near, far);
   }
 
+  /**
+   * Make an anchor at `transform` in `space`, which is the one frame method that hands back a promise.
+   *
+   * Two throws, both stated in prose: an inactive frame, and a session that was not made with `anchors`.
+   */
+  createAnchor(transform, space) {
+    requireActive(this);
+    if (!this.session.enabledFeatures.includes('anchors')) {
+      throw new DOMException('the session was not made with anchors', 'NotSupportedError');
+    }
+    const local = [
+      transform.position.x,
+      transform.position.y,
+      transform.position.z,
+      transform.orientation.x,
+      transform.orientation.y,
+      transform.orientation.z,
+      transform.orientation.w,
+    ];
+    const anchor = new XRAnchor(compose(space.at(this.time), local));
+    globalThis.__wxrAnchorsMade = (globalThis.__wxrAnchorsMade || 0) + 1;
+    return Promise.resolve(anchor);
+  }
+
   /** Anything else: an input source's space, or a hand's joint, measured from the space it was asked in. */
   getPose(space, baseSpace) {
     requireActive(this);
@@ -712,6 +784,7 @@ const STUB_FEATURES = [
   'bounded-floor',
   'hand-tracking',
   'layers',
+  'anchors',
   ...(GPU ? ['webgpu', 'depth-sensing'] : []),
 ];
 

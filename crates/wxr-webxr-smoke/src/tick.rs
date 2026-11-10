@@ -157,6 +157,18 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
         return Ok(());
     };
 
+    // An anchor is made in a frame, so asking with none open is the refusal that is about the frame rather
+    // than the space. Asked here, before `begin`, so that no frame is open when it is - and only once the
+    // space has resolved, because an unresolved space is a different refusal and would answer for this one.
+    if !board.anchor_unframed_checked
+        && board.space_resolved
+        && session.features().contains(wxr::Features::ANCHORS)
+    {
+        board.anchor_unframed_checked = true;
+        anchors::unframed(session, space)?;
+        say("an anchor asked for outside a frame was refused for the missing frame");
+    }
+
     let now = Duration::from_millis(u64::from(board.ticks) * 16);
     if let Err(error) = session.begin(now, &mut board.frame) {
         return Err(format!("begin failed: {error}"));
@@ -193,6 +205,11 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
             view.layer,
             view.image,
         ));
+    }
+    // Eyes are an answer about the space as well as about the frame: `views` cannot give one for a space
+    // that has not resolved, so this is the tick that says the floor is there for the anchor checks to use.
+    if !board.frame.views().is_empty() {
+        board.space_resolved = true;
     }
     // The image path, asserted once rather than per frame. Only once there are eyes: the floor space is a
     // promise, and the frame that asked for it has none yet.
@@ -271,6 +288,13 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
     // The layers the timer handed over, read back in a frame: an image per layer, and the shapes' own numbers
     // as the setters landed them. Read once, because a working layer is the same picture every frame.
     layers::check_frame(board, session)?;
+    // The anchor, which is made in a frame and read back in the ones after it: a promise on the way in, and a
+    // pose the runtime re-tracks on the way out. After the no-frame check above, so that the two refusals are
+    // in the order a caller would meet them, and only in a frame whose space resolved - which is what `views`
+    // answering with eyes means.
+    if board.anchor_unframed_checked && session.features().contains(wxr::Features::ANCHORS) {
+        anchors::step(board, session, space)?;
+    }
     // The sources, which are the frame's half of input: where the hands are and how they are aimed. What they
     // *do* arrives as events above, because that is where WebXR puts it.
     let mut sources = Vec::new();
