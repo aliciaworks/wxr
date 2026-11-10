@@ -52,20 +52,8 @@ pub trait Session: Any {
     ///
     /// What comes back is *not* this API. `None` means "a different backend", and a backend's own types are
     /// free to change in a way the core's vocabulary is not. Reach for [`Session::visibility`] first, and
-    /// through here only for what the core has decided it will not say.
-    ///
-    /// ```
-    /// use wxr::{Backend as _, Session as _};
-    ///
-    /// let session = wxr::mock::MockBackend::default()
-    ///     .connect((), wxr::SessionMode::ImmersiveVr)
-    ///     .unwrap();
-    /// // The core's vocabulary...
-    /// assert_eq!(session.state(), wxr::State::Connecting);
-    /// // ...and the backend's own type, when the platform is what matters.
-    /// let mock = session.as_backend::<wxr::mock::MockSession>().unwrap();
-    /// assert_eq!(mock.state(), wxr::State::Connecting);
-    /// ```
+    /// through here only for what the core has decided it will not say - `examples/escape_hatch.rs` is that,
+    /// against the mock, in a program that runs.
     fn as_backend<T: 'static>(&self) -> Option<&T>
     where
         Self: Sized,

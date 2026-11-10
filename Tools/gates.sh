@@ -103,6 +103,12 @@ else
   step "doc (workspace)"
   RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 
+  # The core's own example needs nothing but the mock, so unlike the OpenXR ones below it always runs. It is
+  # where the `as_backend` doctest went when the trait ran out of room, and a program that runs is a better
+  # check than the snippet that was there.
+  step "examples (wxr)"
+  cargo run -q -p wxr --example escape_hatch
+
   # The examples are checks too, and they are the only ones that draw: `headless` runs the frame loop, `layers`
   # makes a quad against an idle session, and `rendered` imports the compositor's images and puts a picture in
   # them. All three want a runtime, and a runtime is a thing this host may not have - so the test suite above
