@@ -188,6 +188,8 @@ struct Board {
     /// The anchor this run made, if it has, and how far through the checks it is: zero until it asks, and
     /// four once the released anchor has been seen to be gone.
     anchor: Option<wxr::Anchor>,
+    /// The name the browser gave the anchor, which the restore checks ask for again.
+    anchor_name: Option<wxr::AnchorId>,
     anchor_step: u8,
     /// Whether asking for an anchor with no frame open has been refused, which is once and before any frame.
     anchor_unframed_checked: bool,
@@ -376,6 +378,7 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         layers_checked: !gpu,
         layers: Vec::new(),
         anchor: None,
+        anchor_name: None,
         anchor_step: 0,
         anchor_unframed_checked: false,
         space_resolved: false,
@@ -404,7 +407,7 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
                 if board.drawn >= FRAMES
                     && board.layers_checked
                     && (!session.features().contains(wxr::Features::ANCHORS)
-                        || board.anchor_step == 4) =>
+                        || board.anchor_step == 8) =>
             {
                 Some("done".to_string())
             }

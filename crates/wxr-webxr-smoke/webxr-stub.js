@@ -219,9 +219,14 @@ class XRReferenceSpace extends XRSpace {
  *
  * `anchorSpace` throws once the anchor is deleted, which is the throw `wxr-webxr` catches - a place that is
  * gone is `None` from `anchor_pose` rather than a frame that stops happening.
+ *
+ * It holds its session because a name outlives the anchor: `requestPersistentHandle` puts the world into the
+ * session's own map, and `restorePersistentAnchor` makes a new anchor from it. The name is the session's and
+ * not the anchor's, which is the whole point of asking for one.
  */
 class XRAnchor {
-  constructor(world) {
+  constructor(session, world) {
+    this.session = session;
     this._world = world;
     this._space = new XRSpace(world);
     this._deleted = false;
@@ -246,7 +251,11 @@ class XRAnchor {
       return Promise.reject(new DOMException('the anchor has been deleted', 'InvalidStateError'));
     }
     globalThis.__wxrPersistentHandleRequests = (globalThis.__wxrPersistentHandleRequests || 0) + 1;
-    return Promise.resolve(anchorUUID(globalThis.__wxrPersistentHandleRequests));
+    const uuid = anchorUUID(globalThis.__wxrPersistentHandleRequests);
+    // The place, not the anchor: restoring makes a new handle for the same place, and a name that pointed at a
+    // released anchor would be a name nothing could be restored from.
+    this.session._persisted.set(uuid, this._world);
+    return Promise.resolve(uuid);
   }
 
   delete() {
@@ -509,6 +518,10 @@ class XRSession {
     // Every layer this session presents, which is what `XRGPUBinding` has to know: a sub-image is only ever
     // for a layer of the session that made it.
     this._layers = new Set();
+    // The names this session's anchors have been given, each pointing at where the place is. A name outlives
+    // the anchor that asked for it and is what `restorePersistentAnchor` looks in, which is the one thing
+    // about a persistent anchor a session has to hold.
+    this._persisted = new Map();
     // The room's depth, which only a session granted `depth-sensing` has and only in the run that made a
     // binding. Left unset otherwise, and an unset `XRDepthUsage` is what a session that was never asked for
     // depth reports - which is the honest answer rather than a guess.
@@ -596,6 +609,46 @@ class XRSession {
     return Promise.resolve();
   }
 
+  /**
+   * Make a new handle for a place this session named earlier, which is `restorePersistentAnchor`.
+   *
+   * Two throws and one rejection, all in prose: `InvalidStateError` for an ended session,
+   * `NotSupportedError` without the `anchors` feature, and `NotFoundError` for a name the session does not
+   * have. The rejection is counted because that is the half the backend can only read - a caller that never
+   * awaits the promise would leave the page unable to say whether the request was ever answered.
+   */
+  restorePersistentAnchor(uuid) {
+    if (this._ended) {
+      throw new DOMException('the session has ended', 'InvalidStateError');
+    }
+    if (!this.enabledFeatures.includes('anchors')) {
+      throw new DOMException('the session was not made with anchors', 'NotSupportedError');
+    }
+    const world = this._persisted.get(uuid);
+    if (world === undefined) {
+      globalThis.__wxrPersistentRejections = (globalThis.__wxrPersistentRejections || 0) + 1;
+      return Promise.reject(new DOMException(`there is no anchor named ${uuid}`, 'NotFoundError'));
+    }
+    globalThis.__wxrAnchorsRestored = (globalThis.__wxrAnchorsRestored || 0) + 1;
+    return Promise.resolve(new XRAnchor(this, world));
+  }
+
+  /** Forget a name for good, which is `deletePersistentAnchor`: same throws, same `NotFoundError`. */
+  deletePersistentAnchor(uuid) {
+    if (this._ended) {
+      throw new DOMException('the session has ended', 'InvalidStateError');
+    }
+    if (!this.enabledFeatures.includes('anchors')) {
+      throw new DOMException('the session was not made with anchors', 'NotSupportedError');
+    }
+    if (!this._persisted.delete(uuid)) {
+      globalThis.__wxrPersistentRejections = (globalThis.__wxrPersistentRejections || 0) + 1;
+      return Promise.reject(new DOMException(`there is no anchor named ${uuid}`, 'NotFoundError'));
+    }
+    globalThis.__wxrPersistentNamesDeleted = (globalThis.__wxrPersistentNamesDeleted || 0) + 1;
+    return Promise.resolve();
+  }
+
   end() {
     if (this._ended) {
       return Promise.resolve();
@@ -671,7 +724,7 @@ class XRFrame {
       transform.orientation.z,
       transform.orientation.w,
     ];
-    const anchor = new XRAnchor(compose(space.at(this.time), local));
+    const anchor = new XRAnchor(this.session, compose(space.at(this.time), local));
     globalThis.__wxrAnchorsMade = (globalThis.__wxrAnchorsMade || 0) + 1;
     return Promise.resolve(anchor);
   }

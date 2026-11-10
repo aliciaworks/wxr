@@ -36,6 +36,42 @@ fn deleted() -> u32 {
         .unwrap_or(0)
 }
 
+/// How many anchors the stub has made from a name, which is the other direction from one being named.
+fn restored() -> u32 {
+    js_sys::Reflect::get(
+        &js_sys::global(),
+        &JsValue::from_str("__wxrAnchorsRestored"),
+    )
+    .ok()
+    .and_then(|value| value.as_f64())
+    .map(|count| count as u32)
+    .unwrap_or(0)
+}
+
+/// How many names the stub has been told to forget.
+fn names_deleted() -> u32 {
+    js_sys::Reflect::get(
+        &js_sys::global(),
+        &JsValue::from_str("__wxrPersistentNamesDeleted"),
+    )
+    .ok()
+    .and_then(|value| value.as_f64())
+    .map(|count| count as u32)
+    .unwrap_or(0)
+}
+
+/// How many requests the stub has rejected, by `NotFoundError` or otherwise.
+fn rejections() -> u32 {
+    js_sys::Reflect::get(
+        &js_sys::global(),
+        &JsValue::from_str("__wxrPersistentRejections"),
+    )
+    .ok()
+    .and_then(|value| value.as_f64())
+    .map(|count| count as u32)
+    .unwrap_or(0)
+}
+
 /// Ask for an anchor with no frame open, which is the refusal that is about the frame rather than the space.
 ///
 /// `createAnchor` needs an active frame, so the answer is `Unavailable` and not a browser throw - and the ask
@@ -118,6 +154,7 @@ pub(super) fn step(
                     "the anchor's name {id} did not survive its own text"
                 ));
             }
+            board.anchor_name = Some(id);
             session.release_anchor(anchor);
             board.anchor_step = 3;
             say(&format!("the browser named the anchor {id}, once"));
@@ -142,6 +179,112 @@ pub(super) fn step(
             }
             board.anchor_step = 4;
             say("the released anchor has no pose, no name, and was deleted once");
+        }
+        4 => {
+            // The other direction: a handle made from the name alone, with no frame of the anchor that had it.
+            // The place is the same one, so the check after this is a pose and not a proxy for one.
+            let id = board
+                .anchor_name
+                .expect("step four is after the browser named an anchor");
+            let anchor = session
+                .restore_anchor(id)
+                .map_err(|error| format!("asking for anchor {id} by name: {error}"))?;
+            board.anchor = Some(anchor);
+            board.anchor_step = 5;
+            say(&format!("asked the browser for {id} again"));
+        }
+        5 => {
+            let anchor = board
+                .anchor
+                .expect("step five is after an anchor was restored");
+            let id = board
+                .anchor_name
+                .expect("step five is after the browser named an anchor");
+            let pose = session
+                .anchor_pose(anchor, space)
+                .map_err(|error| format!("a restored anchor's pose: {error}"))?
+                .ok_or("an anchor restored from a name has no pose")?;
+            let want = wanted();
+            if (pose.position - want.position).length() > 1e-3 {
+                return Err(format!(
+                    "the anchor restored from its name is at ({:.3}, {:.3}, {:.3}), where it was left at ({:.3}, {:.3}, {:.3})",
+                    pose.position.x,
+                    pose.position.y,
+                    pose.position.z,
+                    want.position.x,
+                    want.position.y,
+                    want.position.z,
+                ));
+            }
+            // The caller gave the name, so there is nothing to ask the browser for: a restore that asked again
+            // would be a second handle for a place that already has one.
+            if session.anchor_id(anchor) != Some(id) {
+                return Err(
+                    "a restored anchor answered with a name that is not the one it was asked by"
+                        .into(),
+                );
+            }
+            if handle_requests() != 1 {
+                return Err(format!(
+                    "restoring an anchor asked for {} handle(s) in all, where the name was the caller's",
+                    handle_requests()
+                ));
+            }
+            if restored() != 1 {
+                return Err(format!(
+                    "the browser made {} anchor(s) from a name, where one was restored",
+                    restored()
+                ));
+            }
+            session
+                .delete_persistent_anchor(id)
+                .map_err(|error| format!("forgetting anchor {id}: {error}"))?;
+            board.anchor_step = 6;
+            say(
+                "the restored anchor is where it was left, and the browser was not asked for its name again",
+            );
+        }
+        6 => {
+            if names_deleted() != 1 {
+                return Err(format!(
+                    "the browser forgot {} name(s), where one was erased",
+                    names_deleted()
+                ));
+            }
+            // The name is gone, so a second restore is a request the browser rejects - and the handle it
+            // handed out before is still a handle, just one with nowhere to be. Asking the *same* name is the
+            // point: the erase has to have reached the browser for this to be `None` afterwards.
+            let id = board
+                .anchor_name
+                .expect("step six is after the browser named an anchor");
+            let anchor = session
+                .restore_anchor(id)
+                .map_err(|error| format!("asking for an erased name: {error}"))?;
+            board.anchor = Some(anchor);
+            board.anchor_step = 7;
+            say(&format!("asked the browser for the erased name {id}"));
+        }
+        7 => {
+            let anchor = board
+                .anchor
+                .expect("step seven is after the erased name was asked for");
+            match session.anchor_pose(anchor, space) {
+                Ok(None) => {}
+                Ok(Some(_)) => {
+                    return Err("the browser restored a name it had been told to forget".into());
+                }
+                Err(error) => {
+                    return Err(format!("an anchor restored from an erased name: {error}"));
+                }
+            }
+            if rejections() != 1 {
+                return Err(format!(
+                    "the browser rejected {} request(s), where one name had been erased",
+                    rejections()
+                ));
+            }
+            board.anchor_step = 8;
+            say("the erased name restored nothing, and the browser said so once");
         }
         _ => {}
     }
