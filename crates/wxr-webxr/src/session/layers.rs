@@ -346,3 +346,23 @@ impl WebXrSession {
         gpu.layer.set_fixed_foveation(Some(foveation));
     }
 }
+
+impl WebXrSession {
+    /// Put the near and far planes on the browser's render state, if there is a session to put them on.
+    ///
+    /// Called again when a session arrives, which is what lets an app set them while the session is still
+    /// `Connecting`: a render state belongs to the browser's session, and there is none until there is one.
+    pub(super) fn apply_depth_range(&self) {
+        let (Some((near, far)), Some(session)) =
+            (self.depth_range, self.inner.borrow().session.clone())
+        else {
+            return;
+        };
+        let state = XrRenderStateInit::new();
+        state.set_depth_near(near as f64);
+        state.set_depth_far(far as f64);
+        if let Err(error) = throws::update_render_state(&session, &state) {
+            log::warn!("wxr-webxr: the near and far planes were refused: {error:?}");
+        }
+    }
+}

@@ -88,6 +88,49 @@ impl WebXrSession {
 }
 
 impl WebXrSession {
+    /// Ask the browser where a place it named has ended up, which is `XRSession.restorePersistentAnchor`.
+    ///
+    /// A handle comes back before the browser has found the place, exactly as one made in a frame does, so
+    /// `anchor_pose` answers `None` until the browser has located it. The slot is named from the start: the
+    /// caller gave the name, so there is nothing to ask for.
+    pub(super) fn restore_anchor_impl(
+        &mut self,
+        id: wxr::AnchorId,
+    ) -> Result<wxr::Anchor, wxr::Error> {
+        let Some(session) = self.inner.borrow().session.clone() else {
+            return Err(wxr::Error::Unavailable(
+                "the session has not started yet".into(),
+            ));
+        };
+        if !has_feature(&session, "anchors") {
+            return Err(wxr::Error::Unsupported("anchors".into()));
+        }
+        let slot = Rc::new(RefCell::new(crate::anchors::Slot::named(id)));
+        crate::anchors::restore(&session, id, slot.clone())
+            .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?;
+        self.anchors.push(slot);
+        Ok(wxr::Anchor::new((self.anchors.len() - 1) as u32))
+    }
+
+    /// Tell the browser to forget a name for good, which is `XRSession.deletePersistentAnchor`.
+    pub(super) fn delete_persistent_anchor_impl(
+        &mut self,
+        id: wxr::AnchorId,
+    ) -> Result<(), wxr::Error> {
+        let Some(session) = self.inner.borrow().session.clone() else {
+            return Err(wxr::Error::Unavailable(
+                "the session has not started yet".into(),
+            ));
+        };
+        if !has_feature(&session, "anchors") {
+            return Err(wxr::Error::Unsupported("anchors".into()));
+        }
+        crate::anchors::erase(&session, id)
+            .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))
+    }
+}
+
+impl WebXrSession {
     pub(super) fn release_anchor_impl(&mut self, anchor: wxr::Anchor) {
         let Some(slot) = self.anchors.get(anchor.id() as usize) else {
             return;

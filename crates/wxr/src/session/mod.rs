@@ -460,6 +460,23 @@ pub trait Session: Any {
         None
     }
 
+    /// Ask the runtime where a place it named has ended up, which is WebXR's `restorePersistentAnchor`.
+    ///
+    /// The other half of [`Session::anchor_id`], and asynchronous like every anchor: the handle arrives
+    /// before the place is found, so `anchor_pose` is `None` until it is - and stays `None` for a name the
+    /// runtime does not have, which is a place that is not there rather than a failed request. A runtime that
+    /// keeps no names between sessions is [`Error::Unsupported`].
+    fn restore_anchor(&mut self, _id: AnchorId) -> Result<Anchor, Error> {
+        Err(Error::Unsupported("anchors from an earlier session".into()))
+    }
+
+    /// Tell the runtime to forget a name for good, which is WebXR's `deletePersistentAnchor`. The counterpart
+    /// of [`Session::release_anchor`], which gives back the handle and leaves the name; `Ok` means the request
+    /// was made, and a name the runtime does not have is a no-op rather than an error to report.
+    fn delete_persistent_anchor(&mut self, _id: AnchorId) -> Result<(), Error> {
+        Err(Error::Unsupported("erasing an anchor's name".into()))
+    }
+
     /// What the runtime measured of the real world for the view at `index`, and the buffer itself - WebXR's
     /// `XRFrame.getDepthInformation`, OpenXR's environment depth.
     ///

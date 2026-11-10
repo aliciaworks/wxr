@@ -65,6 +65,23 @@ extern "C" {
         state: &XrRenderStateInit,
     ) -> Result<(), JsValue>;
 
+    /// `XRSession.restorePersistentAnchor`, which throws `InvalidStateError` once the session has ended and
+    /// `NotSupportedError` when anchors were not granted - and rejects with `NotFoundError` for a name the
+    /// browser has never issued. A refused request is `Err`, a name nobody has is the rejection to read.
+    #[wasm_bindgen(method, catch, js_name = "restorePersistentAnchor")]
+    fn restore_persistent_anchor_caught(
+        this: &XrSession,
+        uuid: &str,
+    ) -> Result<js_sys::Promise, JsValue>;
+
+    /// `XRSession.deletePersistentAnchor`, throwing for the same two reasons and rejecting with
+    /// `NotFoundError` for a name it does not have.
+    #[wasm_bindgen(method, catch, js_name = "deletePersistentAnchor")]
+    fn delete_persistent_anchor_caught(
+        this: &XrSession,
+        uuid: &str,
+    ) -> Result<js_sys::Promise, JsValue>;
+
     /// `XRSession.updateTargetFrameRate`, whose `float` argument is converted before the call hands back a
     /// promise: a NaN or an infinity is a `TypeError` thrown synchronously rather than a rejected promise.
     /// A number that is not a rate the session lists is the rejection, which is the caller's to read.
@@ -173,6 +190,22 @@ pub fn request_animation_frame(
 /// `XRSession.updateRenderState`, caught.
 pub fn update_render_state(session: &XrSession, state: &XrRenderStateInit) -> Result<(), JsValue> {
     session.update_render_state_caught(state)
+}
+
+/// `XRSession.restorePersistentAnchor`, caught.
+pub fn restore_persistent_anchor(
+    session: &XrSession,
+    uuid: &str,
+) -> Result<js_sys::Promise, JsValue> {
+    session.restore_persistent_anchor_caught(uuid)
+}
+
+/// `XRSession.deletePersistentAnchor`, caught.
+pub fn delete_persistent_anchor(
+    session: &XrSession,
+    uuid: &str,
+) -> Result<js_sys::Promise, JsValue> {
+    session.delete_persistent_anchor_caught(uuid)
 }
 
 /// `XRSession.updateTargetFrameRate`, caught.

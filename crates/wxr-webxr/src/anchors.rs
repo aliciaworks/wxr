@@ -10,7 +10,7 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 
-use crate::sys::{XrAnchor, XrFrame, XrReferenceSpace, XrRigidTransform};
+use crate::sys::{XrAnchor, XrFrame, XrReferenceSpace, XrRigidTransform, XrSession};
 use crate::throws;
 
 /// An anchor that has been asked for, and the runtime's answer once it arrives.
@@ -47,6 +47,18 @@ impl Slot {
     /// Remember that it has, so the request is made once.
     pub fn ask(&mut self) {
         self.asked = true;
+    }
+
+    /// A slot for an anchor asked for *by name*, which is already named and so has nothing to ask for.
+    ///
+    /// The name is the one the caller gave: the browser answers with the same UUID, and filling it in here
+    /// means [`wxr::Session::anchor_id`] answers on the frame after the request instead of asking again.
+    pub fn named(id: wxr::AnchorId) -> Self {
+        Self {
+            id: Some(id),
+            asked: true,
+            ..Self::default()
+        }
     }
 
     /// Take the browser's answer, unless the anchor has since been let go - a name for an anchor that was
@@ -129,6 +141,48 @@ pub fn request_handle(anchor: &XrAnchor, slot: Rc<RefCell<Slot>>) {
             }
         }
     });
+}
+
+/// Ask the browser for the anchor it named `id`, and fill the slot when the promise answers.
+///
+/// The same shape as [`create`]: the handle exists as soon as the request does, and the place is found by
+/// the time the slot fills. A rejection is a name the browser does not have, which is the caller's to turn
+/// into the core's answer; a throw is that answer directly.
+pub fn restore(
+    session: &XrSession,
+    id: wxr::AnchorId,
+    slot: Rc<RefCell<Slot>>,
+) -> Result<(), JsValue> {
+    let promise = throws::restore_persistent_anchor(session, &id.to_string())?;
+    wasm_bindgen_futures::spawn_local(async move {
+        match JsFuture::from(promise).await {
+            Ok(value) => {
+                if let Ok(anchor) = value.dyn_into::<XrAnchor>() {
+                    slot.borrow_mut().fill(anchor);
+                }
+            }
+            // A name the browser does not have is a request that will never fill its slot, which is the same
+            // shape as an anchor the runtime lost - and `anchor_pose` already answers `None` for that.
+            Err(error) => {
+                log::debug!("wxr-webxr: the browser does not know that anchor: {error:?}")
+            }
+        }
+    });
+    Ok(())
+}
+
+/// Tell the browser to forget the name `id` for good, and read whatever it answers.
+///
+/// Nothing comes back to the caller beyond the request having been made, so the rejection is logged rather
+/// than left unhandled on the page - the same treatment a pulse's gets.
+pub fn erase(session: &XrSession, id: wxr::AnchorId) -> Result<(), JsValue> {
+    let promise = throws::delete_persistent_anchor(session, &id.to_string())?;
+    wasm_bindgen_futures::spawn_local(async move {
+        if let Err(error) = JsFuture::from(promise).await {
+            log::debug!("wxr-webxr: the browser would not forget anchor {id}: {error:?}");
+        }
+    });
+    Ok(())
 }
 
 /// Where the anchor is now, in `space`, or `None` when the runtime has lost it.

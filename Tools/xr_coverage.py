@@ -275,6 +275,13 @@ DEFAULT_IS_ENOUGH = {
     ("wxr-webxr", "play_pcm"): "no browser has it: `GamepadHapticActuator` documents `pulse`, `playEffect` "
     "and `reset`, and MDN has no `playPCM` page at all - the binding generated into `sys/` is a trap",
     ("wxr-openxr", "interaction_mode"): "only a browser is ever `ScreenSpace`",
+    ("wxr-openxr", "restore_anchor"): "a name is looked up with `XR_FB_spatial_entity_query` - "
+    "`xrQuerySpacesFB` under an `XrSpaceUuidFilterInfoFB`, then the results event - and kept between runs "
+    "with `XR_FB_spatial_entity_storage`'s `xrSaveSpaceFB`. Both are unbound here, and the anchor this "
+    "backend makes is `XR_FB_spatial_entity`'s create alone: a lookup over two more raw state machines is a "
+    "feature, not a default",
+    ("wxr-openxr", "delete_persistent_anchor"): "as `restore_anchor`: erasing is `xrEraseSpaceFB` from "
+    "`XR_FB_spatial_entity_storage`, and the same two unbound extensions stand between this backend and it",
     ("wxr-openxr", "request_viewport_scale"): "OpenXR's resolution is the swapchain's to choose, and a "
     "runtime that recommends nothing is a runtime at full resolution - which is what the request would "
     "have been ignored into anyway",
@@ -293,6 +300,11 @@ DEFAULT_IS_ENOUGH = {
     "whole-room scans. Picking one is picking which headsets this backend can mesh, and it has not been "
     "picked (the same choice, said at length, in `crates/wxr-openxr/src/lib.rs`)",
     ("wxr-apple", "interaction_mode"): "only a browser is ever `ScreenSpace`",
+    ("wxr-apple", "restore_anchor"): "persistence on ARKit is an `ARWorldMap`, saved and loaded through "
+    "`ar_session_get_world_map` and the session's `run_with_world_map` - and `objc2-ar-kit` binds neither, "
+    "nor `ar_world_map_t` at all. There is nothing here to save a name into",
+    ("wxr-apple", "delete_persistent_anchor"): "as `restore_anchor`: a name only exists as a harness of the "
+    "world map, and no world-map binding is here to erase it from",
     ("wxr-apple", "bounds"): "visionOS has no bounds geometry; the room is not a polygon the runtime drew",
     ("wxr-apple", "depth"): "`objc2-ar-kit` has no `ar_scene_depth` - the depth a drawable holds is the one "
     "being drawn into, which is not a measurement of the room (see `Session::Depth`)",
