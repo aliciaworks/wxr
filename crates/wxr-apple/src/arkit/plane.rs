@@ -5,6 +5,7 @@
 //! a vertical. Nothing here asks ARKit a question; it answers one.
 
 use std::ffi::c_void;
+use std::time::Duration;
 
 use objc2_ar_kit::{
     ar_plane_alignment_t, ar_plane_anchor_t, ar_plane_extent_t, ar_plane_geometry_t,
@@ -58,6 +59,11 @@ unsafe fn plane_of(anchor: &ar_plane_anchor_t) -> wxr::Plane {
             // points the older `plane_classification` at; the two lists differ only in the newer one adding
             // the labels the core already has.
             kind: kind(ar_plane_anchor_t::surface_classification(anchor)),
+            // The runtime's clock, in seconds - the same number and the same meaning as a mesh's, because
+            // ARKit timestamps the anchor and not the geometry.
+            last_changed: Some(Duration::from_secs_f64(
+                ar_plane_anchor_t::timestamp(anchor).max(0.0),
+            )),
         }
     }
 }

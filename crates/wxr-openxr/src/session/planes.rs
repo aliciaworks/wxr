@@ -264,6 +264,9 @@ impl PlaneDetector {
                 extent: wxr::glam::Vec2::new(location.extents.width, location.extents.height),
                 orientation: orientation(location.orientation),
                 kind: kind(location.semantic_type),
+                // The detector reports a pose and an extent and no clock, and the core's `None` is that
+                // answer rather than a zero that would read as "changed at the start of the session".
+                last_changed: None,
             });
         }
     }

@@ -1,5 +1,7 @@
 //! The room the session is in, as far as the runtime can tell.
 
+use std::time::Duration;
+
 use glam::Vec2;
 
 use crate::mesh::SurfaceKind;
@@ -41,6 +43,13 @@ pub struct Plane {
     /// boxed it or traced it. [`SurfaceKind::None`] is a runtime that found the surface and did not
     /// classify it, which is the answer ARKit gives before it has looked long enough to know.
     pub kind: SurfaceKind,
+    /// When it last changed, on the same clock as the frames - WebXR's `XRPlane.lastChangedTime`, ARKit's
+    /// anchor timestamp.
+    ///
+    /// `None` is a runtime that does not keep one, which is OpenXR's plane detector: it reports a pose and
+    /// an extent and no clock. Saying zero there would be a time that never happened. A caller that rebuilds
+    /// what sits on a surface on this is a caller that is not rebuilding it every frame.
+    pub last_changed: Option<Duration>,
 }
 
 #[cfg(test)]
@@ -55,9 +64,11 @@ mod tests {
             extent: Vec2::new(1.5, 0.8),
             orientation: PlaneOrientation::default(),
             kind: SurfaceKind::default(),
+            last_changed: None,
         };
         assert_eq!(plane.orientation, PlaneOrientation::Unknown);
         assert_eq!(plane.kind, SurfaceKind::None);
+        assert_eq!(plane.last_changed, None);
         assert!(plane.extent.x > plane.extent.y);
     }
 }

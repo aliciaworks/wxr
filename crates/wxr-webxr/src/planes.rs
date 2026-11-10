@@ -6,6 +6,7 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
 
 use wasm_bindgen::prelude::*;
 
@@ -61,6 +62,7 @@ pub fn detected(
                 Some(XrPlaneOrientation::__Invalid) | None => wxr::PlaneOrientation::Unknown,
             },
             kind: kind(plane.semantic_label().as_deref()),
+            last_changed: last_changed(plane.last_changed_time()),
         });
     }
 }
@@ -88,6 +90,14 @@ fn kind(label: Option<&str>) -> wxr::SurfaceKind {
         Some("home-appliance") => wxr::SurfaceKind::HomeAppliance,
         _ => wxr::SurfaceKind::None,
     }
+}
+
+/// WebXR's clock in milliseconds as the core's, which is the same clock the frames are on.
+///
+/// A time that is negative, infinite or not a number is not a time this can carry, and the core says a
+/// runtime with no usable timestamp has none rather than inventing one.
+fn last_changed(milliseconds: f64) -> Option<Duration> {
+    Duration::try_from_secs_f64(milliseconds / 1000.0).ok()
 }
 
 /// The bounding box of the plane's outline, which WebXR reports instead of a size.
