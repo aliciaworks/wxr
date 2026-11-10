@@ -161,6 +161,14 @@ struct Board {
     /// Whether the display's refresh rates have been read and asked for, which is once: the list is the
     /// session's, and the rate a request leaves behind is the stub's record.
     refresh_rate_checked: bool,
+    /// The tick the request was made on, so the event that follows it is checked on the next poll and not on
+    /// the tick that asked: a handler fires synchronously, and the poll that reports it is one tick later.
+    refresh_rate_asked: u32,
+    /// The rate the display announced changing to, if it has, and whether that has been checked.
+    refresh_rate_event: Option<f32>,
+    refresh_rate_event_checked: bool,
+    /// How many rate-change events the session has reported, so a refused request cannot slip a second one in.
+    refresh_rate_events: u32,
     /// Whether a space handle this session never made has been asked about, which is once: the answer is the
     /// same on every frame, and the call writes only the vector it is given.
     forged_space_checked: bool,
@@ -176,6 +184,17 @@ struct Board {
     layers_checked: bool,
     /// The layers the compositor was given, in the order they were made.
     layers: Vec<wxr::Layer>,
+}
+
+/// Record the events that are checked later rather than as they arrive.
+///
+/// Both pollers - the timer that waits for the session and the frame loop - take events off the same queue,
+/// and only one of them sees any given event, so the note is taken here rather than in either loop.
+fn note_event(board: &mut Board, event: wxr::Event) {
+    if let wxr::Event::RefreshRateChanged(rate) = event {
+        board.refresh_rate_event = Some(rate);
+        board.refresh_rate_events += 1;
+    }
 }
 
 /// The backend's own log lines, which are the ones that say *why*.
@@ -335,6 +354,10 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         retry_checked: false,
         viewport_scale_checked: false,
         refresh_rate_checked: false,
+        refresh_rate_asked: 0,
+        refresh_rate_event: None,
+        refresh_rate_event_checked: false,
+        refresh_rate_events: 0,
         forged_space_checked: false,
         viewer: None,
         layers_refused: false,
@@ -390,6 +413,7 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         let mut session = ticking.borrow_mut();
         while let Some(event) = session.poll() {
             say(&format!("event: {event:?}"));
+            note_event(&mut pumping.borrow_mut(), event);
         }
         if !session.state().is_alive() {
             say(&format!(

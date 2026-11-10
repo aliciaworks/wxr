@@ -50,6 +50,13 @@ impl WebXrSession {
             session.set_onend(Some(on_end.as_ref().unchecked_ref()));
             self.on_end = Some(on_end);
 
+            // A display may change its own rate, and this is the only way the app hears it. The handler only
+            // marks that there is news; the poll reads `frameRate`, which is where the rate is.
+            let rate_changed = self.rate_changed.clone();
+            let on_rate_change = Closure::<dyn FnMut(Event)>::new(move |_| rate_changed.set(true));
+            session.set_onframeratechange(Some(on_rate_change.as_ref().unchecked_ref()));
+            self.on_rate_change = Some(on_rate_change);
+
             // Subscribed to here because a session is the only thing that can have the events, and this is the
             // only moment there is one to ask.
             self.input = Some(input::Events::new(&session, &self.sources));
@@ -78,6 +85,15 @@ impl WebXrSession {
         // A space that was recentered is news the same way, from a handler that fires between frames.
         if let Some(event) = self.reset.borrow_mut().pop_front() {
             return Some(event);
+        }
+
+        // The display saying its rate moved, read back from the session rather than from the event: WebXR's
+        // event has no field for the rate, and `frameRate` is the answer. A rate that is not a number of
+        // hertz, or a session that cannot say, is news with nothing to report.
+        if self.rate_changed.replace(false)
+            && let Some(rate) = self.refresh_rate_impl()
+        {
+            return Some(wxr::Event::RefreshRateChanged(rate));
         }
 
         // Two axes, and each is news once: the session arriving or not being here yet is the lifecycle, and

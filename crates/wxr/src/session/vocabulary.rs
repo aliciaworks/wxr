@@ -91,12 +91,20 @@ impl Visibility {
 }
 
 /// Something that happened to the session.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Event {
     StateChanged(State),
     /// The session started or stopped being shown. WebXR's `visibilitychange`, and the other axis: a session
     /// that is shown is not a session that exists.
     VisibilityChanged(Visibility),
+    /// The display is now running at a different rate, in hertz - WebXR's `frameratechange`, OpenXR's
+    /// `XrEventDataDisplayRefreshRateChangedFB`.
+    ///
+    /// The rate can move without the app asking: a display may drop to save power, and a request through
+    /// [`Session::set_refresh_rate`](crate::Session::set_refresh_rate) lands on the runtime's own schedule.
+    /// The rate in the event is the one that is in effect now, which is also what
+    /// [`Session::refresh_rate`](crate::Session::refresh_rate) answers afterwards.
+    RefreshRateChanged(f32),
     /// The runtime wants to stop - the user took the headset off, or the page lost the session. Not an
     /// error, and not a state: the app is expected to shut its session down cleanly.
     ExitRequested,

@@ -91,6 +91,19 @@ impl OpenXrSession {
                     }
                     continue;
                 }
+                // The display changing its own rate, which is news the app has no other way to hear. The new
+                // rate is the answer; a value that is not a number of hertz is not one, so there is nothing
+                // to report.
+                Ok(Some(xr::Event::DisplayRefreshRateChangedFB(changed))) => {
+                    let rate = changed.to_display_refresh_rate();
+                    if rate.is_finite() {
+                        return Some(wxr::Event::RefreshRateChanged(rate));
+                    }
+                    log::debug!(
+                        "wxr-openxr: the display reported a refresh rate of {rate}, which is not one"
+                    );
+                    continue;
+                }
                 Ok(Some(_)) => continue,
                 Ok(None) => {
                     // A session the runtime has taken away is `Lost` once, after the state that said so: a frame

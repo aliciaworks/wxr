@@ -539,6 +539,12 @@ class XRSession {
     }
     this.frameRate = rate;
     globalThis.__wxrFrameRate = rate;
+    // A page hears a rate it did not ask for, and hears that an asked-for one landed, through this event
+    // alone - so an accepted request fires it, the way the specification's "the session's frame rate
+    // changes" step does.
+    if (this.onframeratechange) {
+      this.onframeratechange(new Event('frameratechange'));
+    }
     return Promise.resolve();
   }
 

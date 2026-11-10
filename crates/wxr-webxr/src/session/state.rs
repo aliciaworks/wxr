@@ -67,6 +67,13 @@ pub struct WebXrSession {
     /// dropped is a closure the browser stops calling.
     pub(super) ended: Rc<Cell<bool>>,
     pub(super) on_end: Option<Closure<dyn FnMut()>>,
+    /// Whether the display said its rate moved since the last poll, and the handler that says so.
+    ///
+    /// The handler carries no rate worth reading: WebXR's event has no field for one, and the answer is
+    /// `frameRate`, so the handler only reports that there is news and the poll reads the rate itself. That
+    /// also keeps the `XRSession` out of the closure, which would otherwise be a cycle.
+    pub(super) rate_changed: Rc<Cell<bool>>,
+    pub(super) on_rate_change: Option<Closure<dyn FnMut(Event)>>,
     /// Whether `Lost` has been said, so that the end of a session is news once.
     pub(super) lost: bool,
     /// Spaces, each a slot: the request is a promise, so a space exists a frame or two after it is asked for.

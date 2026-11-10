@@ -11,6 +11,7 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
     board.ticks += 1;
     while let Some(event) = session.poll() {
         say(&format!("event: {event:?}"));
+        note_event(board, event);
     }
     // Reported on every change rather than per frame: a session that never reaches `Visible` is exactly the
     // case this backend has to be honest about, and frames never arrive to say it in. The lifecycle and the
@@ -128,6 +129,29 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
             ));
         }
         say("the display offers 72, 90 and 120 Hz: 90 was taken and 60 was refused");
+        board.refresh_rate_asked = board.ticks;
+    }
+    // The display's own word that the rate moved. It arrives on the poll after the request that moved it,
+    // because the handler runs between frames and `poll` is what takes what it queued. The tick after that
+    // checks the count too: the refused 60 must not have produced a second event.
+    if board.refresh_rate_checked
+        && board.ticks > board.refresh_rate_asked + 1
+        && !board.refresh_rate_event_checked
+    {
+        board.refresh_rate_event_checked = true;
+        if board.refresh_rate_events != 1 {
+            return Err(format!(
+                "the display reported {} rate change(s), where only the accepted 90 should have made one",
+                board.refresh_rate_events
+            ));
+        }
+        if board.refresh_rate_event != Some(90.0) {
+            return Err(format!(
+                "the display's rate change was {:?}, where the accepted request was 90",
+                board.refresh_rate_event
+            ));
+        }
+        say("the display said its rate moved to 90 Hz, and the refused 60 said nothing");
     }
     let Some(space) = board.space else {
         return Ok(());

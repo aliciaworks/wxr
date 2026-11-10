@@ -62,6 +62,8 @@ impl WebXrSession {
             current: None,
             ended: Rc::new(Cell::new(false)),
             on_end: None,
+            rate_changed: Rc::new(Cell::new(false)),
+            on_rate_change: None,
             lost: false,
             spaces: Vec::new(),
             state: wxr::State::Connecting,
