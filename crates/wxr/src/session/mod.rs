@@ -18,28 +18,11 @@ use crate::plane::Plane;
 use crate::space::{Pose, ReferenceSpace, SpaceKind};
 use crate::target::ImageMeta;
 
+mod backend;
 mod vocabulary;
 
+pub use backend::Backend;
 pub use vocabulary::*;
-
-/// An XR runtime that can be connected to.
-pub trait Backend {
-    /// What the renderer has to hand over.
-    ///
-    /// An associated type for the same reason [`Session::Image`] is one: a Vulkan device, a D3D12 device
-    /// and nothing at all are not one thing. What it says is *who makes it* - the renderer does, and the
-    /// backend is told afterwards. The other order, where the runtime makes a device for the renderer to
-    /// adopt, is how an XR layer ends up owning every graphics decision above it.
-    type Device;
-    type Session: Session;
-
-    /// Connect, which is not the same as running: a session that arrives asynchronously comes back
-    /// `Connecting` and is polled like everything else.
-    ///
-    /// The mode is WebXR's `requestSession` argument - and it is a request: a platform that decides this itself
-    /// takes it and answers in its own terms.
-    fn connect(&self, device: Self::Device, mode: SessionMode) -> Result<Self::Session, Error>;
-}
 
 /// A live session.
 ///
