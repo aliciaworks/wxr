@@ -407,6 +407,10 @@ impl wxr::Session for OpenXrSession {
         self.release_anchor_impl(anchor)
     }
 
+    fn anchor_id(&mut self, anchor: wxr::Anchor) -> Option<wxr::AnchorId> {
+        self.anchor_id_impl(anchor)
+    }
+
     /// Ask for a source of hits along a space's own aim, which is `XR_META_environment_raycast`.
     ///
     /// The ray is not part of the source here: OpenXR's raycaster takes the ray per call, so a source is the

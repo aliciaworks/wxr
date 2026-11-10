@@ -54,8 +54,19 @@ impl ArKit {
         Some(wxr::Anchor::new(name))
     }
 
-    /// Where an anchor is now, in the session's own origin.
+    /// What ARKit calls this anchor, which is the name that outlives this session.
     ///
+    /// The identifier is filled in when ARKit makes the anchor rather than when it first tracks it, so this
+    /// answers as soon as there is an anchor to ask about.
+    pub fn anchor_id(&self, anchor: wxr::Anchor) -> Option<wxr::AnchorId> {
+        let world_anchor = self.anchors.get(&anchor.id())?;
+        let mut bytes = [0u8; 16];
+        // SAFETY: the anchor is live, and ARKit fills the UUID it made it with.
+        unsafe { ar_world_anchor_t::identifier(world_anchor, &mut bytes) };
+        Some(wxr::AnchorId::from_bytes(bytes))
+    }
+
+    /// Where an anchor is now, in the session's own origin.    ///
     /// `None` until the provider has tracked it and while it has lost it, which is what the core's
     /// `anchor_pose` means by a place that is not there. An anchor that was never added, or whose add failed,
     /// is never tracked and so never answers with its creation transform.

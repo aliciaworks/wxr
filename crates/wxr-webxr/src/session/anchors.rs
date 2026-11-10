@@ -64,6 +64,30 @@ impl WebXrSession {
 }
 
 impl WebXrSession {
+    /// The browser's name for an anchor, asked for the first time this is called.
+    ///
+    /// An anchor the frame has not made yet has no name to ask for, and the answer is `None` for the same
+    /// reason `anchor_pose` is: there is nothing there yet. The ask is made once, and a browser that refuses
+    /// leaves the answer `None` rather than asking again every frame.
+    pub(super) fn anchor_id_impl(&mut self, anchor: wxr::Anchor) -> Option<wxr::AnchorId> {
+        let slot = self.anchors.get(anchor.id() as usize)?.clone();
+        {
+            let slot = slot.borrow();
+            if let Some(id) = slot.id() {
+                return Some(id);
+            }
+            if slot.asked() {
+                return None;
+            }
+        }
+        let anchor = slot.borrow().anchor()?;
+        slot.borrow_mut().ask();
+        crate::anchors::request_handle(&anchor, slot);
+        None
+    }
+}
+
+impl WebXrSession {
     pub(super) fn release_anchor_impl(&mut self, anchor: wxr::Anchor) {
         let Some(slot) = self.anchors.get(anchor.id() as usize) else {
             return;

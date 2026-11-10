@@ -335,3 +335,14 @@ impl WebXrSession {
         }
     }
 }
+
+impl WebXrSession {
+    /// Put the foveation amount on the layer, when there is one - a session with no binding has no layer, and
+    /// an amount it never asked for is the layer's own default and is left alone.
+    pub(super) fn apply_foveation(&self) {
+        let (Some(gpu), Some(foveation)) = (&self.gpu, self.foveation) else {
+            return;
+        };
+        gpu.layer.set_fixed_foveation(Some(foveation));
+    }
+}

@@ -373,6 +373,10 @@ impl wxr::Session for AppleSession {
         }
     }
 
+    fn anchor_id(&mut self, anchor: wxr::Anchor) -> Option<wxr::AnchorId> {
+        self.arkit.as_ref()?.anchor_id(anchor)
+    }
+
     fn end(&mut self, frame: &mut wxr::Frame) -> Result<(), wxr::Error> {
         self.end_impl(frame)
     }

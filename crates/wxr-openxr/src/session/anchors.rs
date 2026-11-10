@@ -24,8 +24,9 @@ pub(super) enum Slot {
     /// will arrive under. What the core's [`wxr::Session::anchor_pose`] answers `None` for - a place that is
     /// not there *yet*, which is not the same as one that is gone.
     Pending(openxr_sys::AsyncRequestIdFB),
-    /// The runtime made it. This is the space, and it is this backend that owns it now.
-    Live(xr::Space),
+    /// The runtime made it. This is the space, and it is this backend that owns it now - and the UUID the
+    /// completion carried, which is the name that outlives the space.
+    Live { space: xr::Space, id: wxr::AnchorId },
 }
 
 /// The anchors this session has, and the requests in flight.
@@ -67,6 +68,7 @@ impl Anchors {
         request: openxr_sys::AsyncRequestIdFB,
         result: openxr_sys::Result,
         space: openxr_sys::Space,
+        uuid: openxr_sys::UuidEXT,
     ) {
         // Matched by the id rather than by "the oldest one pending", because a runtime may answer out of
         // order and an anchor that took over another's slot would be a caller's handle meaning something
@@ -96,9 +98,10 @@ impl Anchors {
         // `Arc` above is that session. The id is the one the slot was filed under, so what is written here
         // is the very request the completion names - which is the difference between "the anchor" and "an
         // anchor" when the runtime answers out of order.
-        *slot = Some(Slot::Live(unsafe {
-            xr::Space::reference_from_raw(self.session.clone(), space)
-        }));
+        *slot = Some(Slot::Live {
+            space: unsafe { xr::Space::reference_from_raw(self.session.clone(), space) },
+            id: wxr::AnchorId::from_bytes(uuid.data),
+        });
     }
 }
 
@@ -169,7 +172,7 @@ impl OpenXrSession {
                 "anchors: this runtime has no XR_FB_spatial_entity".into(),
             ));
         };
-        let Some(Slot::Live(found)) = anchors
+        let Some(Slot::Live { space: found, .. }) = anchors
             .slots
             .get(anchor.id() as usize)
             .and_then(|s| s.as_ref())
@@ -187,6 +190,19 @@ impl OpenXrSession {
                 log::debug!("wxr-openxr: locating an anchor: {error:?}");
                 Ok(None)
             }
+        }
+    }
+
+    /// The UUID the runtime gave the anchor when it made it, which is the name a caller saves.
+    ///
+    /// Nothing to ask the runtime for: `XR_FB_spatial_entity` carries the UUID on the completion that made
+    /// the anchor, so it is stored with the space and answered from there. A pending request has no name yet,
+    /// and a released one has nobody to name.
+    pub(super) fn anchor_id_impl(&self, anchor: wxr::Anchor) -> Option<wxr::AnchorId> {
+        let anchors = self.anchors.as_ref()?;
+        match anchors.slots.get(anchor.id() as usize)?.as_ref()? {
+            Slot::Live { id, .. } => Some(*id),
+            Slot::Pending(_) => None,
         }
     }
 

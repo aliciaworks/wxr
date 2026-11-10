@@ -21,12 +21,40 @@ pub struct Slot {
     /// go while its creation was still a promise would otherwise come back from having been released, and
     /// stay tracked by the browser for the rest of the session with no handle left to delete it.
     cancelled: bool,
+    /// The persistent handle, once the browser has answered with one - see [`request_handle`].
+    id: Option<wxr::AnchorId>,
+    /// Whether the handle has been asked for, so the request is made once rather than on every frame that
+    /// asks: the promise is a name for this place, and a second ask would be a second name for it.
+    asked: bool,
 }
 
 impl Slot {
     /// The anchor, once the runtime has made one.
     pub fn anchor(&self) -> Option<XrAnchor> {
         self.anchor.clone()
+    }
+
+    /// The runtime's own name for it, once the browser has answered with one.
+    pub fn id(&self) -> Option<wxr::AnchorId> {
+        self.id
+    }
+
+    /// Whether the name has been asked for already.
+    pub fn asked(&self) -> bool {
+        self.asked
+    }
+
+    /// Remember that it has, so the request is made once.
+    pub fn ask(&mut self) {
+        self.asked = true;
+    }
+
+    /// Take the browser's answer, unless the anchor has since been let go - a name for an anchor that was
+    /// deleted is a name nothing can be asked by.
+    pub fn fill_id(&mut self, id: wxr::AnchorId) {
+        if !self.cancelled {
+            self.id = Some(id);
+        }
     }
 
     /// Forget it, which is what asking the runtime to delete one leaves behind.
@@ -69,6 +97,33 @@ pub fn create(
         }
     });
     Ok(())
+}
+
+/// Ask the browser for the anchor's persistent handle, and fill the slot when the promise answers.
+///
+/// The handle is a promise rather than a field, so the ask is made here and the answer arrives whenever the
+/// browser gets to it - which is why [`wxr::Session::anchor_id`] answers `None` until it has. A rejection is
+/// an anchor the browser will not persist, and a string that is not a UUID is not the sixteen bytes the other
+/// two runtimes name one with; both leave the slot without an id rather than with a name of this core's
+/// making.
+pub fn request_handle(anchor: &XrAnchor, slot: Rc<RefCell<Slot>>) {
+    let promise = anchor.request_persistent_handle();
+    wasm_bindgen_futures::spawn_local(async move {
+        let Ok(value) = JsFuture::from(promise).await else {
+            log::debug!("wxr-webxr: the browser would not name this anchor");
+            return;
+        };
+        let Some(text) = value.as_string() else {
+            log::debug!("wxr-webxr: the browser named an anchor with something that is not text");
+            return;
+        };
+        match text.parse::<wxr::AnchorId>() {
+            Ok(id) => slot.borrow_mut().fill_id(id),
+            Err(_) => {
+                log::debug!("wxr-webxr: the browser named an anchor '{text}', which is not a UUID")
+            }
+        }
+    });
 }
 
 /// Where the anchor is now, in `space`, or `None` when the runtime has lost it.

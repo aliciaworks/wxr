@@ -186,15 +186,6 @@ impl WebXrSession {
             log::warn!("wxr-webxr: the near and far planes were refused: {error:?}");
         }
     }
-
-    /// Put the foveation amount on the layer, when there is one - a session with no binding has no layer, and
-    /// an amount it never asked for is the layer's own default and is left alone.
-    fn apply_foveation(&self) {
-        let (Some(gpu), Some(foveation)) = (&self.gpu, self.foveation) else {
-            return;
-        };
-        gpu.layer.set_fixed_foveation(Some(foveation));
-    }
 }
 
 impl wxr::Session for WebXrSession {
@@ -442,6 +433,10 @@ impl wxr::Session for WebXrSession {
 
     fn release_anchor(&mut self, anchor: wxr::Anchor) {
         self.release_anchor_impl(anchor)
+    }
+
+    fn anchor_id(&mut self, anchor: wxr::Anchor) -> Option<wxr::AnchorId> {
+        self.anchor_id_impl(anchor)
     }
 
     fn depth(&mut self, view: usize) -> Option<(&Self::Depth, wxr::DepthInfo)> {

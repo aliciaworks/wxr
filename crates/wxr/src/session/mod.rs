@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use glam::Vec2;
 
-use crate::anchor::Anchor;
+use crate::anchor::{Anchor, AnchorId};
 use crate::depth::{DepthInfo, DepthSensing};
 use crate::feature::Features;
 use crate::frame::Frame;
@@ -460,6 +460,17 @@ pub trait Session: Any {
     /// Tell the runtime the app is done with an anchor, which is WebXR's `XRAnchor.delete`. Nothing by
     /// default, because a backend with no anchors has none to release.
     fn release_anchor(&mut self, _anchor: Anchor) {}
+
+    /// The runtime's own name for an anchor - WebXR's `XRAnchor.requestPersistentHandle`, OpenXR's
+    /// `XrSpatialAnchorCreateCompleteFB`, ARKit's `ar_anchor_get_identifier`.
+    ///
+    /// [`Anchor`]'s id is a slot in *this* session's table and means nothing to the next session, while this
+    /// one is the runtime's: it is what a caller writes down to ask for the same place in a later run.
+    /// `None` while the runtime has not answered - WebXR answers with a promise - for an anchor this session
+    /// did not hand out, and for a runtime with no way to name one.
+    fn anchor_id(&mut self, _anchor: Anchor) -> Option<AnchorId> {
+        None
+    }
 
     /// What the runtime measured of the real world for the view at `index`, and the buffer itself - WebXR's
     /// `XRFrame.getDepthInformation`, OpenXR's environment depth.

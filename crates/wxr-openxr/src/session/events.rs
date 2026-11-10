@@ -87,7 +87,12 @@ impl OpenXrSession {
                 // loop carries on rather than returning - there is nothing for the caller to do about it.
                 Ok(Some(xr::Event::SpatialAnchorCreateCompleteFB(event))) => {
                     if let Some(anchors) = self.anchors.as_mut() {
-                        anchors.complete(event.request_id(), event.result(), event.space());
+                        anchors.complete(
+                            event.request_id(),
+                            event.result(),
+                            event.space(),
+                            event.uuid(),
+                        );
                     }
                     continue;
                 }
