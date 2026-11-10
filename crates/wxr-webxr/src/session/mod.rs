@@ -410,6 +410,10 @@ impl wxr::Session for WebXrSession {
         self.refresh_rates_impl(out);
     }
 
+    fn refresh_rate(&mut self) -> Option<f32> {
+        self.refresh_rate_impl()
+    }
+
     fn set_refresh_rate(&mut self, rate: f32) {
         self.set_refresh_rate_impl(rate);
     }

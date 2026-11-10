@@ -444,7 +444,7 @@ class XRSession {
       controller('right', 0.2),
     ];
     this.maxRenderLayers = 4;
-    this.frameRate = 90;
+    this.frameRate = 72;
     this.supportedFrameRates = new Float32Array([72, 90, 120]);
     this.onend = null;
     this.onframeratechange = null;

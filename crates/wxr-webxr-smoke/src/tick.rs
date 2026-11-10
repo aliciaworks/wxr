@@ -94,20 +94,31 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
                 frame_rate_requests().unwrap_or(u32::MAX)
             ));
         }
+        // What the display is doing now, which starts at the stub's own mode rather than at whatever the last
+        // request asked for - the two are equal on a run that never asked, and a getter that returned a
+        // constant would pass that and fail this.
+        if session.refresh_rate() != Some(72.0) {
+            return Err(format!(
+                "the display runs at {:?} Hz, where the stub starts at 72",
+                session.refresh_rate()
+            ));
+        }
         // The rate the display offers, which the stub's own `frameRate` says it is - and then one it does
         // not, whose promise rejection this backend has to read rather than leave unhandled on the page.
         session.set_refresh_rate(90.0);
-        if frame_rate() != Some(90.0) {
+        if frame_rate() != Some(90.0) || session.refresh_rate() != Some(90.0) {
             return Err(format!(
-                "a 90 Hz request landed as {:?}, where the display offers 90",
-                frame_rate()
+                "a 90 Hz request landed as {:?}/{:?}, where the display offers 90",
+                frame_rate(),
+                session.refresh_rate()
             ));
         }
         session.set_refresh_rate(60.0);
-        if frame_rate() != Some(90.0) {
+        if frame_rate() != Some(90.0) || session.refresh_rate() != Some(90.0) {
             return Err(format!(
-                "a rate the display does not offer changed it to {:?}",
-                frame_rate()
+                "a rate the display does not offer changed it to {:?}/{:?}",
+                frame_rate(),
+                session.refresh_rate()
             ));
         }
         if frame_rate_requests() != Some(2) {

@@ -307,6 +307,7 @@ DEFAULT_IS_ENOUGH = {
     ("wxr-apple", "play_pcm"): "CoreHaptics in the visionOS 27 SDK is `CHHapticEvent`, `CHHapticPattern` "
     "and `CHHapticPatternPlayer`, with no PCM, sample or custom-audio entry point anywhere in the headers",
     ("wxr-apple", "refresh_rates"): "CompositorServices asks a display for nothing",
+    ("wxr-apple", "refresh_rate"): "as `refresh_rates`: there is no call to ask with",
     ("wxr-apple", "set_refresh_rate"): "CompositorServices tells a display nothing",
     ("wxr-apple", "request_viewport_scale"): "no `viewportScale` symbol in CompositorServices, so there is "
     "no recommended scale to hand back in the first place (`View::recommended_viewport_scale` is `None`)",
@@ -695,6 +696,7 @@ ALIASES = {
     "environmentBlendMode": "fn blend",
     "fixedFoveation": "fn set_foveation",
     "supportedFrameRates": "fn refresh_rates",
+    "frameRate": "fn refresh_rate",
     "updateTargetFrameRate": "fn set_refresh_rate",
     "inputSources": "fn inputs",
     "visibilityState": "fn visibility",

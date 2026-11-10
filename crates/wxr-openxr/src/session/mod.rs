@@ -72,6 +72,13 @@ impl wxr::Session for OpenXrSession {
         self.refresh_rates_impl(out)
     }
 
+    /// The rate the display is running at, which is `xrGetDisplayRefreshRateFB`.
+    ///
+    /// A runtime without the extension has one rate and no way to ask, so `None` is the whole answer.
+    fn refresh_rate(&mut self) -> Option<f32> {
+        self.refresh_rate_impl()
+    }
+
     /// Ask for one of them, which is `xrRequestDisplayRefreshRateFB`.
     ///
     /// A runtime that will not take this one keeps the rate it has, so a refusal is logged rather than

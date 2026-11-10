@@ -78,6 +78,23 @@ impl OpenXrSession {
 }
 
 impl OpenXrSession {
+    pub(super) fn refresh_rate_impl(&mut self) -> Option<f32> {
+        if !self.refresh_rate {
+            return None;
+        }
+        // The rate in effect, not the one last requested: a runtime is free to keep its own until it can
+        // change, which is what `xrRequestDisplayRefreshRateFB` is allowed to do.
+        match self.session.get_display_refresh_rate() {
+            Ok(rate) => Some(rate),
+            Err(error) => {
+                log::debug!("wxr-openxr: asking for the current refresh rate: {error:?}");
+                None
+            }
+        }
+    }
+}
+
+impl OpenXrSession {
     pub(super) fn set_refresh_rate_impl(&mut self, rate: f32) {
         if !self.refresh_rate {
             return;

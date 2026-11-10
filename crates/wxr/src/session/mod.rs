@@ -171,11 +171,17 @@ pub trait Session: Any {
     fn set_foveation(&mut self, _amount: f32) {}
 
     /// The refresh rates the display offers, in hertz, appended to `out` - `XR_FB_display_refresh_rate`'s
-    /// list and the like.
-    ///
-    /// Empty by default, and that is a fact rather than a placeholder: a session on a platform that does not
-    /// let an app choose draws at whatever its display does, and there is no list to read.
+    /// list and the like. Empty by default, and that is a fact rather than a placeholder: a session on a
+    /// platform that does not let an app choose draws at whatever its display does, and there is no list.
     fn refresh_rates(&mut self, _out: &mut Vec<f32>) {}
+
+    /// The rate the display is running at, in hertz - WebXR's `XRSession.frameRate`, OpenXR's
+    /// `xrGetDisplayRefreshRateFB`; [`refresh_rates`](Session::refresh_rates) is the list it offers. A
+    /// request through [`set_refresh_rate`](Session::set_refresh_rate) lands on the runtime's own schedule,
+    /// so this is how a caller finds out whether it took. `None` when the runtime cannot say.
+    fn refresh_rate(&mut self) -> Option<f32> {
+        None
+    }
 
     /// Ask the display to run at `rate` hertz - the other half of [`refresh_rates`](Session::refresh_rates).
     ///

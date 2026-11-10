@@ -128,6 +128,18 @@ impl WebXrSession {
 }
 
 impl WebXrSession {
+    /// The rate the display is running at, which is `XRSession.frameRate`.
+    ///
+    /// Not the rate the last request asked for: a request is granted on the runtime's own schedule, and this
+    /// is the browser's answer to what is actually on the display now. A value that is not finite is not a
+    /// rate, so it is answered as no answer rather than passed on.
+    pub(super) fn refresh_rate_impl(&self) -> Option<f32> {
+        let session = self.inner.borrow().session.clone()?;
+        session.frame_rate().filter(|rate| rate.is_finite())
+    }
+}
+
+impl WebXrSession {
     /// The rates this display offers, appended to `out` as the core's contract says.
     pub(super) fn refresh_rates_impl(&mut self, out: &mut Vec<f32>) {
         let Some(session) = self.inner.borrow().session.clone() else {
