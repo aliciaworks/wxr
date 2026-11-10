@@ -2,6 +2,7 @@
 
 use glam::Vec2;
 
+use crate::mesh::SurfaceKind;
 use crate::space::Pose;
 
 /// How a surface lies, which is WebXR's `XRPlaneOrientation`.
@@ -33,6 +34,13 @@ pub struct Plane {
     /// How big it is, in metres: `x` across and `y` along, in the plane's own axes.
     pub extent: Vec2,
     pub orientation: PlaneOrientation,
+    /// What the runtime says it is, when it says - WebXR's `semanticLabel`, OpenXR's `semantic_type`,
+    /// ARKit's plane classification.
+    ///
+    /// The same list a mesh's patches are labelled with, because a floor is a floor whether the runtime
+    /// boxed it or traced it. [`SurfaceKind::None`] is a runtime that found the surface and did not
+    /// classify it, which is the answer ARKit gives before it has looked long enough to know.
+    pub kind: SurfaceKind,
 }
 
 #[cfg(test)]
@@ -46,8 +54,10 @@ mod tests {
             pose: Pose::IDENTITY,
             extent: Vec2::new(1.5, 0.8),
             orientation: PlaneOrientation::default(),
+            kind: SurfaceKind::default(),
         };
         assert_eq!(plane.orientation, PlaneOrientation::Unknown);
+        assert_eq!(plane.kind, SurfaceKind::None);
         assert!(plane.extent.x > plane.extent.y);
     }
 }

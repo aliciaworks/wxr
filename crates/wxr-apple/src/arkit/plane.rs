@@ -8,6 +8,7 @@ use std::ffi::c_void;
 
 use objc2_ar_kit::{
     ar_plane_alignment_t, ar_plane_anchor_t, ar_plane_extent_t, ar_plane_geometry_t,
+    ar_surface_classification_t,
 };
 use wxr::glam::Mat4;
 
@@ -52,7 +53,36 @@ unsafe fn plane_of(anchor: &ar_plane_anchor_t) -> wxr::Plane {
                 a if a == ar_plane_alignment_t::vertical => wxr::PlaneOrientation::Vertical,
                 _ => wxr::PlaneOrientation::Unknown,
             },
+            // The anchor's classification rather than the geometry's: the geometry is the shape, and what
+            // the shape is a picture of is the anchor's answer. `surface_classification` is the call Apple
+            // points the older `plane_classification` at; the two lists differ only in the newer one adding
+            // the labels the core already has.
+            kind: kind(ar_plane_anchor_t::surface_classification(anchor)),
         }
+    }
+}
+
+/// What ARKit's classification of a plane is, in the core's terms.
+///
+/// `none` is both "not classified" and "not any of these", which the core says the same way: a caller that
+/// has a surface to place something on does not need it to be a table. The richer labels - stairs, a bed, a
+/// cabinet - are the ones the core learned from scene reconstruction, and a plane is rarely one of those.
+fn kind(classification: ar_surface_classification_t) -> wxr::SurfaceKind {
+    match classification {
+        c if c == ar_surface_classification_t::wall => wxr::SurfaceKind::Wall,
+        c if c == ar_surface_classification_t::floor => wxr::SurfaceKind::Floor,
+        c if c == ar_surface_classification_t::ceiling => wxr::SurfaceKind::Ceiling,
+        c if c == ar_surface_classification_t::table => wxr::SurfaceKind::Table,
+        c if c == ar_surface_classification_t::seat => wxr::SurfaceKind::Seat,
+        c if c == ar_surface_classification_t::window => wxr::SurfaceKind::Window,
+        c if c == ar_surface_classification_t::door => wxr::SurfaceKind::Door,
+        c if c == ar_surface_classification_t::cabinet => wxr::SurfaceKind::Cabinet,
+        c if c == ar_surface_classification_t::bed => wxr::SurfaceKind::Bed,
+        c if c == ar_surface_classification_t::plant => wxr::SurfaceKind::Plant,
+        c if c == ar_surface_classification_t::stairs => wxr::SurfaceKind::Stairs,
+        c if c == ar_surface_classification_t::tv => wxr::SurfaceKind::Tv,
+        c if c == ar_surface_classification_t::home_appliance => wxr::SurfaceKind::HomeAppliance,
+        _ => wxr::SurfaceKind::None,
     }
 }
 

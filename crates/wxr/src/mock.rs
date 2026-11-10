@@ -16,7 +16,7 @@ use crate::input::{
     Axes, Buttons, Hand, HandJoint, Handedness, InputId, InputSource, Joint, TargetRayMode,
 };
 use crate::layer::{Layer, LayerImage, LayerShape};
-use crate::mesh::{Mesh, MeshKind};
+use crate::mesh::{Mesh, SurfaceKind};
 use crate::session::{
     Backend, Error, Event, Presentation, Session, SessionMode, State, Visibility,
 };

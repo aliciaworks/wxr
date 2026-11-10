@@ -16,18 +16,18 @@ use glam::Vec3;
 
 use crate::space::Pose;
 
-/// What a piece of a mesh is, which is WebXR's `semanticLabel`.
+/// What a piece of the room is, which is WebXR's `semanticLabel` on a mesh or a plane.
 ///
 /// The *intersection* of the labels the three put on geometry, and not the union: ARKit's scene
-/// reconstruction has a name for each of these, and the meshing draft's list is the same list. `None` is a
-/// runtime that traced the triangles and did not say what they are, which is a real answer - a room to
-/// collide with does not need to know that one wall is a cabinet.
+/// reconstruction and its plane classification have a name for each of these, and the meshing draft's list
+/// is the same list. `None` is a runtime that found the surface and did not say what it is, which is a real
+/// answer - a room to collide with does not need to know that one wall is a cabinet.
 ///
 /// A backend with a finer label than this - ARKit has no more, but a vendor's could - says the nearest of
 /// these rather than widening the core: a word only one platform has a name for is the platform's, and this
 /// core is the vocabulary all three share.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum MeshKind {
+pub enum SurfaceKind {
     Wall,
     Floor,
     Ceiling,
@@ -68,7 +68,7 @@ pub struct Mesh {
     /// Triangles into [`Mesh::vertices`], three at a time.
     pub indices: Vec<u32>,
     /// What the runtime says this patch of room is, when it says.
-    pub kind: MeshKind,
+    pub kind: SurfaceKind,
     /// When it last changed, on the same clock as the frames - the draft's `lastChangedTime`. A room that
     /// has not moved has a mesh that has not changed, and a caller that rebuilds its collision on this is a
     /// caller that is not rebuilding it every frame.
@@ -86,10 +86,10 @@ mod tests {
             pose: Pose::IDENTITY,
             vertices: vec![Vec3::ZERO, Vec3::X, Vec3::Y],
             indices: vec![0, 1, 2],
-            kind: MeshKind::default(),
+            kind: SurfaceKind::default(),
             last_changed: Duration::ZERO,
         };
-        assert_eq!(mesh.kind, MeshKind::None);
+        assert_eq!(mesh.kind, SurfaceKind::None);
         // Three corners and one triangle: the shape a mesh has to have to be worth anything.
         assert_eq!(mesh.indices.len() % 3, 0);
         assert!(

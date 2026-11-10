@@ -141,11 +141,11 @@ unsafe fn read_indices(faces: &ar_geometry_element_t) -> Vec<u32> {
 /// # Safety
 ///
 /// `geometry` must be a live mesh geometry.
-unsafe fn kind_of(geometry: &ar_mesh_geometry_t) -> wxr::MeshKind {
+unsafe fn kind_of(geometry: &ar_mesh_geometry_t) -> wxr::SurfaceKind {
     // SAFETY: the geometry is live, and the classification source is the runtime's.
     unsafe {
         let Some(source) = ar_mesh_geometry_t::classification(geometry) else {
-            return wxr::MeshKind::None;
+            return wxr::SurfaceKind::None;
         };
         let mut counts: Vec<(i64, usize)> = Vec::new();
         for face in read_classifications(&source) {
@@ -159,7 +159,7 @@ unsafe fn kind_of(geometry: &ar_mesh_geometry_t) -> wxr::MeshKind {
             .into_iter()
             .max_by_key(|(_, count)| *count)
             .map(|(raw, _)| kind_from_raw(raw))
-            .unwrap_or(wxr::MeshKind::None)
+            .unwrap_or(wxr::SurfaceKind::None)
     }
 }
 
@@ -206,24 +206,24 @@ unsafe fn read_classifications(source: &ar_geometry_source_t) -> Vec<i64> {
 ///
 /// The numbers come from ARKit's own constants rather than being written out here, so a runtime that
 /// renumbered them - which it will not - would still be read correctly.
-fn kind_from_raw(raw: i64) -> wxr::MeshKind {
+fn kind_from_raw(raw: i64) -> wxr::SurfaceKind {
     let value = raw as isize;
     match value {
-        v if v == ar_mesh_classification_t::wall.0 => wxr::MeshKind::Wall,
-        v if v == ar_mesh_classification_t::floor.0 => wxr::MeshKind::Floor,
-        v if v == ar_mesh_classification_t::ceiling.0 => wxr::MeshKind::Ceiling,
-        v if v == ar_mesh_classification_t::table.0 => wxr::MeshKind::Table,
-        v if v == ar_mesh_classification_t::seat.0 => wxr::MeshKind::Seat,
-        v if v == ar_mesh_classification_t::door.0 => wxr::MeshKind::Door,
-        v if v == ar_mesh_classification_t::window.0 => wxr::MeshKind::Window,
-        v if v == ar_mesh_classification_t::cabinet.0 => wxr::MeshKind::Cabinet,
-        v if v == ar_mesh_classification_t::bed.0 => wxr::MeshKind::Bed,
-        v if v == ar_mesh_classification_t::plant.0 => wxr::MeshKind::Plant,
-        v if v == ar_mesh_classification_t::stairs.0 => wxr::MeshKind::Stairs,
-        v if v == ar_mesh_classification_t::tv.0 => wxr::MeshKind::Tv,
-        v if v == ar_mesh_classification_t::home_appliance.0 => wxr::MeshKind::HomeAppliance,
+        v if v == ar_mesh_classification_t::wall.0 => wxr::SurfaceKind::Wall,
+        v if v == ar_mesh_classification_t::floor.0 => wxr::SurfaceKind::Floor,
+        v if v == ar_mesh_classification_t::ceiling.0 => wxr::SurfaceKind::Ceiling,
+        v if v == ar_mesh_classification_t::table.0 => wxr::SurfaceKind::Table,
+        v if v == ar_mesh_classification_t::seat.0 => wxr::SurfaceKind::Seat,
+        v if v == ar_mesh_classification_t::door.0 => wxr::SurfaceKind::Door,
+        v if v == ar_mesh_classification_t::window.0 => wxr::SurfaceKind::Window,
+        v if v == ar_mesh_classification_t::cabinet.0 => wxr::SurfaceKind::Cabinet,
+        v if v == ar_mesh_classification_t::bed.0 => wxr::SurfaceKind::Bed,
+        v if v == ar_mesh_classification_t::plant.0 => wxr::SurfaceKind::Plant,
+        v if v == ar_mesh_classification_t::stairs.0 => wxr::SurfaceKind::Stairs,
+        v if v == ar_mesh_classification_t::tv.0 => wxr::SurfaceKind::Tv,
+        v if v == ar_mesh_classification_t::home_appliance.0 => wxr::SurfaceKind::HomeAppliance,
         // `ar_mesh_classification_t::none`, and anything a newer runtime adds: a mesh with no label, which is
         // a room to collide with all the same.
-        _ => wxr::MeshKind::None,
+        _ => wxr::SurfaceKind::None,
     }
 }

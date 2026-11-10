@@ -263,6 +263,7 @@ impl PlaneDetector {
                 // the two numbers carry over unchanged, which is what `convert::surface`'s rotation is for.
                 extent: wxr::glam::Vec2::new(location.extents.width, location.extents.height),
                 orientation: orientation(location.orientation),
+                kind: kind(location.semantic_type),
             });
         }
     }
@@ -285,6 +286,21 @@ fn orientation(found: openxr_sys::PlaneDetectorOrientationEXT) -> wxr::PlaneOrie
             wxr::PlaneOrientation::Vertical
         }
         _ => wxr::PlaneOrientation::Unknown,
+    }
+}
+
+/// What OpenXR's label for the surface is, in the core's terms.
+///
+/// `PLATFORM` is the one that needs a decision: OpenXR means a horizontal surface raised off the floor, "like
+/// a table", and the core's list has `Table` for it. A finer distinction is the vendor's; a caller that
+/// wants to know the box's height has the pose.
+fn kind(found: openxr_sys::PlaneDetectorSemanticTypeEXT) -> wxr::SurfaceKind {
+    match found {
+        t if t == openxr_sys::PlaneDetectorSemanticTypeEXT::CEILING => wxr::SurfaceKind::Ceiling,
+        t if t == openxr_sys::PlaneDetectorSemanticTypeEXT::FLOOR => wxr::SurfaceKind::Floor,
+        t if t == openxr_sys::PlaneDetectorSemanticTypeEXT::WALL => wxr::SurfaceKind::Wall,
+        t if t == openxr_sys::PlaneDetectorSemanticTypeEXT::PLATFORM => wxr::SurfaceKind::Table,
+        _ => wxr::SurfaceKind::None,
     }
 }
 

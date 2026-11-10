@@ -165,7 +165,7 @@ fn the_mock_room_has_triangles_in_it() {
     assert!(session.features().contains(crate::Features::MESH));
     assert_eq!(meshes.len(), 1);
     let mesh = &meshes[0];
-    assert_eq!(mesh.kind, crate::MeshKind::Table);
+    assert_eq!(mesh.kind, crate::SurfaceKind::Table);
     // Three at a time, and every one of them names a corner: the shape a mesh has to have to be worth
     // anything, which is also the shape a mock that fabricated one would get wrong.
     assert_eq!(mesh.indices.len() % 3, 0);

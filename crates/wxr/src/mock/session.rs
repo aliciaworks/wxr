@@ -377,7 +377,7 @@ impl Session for MockSession {
                 Vec3::new(-half, 0.0, half),
             ],
             indices: vec![0, 1, 2, 0, 2, 3],
-            kind: MeshKind::Table,
+            kind: SurfaceKind::Table,
             last_changed: Duration::ZERO,
         });
         Ok(())

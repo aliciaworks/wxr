@@ -60,7 +60,33 @@ pub fn detected(
                 Some(XrPlaneOrientation::Vertical) => wxr::PlaneOrientation::Vertical,
                 Some(XrPlaneOrientation::__Invalid) | None => wxr::PlaneOrientation::Unknown,
             },
+            kind: kind(plane.semantic_label().as_deref()),
         });
+    }
+}
+
+/// What WebXR's label for the surface is, in the core's terms.
+///
+/// Plane detection does not enumerate the strings - `semanticLabel` is a plain `DOMString` - but it uses
+/// the meshing draft's list, which is the list this core carries. A label the core has no word for is
+/// `None` rather than the nearest guess: a caller that wants to know is better told the runtime did not
+/// say than told something the runtime did not mean.
+fn kind(label: Option<&str>) -> wxr::SurfaceKind {
+    match label {
+        Some("wall") => wxr::SurfaceKind::Wall,
+        Some("floor") => wxr::SurfaceKind::Floor,
+        Some("ceiling") => wxr::SurfaceKind::Ceiling,
+        Some("table") => wxr::SurfaceKind::Table,
+        Some("seat") => wxr::SurfaceKind::Seat,
+        Some("door") => wxr::SurfaceKind::Door,
+        Some("window") => wxr::SurfaceKind::Window,
+        Some("cabinet") => wxr::SurfaceKind::Cabinet,
+        Some("bed") => wxr::SurfaceKind::Bed,
+        Some("plant") => wxr::SurfaceKind::Plant,
+        Some("stairs") => wxr::SurfaceKind::Stairs,
+        Some("tv") => wxr::SurfaceKind::Tv,
+        Some("home-appliance") => wxr::SurfaceKind::HomeAppliance,
+        _ => wxr::SurfaceKind::None,
     }
 }
 

@@ -50,7 +50,7 @@ pub use input::{
 };
 pub use layer::{Binding, Layer, LayerImage, LayerShape, SubImage};
 pub use light::{LightEstimate, LightProbe};
-pub use mesh::{Mesh, MeshKind};
+pub use mesh::{Mesh, SurfaceKind};
 pub use plane::{Plane, PlaneOrientation};
 pub use session::{
     Backend, Blend, Error, Event, InteractionMode, Presentation, Session, SessionMode, State,
