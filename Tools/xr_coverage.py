@@ -127,29 +127,35 @@ def generated_aliases() -> dict:
     stops appearing the moment a backend switches over. The generated crate still carries it, as the
     `#[doc(alias = ...)]` on the method - and the method is qualified by its type on purpose: a bare `new` or
     `identifier` matches half a backend by accident, `ar_plane_anchor_t::identifier` matches the one call.
+
+    Two crates, because this backend is two frameworks: ARKit's anchors and planes, and the compositor's
+    frames and views. A `cp_*` alias was invisible while only the first crate was read, which made the call
+    `cp_frame_timing::presentation_time` look like a `cp_frame_timing_get_presentation_time` nobody had made.
     """
     import glob
 
     out = {}
-    pattern = str(
-        Path.home()
-        / ".cargo/git/checkouts/objc2-*/*/framework-crates/objc2-ar-kit/src/generated"
-    )
-    for d in glob.glob(pattern):
-        for path in Path(d).glob("*.rs"):
-            lines = path.read_text(errors="ignore").splitlines()
-            current = None
-            for i, line in enumerate(lines):
-                impl = re.match(r"impl\s+(\w+)\s*\{", line)
-                if impl:
-                    current = impl.group(1)
-                alias = re.match(r'\s*#\[doc\(alias = "((?:ar|cp)_\w+)"\)\]', line)
-                if alias and current:
-                    for after in lines[i + 1 : i + 60]:
-                        fn = re.search(r"\bfn\s+(\w+)\s*[\(<]", after)
-                        if fn:
-                            out[alias.group(1)] = f"{current}::{fn.group(1)}"
-                            break
+    crates = ("objc2-ar-kit", "objc2-compositor-services")
+    for crate in crates:
+        pattern = str(
+            Path.home()
+            / f".cargo/git/checkouts/objc2-*/*/framework-crates/{crate}/src/generated"
+        )
+        for d in glob.glob(pattern):
+            for path in Path(d).glob("*.rs"):
+                lines = path.read_text(errors="ignore").splitlines()
+                current = None
+                for i, line in enumerate(lines):
+                    impl = re.match(r"impl\s+(\w+)\s*\{", line)
+                    if impl:
+                        current = impl.group(1)
+                    alias = re.match(r'\s*#\[doc\(alias = "((?:ar|cp)_\w+)"\)\]', line)
+                    if alias and current:
+                        for after in lines[i + 1 : i + 60]:
+                            fn = re.search(r"\bfn\s+(\w+)\s*[\(<]", after)
+                            if fn:
+                                out[alias.group(1)] = f"{current}::{fn.group(1)}"
+                                break
     return out
 
 
@@ -517,6 +523,11 @@ def spellings(name: str):
         yield "_".join(words)
     elif name[:1].islower():
         yield name[:1].upper() + name[1:]
+    # An interface is `XRInputSource` in the IDL and `XrInputSource` in `sys/`, because the generator writes a
+    # leading `Xr` where the specification writes `XR`. The same word twice, so a backend that names the
+    # generated type has named the interface.
+    if name.startswith("XR") and len(name) > 2 and name[2].isupper():
+        yield "Xr" + name[2:]
     snake = re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
     if snake != name:
         yield snake
