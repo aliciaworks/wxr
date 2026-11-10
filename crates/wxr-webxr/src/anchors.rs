@@ -58,8 +58,13 @@ impl Slot {
     }
 
     /// Forget it, which is what asking the runtime to delete one leaves behind.
+    ///
+    /// The name goes with it: a handle for an anchor that has been given back is not one this session can
+    /// answer for, and the other two backends drop theirs the same way - OpenXR empties the slot and ARKit
+    /// takes the anchor out of its map, so a released anchor answers `None` to everything.
     pub fn forget(&mut self) {
         self.cancelled = true;
+        self.id = None;
         if let Some(anchor) = self.anchor.take() {
             anchor.delete();
         }
