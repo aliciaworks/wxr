@@ -26,17 +26,17 @@ column only on a Mac, since that one counts the SDK's own headers rather than an
 
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
-| **Native API reached** - of each backend's own spec | 167/290 | 67/551 | 79/618 |
-| *as a percentage* | 58% | 12% | 13% |
-| **WebXR API reached** - of the whole API | 298/452 | 226/452 | 220/452 |
-| *as a percentage* | 66% | 50% | 49% |
+| **Native API reached** - of each backend's own spec | 206/290 | 70/551 | 103/618 |
+| *as a percentage* | 71% | 13% | 17% |
+| **WebXR API reached** - of the whole API | 340/452 | 234/452 | 225/452 |
+| *as a percentage* | 75% | 52% | 50% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
 Input, Depth Sensing, Hit Test, Lighting Estimation, Anchors, Plane Detection, the AR Module, DOM Overlays
 and the Gamepads module - counted member by member, with the community-group drafts left out. It is a
 *floor*: the core gives a concept its own name (`requestReferenceSpace` is `space`) and both native backends
 go through the core, so a member a backend serves can still share no name with anything in its source. The
-core itself names 288 of the 452.
+core itself names 296 of the 452.
 
 ## The core is small on purpose
 
@@ -68,9 +68,11 @@ object is lit by the room rather than by a guess. Both are asked for by
 `SessionMode::ImmersiveAr` - a runtime told the session is drawn over the world is the one that offers them -
 and what each backend has of them differs in kind. OpenXR's are extensions with no typed wrapper at all, so
 `wxr-openxr` drives them by hand over raw pointers: surfaces, anchors, where a ray lands, and the room's own
-depth map. Apple's are behind a header that is not to hand. And light estimation is WebXR's alone, because the
-OpenXR registry has no extension for it in any vendor's - no `XR_*light*` name exists at all, so there is
-nothing for that one to be written against.
+depth map. Apple's are ARKit providers of their own - one for planes, one for the room's triangles, one that
+photographs the room and reduces it to the same nine coefficients - each a header of its own rather than one
+API. OpenXR is the odd one out on light: the registry's two light-estimation extensions are ByteDance's and
+Android's, and `openxr-sys` 0.14 binds neither, so `light` and `light_probe` are the core's defaults there for
+want of a call this backend could make.
 
 Which of those a session actually has is `Features` - a set of bits rather than a method per capability that
 errors when it is missing, the shape `wgpu` uses and WebXR's `enabledFeatures` uses. Until there was one, "this
