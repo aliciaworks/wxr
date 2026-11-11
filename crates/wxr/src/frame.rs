@@ -121,6 +121,14 @@ pub struct Frame {
     /// The eyes are placed around it, and a scene that wants the camera *at* the wearer rather than at an eye
     /// asks for this. Filled by `views`, because that is the call the space is given to; identity until then.
     pub viewer: Pose,
+    /// Whether [`Frame::viewer`]'s position is estimated rather than tracked - WebXR's
+    /// `XRPose.emulatedPosition`, which a `XRViewerPose` carries for the head.
+    ///
+    /// A 3DOF runtime estimates where the head has moved from what the neck does, and a runtime that has lost
+    /// tracking for a moment fills the gap the same way. The pose is still there and still worth drawing with;
+    /// what changes is that it is a guess, and content pinned to the room is the thing that shows it. `false`
+    /// for a runtime that only reports poses it tracked, which is every one of the three that can say.
+    pub emulated_position: bool,
     views: Vec<View>,
 }
 
@@ -142,6 +150,7 @@ impl Frame {
     /// would stand a scene at last frame's eye height for a frame that never located one.
     pub fn reset(&mut self) {
         self.viewer = Pose::IDENTITY;
+        self.emulated_position = false;
         self.views.clear();
     }
 
@@ -189,6 +198,7 @@ mod tests {
                 position: crate::glam::Vec3::Y,
                 orientation: crate::glam::Quat::IDENTITY,
             },
+            emulated_position: true,
             ..Default::default()
         };
         frame.views_mut().push(View {
@@ -206,5 +216,9 @@ mod tests {
             "the old eyes are not this frame's"
         );
         assert_eq!(frame.viewer, Pose::IDENTITY, "and neither is the old head");
+        assert!(
+            !frame.emulated_position,
+            "and nor is the old head's guess still this frame's"
+        );
     }
 }

@@ -316,6 +316,9 @@ class XRView {
 class XRViewerPose {
   constructor(transform, near, far) {
     this.transform = rigid(transform);
+    // There is no head behind a desktop stub, so the head it reports is a guess - and saying so is what gives
+    // a page something to check `XRPose.emulatedPosition` against. A runtime with tracking would say `false`.
+    this.emulatedPosition = true;
     const views = [];
     for (const [eye, index, x] of [['left', 0, -IPD], ['right', 1, IPD]]) {
       views.push(new XRView(eye, index, compose(transform, [x, 0, 0, 0, 0, 0, 1]), near, far));

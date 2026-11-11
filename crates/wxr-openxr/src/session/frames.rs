@@ -206,6 +206,11 @@ impl OpenXrSession {
             && is_located(location.location_flags)
         {
             out.viewer = pose(location.pose);
+            // OpenXR separates "valid" from "tracked": a position that is valid but not tracked is the
+            // runtime's estimate, which is WebXR's `emulatedPosition` by another name.
+            out.emulated_position = !location
+                .location_flags
+                .contains(xr::SpaceLocationFlags::POSITION_TRACKED);
         }
 
         let image = self.held.unwrap_or(0);

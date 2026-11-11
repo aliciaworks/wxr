@@ -191,6 +191,10 @@ impl WebXrSession {
         // The head, which WebXR reports beside the eyes: `transform` is `XRViewerPose.transform`, and the views
         // below are placed around it.
         out.viewer = transform(pose.transform());
+        // And whether that place is a measurement or a guess, which is `XRPose.emulatedPosition` on the same
+        // object: a runtime that has lost tracking still reports a head, and content pinned to the room is
+        // what tells the two apart.
+        out.emulated_position = pose.emulated_position();
 
         let views = pose.views();
         let out_views = out.views_mut();

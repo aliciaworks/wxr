@@ -210,6 +210,12 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
     // that has not resolved, so this is the tick that says the floor is there for the anchor checks to use.
     if !board.frame.views().is_empty() {
         board.space_resolved = true;
+        // The head is the stub's, and the stub has no head: it says the pose is emulated, which is the one
+        // thing `emulatedPosition` a desktop page can be sure of. A backend that never read it leaves the
+        // frame's flag at `false`, and this is the check that notices.
+        if !board.frame.emulated_position {
+            return Err("the stub's head is a guess, and the frame says it was tracked".into());
+        }
     }
     // The image path, asserted once rather than per frame. Only once there are eyes: the floor space is a
     // promise, and the frame that asked for it has none yet.
