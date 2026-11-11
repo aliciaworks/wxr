@@ -109,9 +109,9 @@ pub struct OpenXr {
     /// can say about the room was therefore decided before the session existed, which is the reason this is
     /// carried rather than asked again.
     spatial: SpatialExtensions,
-    /// Which hand-interaction profiles it was made with, fixed at the same moment. A profile is a path the
-    /// runtime only knows while its extension is enabled, so which of the two can be suggested was decided
-    /// here as well.
+    /// Which input extensions it was made with, fixed at the same moment: the profiles for hands and for the
+    /// eyes, and the controllers whose own extension names them. A profile is a path the runtime only knows
+    /// while its extension is enabled, so which of them can be suggested was decided here as well.
     input: InputExtensions,
 }
 
@@ -159,6 +159,8 @@ impl OpenXr {
             supported.htc_vive_cosmos_controller_interaction;
         extensions.meta_touch_controller_plus = supported.meta_touch_controller_plus;
         extensions.fb_touch_controller_pro = supported.fb_touch_controller_pro;
+        // The eyes' pose, which is a profile of its own rather than a hand - and the same rule once more.
+        extensions.ext_eye_gaze_interaction = supported.ext_eye_gaze_interaction;
         // Foveation is two extensions that go together: one makes a profile, the other puts it on the swapchain
         // the compositor samples. Both only from a runtime that lists them, like the two above.
         extensions.fb_foveation = supported.fb_foveation;
@@ -219,16 +221,6 @@ impl OpenXr {
             raycast: extensions.meta_environment_raycast,
             depth: extensions.meta_environment_depth,
         };
-        let input = InputExtensions {
-            ext_hand: extensions.ext_hand_interaction,
-            msft_hand: extensions.msft_hand_interaction,
-            samsung_odyssey: extensions.ext_samsung_odyssey_controller,
-            hp_mixed_reality: extensions.ext_hp_mixed_reality_controller,
-            vive_cosmos: extensions.htc_vive_cosmos_controller_interaction,
-            touch_plus: extensions.meta_touch_controller_plus,
-            touch_pro: extensions.fb_touch_controller_pro,
-        };
-
         // The loader validates this: an application with no name is not an application it will make an
         // instance for, and that is a real check rather than a formality - a runtime's logs are read by
         // whoever has to find out why the headset is not working.
@@ -262,6 +254,23 @@ impl OpenXr {
             .map_err(|error| Error::runtime("enumerate blend modes", error))?
             .first()
             .ok_or_else(|| Error::Unsupported("the runtime offers no blend mode".into()))?;
+
+        // The input flags are built here rather than with the other three because one of them is not a
+        // question about the instance at all: the eyes are the system's, so whether there are any to follow
+        // is asked of the system, which exists only now.
+        let input = InputExtensions {
+            ext_hand: extensions.ext_hand_interaction,
+            msft_hand: extensions.msft_hand_interaction,
+            samsung_odyssey: extensions.ext_samsung_odyssey_controller,
+            hp_mixed_reality: extensions.ext_hp_mixed_reality_controller,
+            vive_cosmos: extensions.htc_vive_cosmos_controller_interaction,
+            touch_plus: extensions.meta_touch_controller_plus,
+            touch_pro: extensions.fb_touch_controller_pro,
+            // The extension says the runtime can do this; the system says whether there are eyes to
+            // follow, and a source that can never be tracked is not a source.
+            eye_gaze: extensions.ext_eye_gaze_interaction
+                && input::eye_gaze_supported(&instance, system),
+        };
 
         Ok(Self {
             instance,

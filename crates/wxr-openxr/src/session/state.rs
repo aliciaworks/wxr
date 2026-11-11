@@ -193,6 +193,9 @@ pub(crate) struct InputExtensions {
     pub(crate) vive_cosmos: bool,
     pub(crate) touch_plus: bool,
     pub(crate) touch_pro: bool,
+    /// Whether the instance has `XR_EXT_eye_gaze_interaction`, which is the one source that is not a hand
+    /// and the profile that gives it a pose to read.
+    pub(crate) eye_gaze: bool,
 }
 
 /// Which of the four world-modelling extensions the instance was made with.

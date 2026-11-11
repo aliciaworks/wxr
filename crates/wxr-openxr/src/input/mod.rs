@@ -21,15 +21,21 @@ use openxr as xr;
 
 use crate::Error;
 
+mod gaze;
 mod haptics;
 mod profiles;
 
-/// The hands, and what they are doing.
+pub(crate) use gaze::supported as eye_gaze_supported;
+
+/// The sources this session reads: the two hands and, where the runtime has one, the eyes.
 pub struct Hands {
     /// One action set, because one game. A set is a group of actions a runtime enables and disables
     /// together, and splitting a game's inputs into several would be inventing a decision nobody is making.
     set: xr::ActionSet,
     hands: Vec<Hand>,
+    /// The eyes, when the runtime has `XR_EXT_eye_gaze_interaction`. `None` is a runtime whose gaze is not a
+    /// profile at all, which is not a runtime without a head: the pose is an extra source, not the camera.
+    gaze: Option<gaze::Gaze>,
     /// The press and squeeze edges the last `read` found, waiting to be polled.
     pending: VecDeque<wxr::Event>,
     /// Whether it also took `XR_FB_haptic_pcm`, which is the waveform on top of the buzz - an app can have
@@ -211,13 +217,32 @@ impl Hands {
             });
         }
 
+        // Eye gaze is the one source that is not a hand, and it is a profile defined by an extension of its
+        // own - a runtime without it does not know the path, and an action on a path nothing knows is an
+        // action that never locates. A failure here is a session without the source rather than without the
+        // hands, so it is logged and not returned.
+        let gaze = if input.eye_gaze {
+            match gaze::Gaze::new(instance, session, &set) {
+                Ok(gaze) => Some(gaze),
+                Err(error) => {
+                    log::warn!("wxr-openxr: no eye gaze: {error}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
         let hands = Self {
             set,
             hands,
+            gaze,
             pending: VecDeque::new(),
             pcm: haptics.pcm,
         };
         profiles::suggest(instance, &hands, input);
+        if let Some(gaze) = &hands.gaze {
+            gaze.suggest(instance);
+        }
         session
             .attach_action_sets(&[&hands.set])
             .map_err(|error| Error::runtime("attach the action set", error))?;
@@ -252,19 +277,6 @@ impl Hands {
                     .map(|location| crate::pose(location.pose))
                     .unwrap_or(wxr::Pose::IDENTITY)
             };
-            let tracked = |location: &Option<xr::SpaceLocation>| {
-                location.as_ref().is_some_and(|location| {
-                    // Tracked is a question about the position *and* the orientation: a hand behind the
-                    // user's back has a direction and no place.
-                    location
-                        .location_flags
-                        .contains(xr::SpaceLocationFlags::POSITION_TRACKED)
-                        && location
-                            .location_flags
-                            .contains(xr::SpaceLocationFlags::ORIENTATION_TRACKED)
-                })
-            };
-
             let boolean = |action: &xr::Action<bool>, path: xr::Path| {
                 action
                     .state::<_>(session, path)
@@ -348,6 +360,10 @@ impl Hands {
             });
         }
 
+        if let Some(gaze) = &self.gaze {
+            gaze.push(base, time, out);
+        }
+
         self.pending.extend(edges);
     }
 
@@ -392,6 +408,21 @@ impl Hands {
     pub fn poll(&mut self) -> Option<wxr::Event> {
         self.pending.pop_front()
     }
+}
+
+/// Whether a located space is being tracked.
+///
+/// Tracked is a question about the position *and* the orientation: a hand behind the user's back has a
+/// direction and no place, and a gaze ray the runtime has stopped following is neither.
+fn tracked(location: &Option<xr::SpaceLocation>) -> bool {
+    location.as_ref().is_some_and(|location| {
+        location
+            .location_flags
+            .contains(xr::SpaceLocationFlags::POSITION_TRACKED)
+            && location
+                .location_flags
+                .contains(xr::SpaceLocationFlags::ORIENTATION_TRACKED)
+    })
 }
 
 /// A thumbstick in the core's terms, which is the one axis the two specifications disagree about.
