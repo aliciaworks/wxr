@@ -48,10 +48,11 @@
 //! `Unsupported`, an empty list, or `None` - so `features()` is the same fact read from the other side, and a
 //! bit that says yes where the method says no would be a promise this backend is not keeping.
 //!
-//! What is *not* on that list is light estimation. `XR_EXT_light_estimation` does not exist: the registry has
-//! no `XR_*light*` extension name at all, in any vendor's, so a runtime that measures the room's light has
-//! nothing to tell this crate with. `light` and `light_probe` are the core's defaults here for want of an
-//! extension rather than for want of the work.
+//! What is *not* on that list is light estimation. There is no multivendor extension for it: the registry's
+//! two are ByteDance's `XR_BD_spatial_light_estimation` and Android's `XR_ANDROID_light_estimation`, and
+//! neither is in `openxr-sys` 0.14, which is what this crate drives the raw calls through. A runtime that
+//! measures the room's light therefore has nothing to tell this crate with, so `light` and `light_probe` are
+//! the core's defaults here for want of an extension this backend could ask for rather than want of the work.
 //!
 //! **Meshes are the one left undone**, and it is a choice rather than a gap: `XR_FB_triangle_mesh`,
 //! `XR_META_spatial_entity_mesh`, `XR_BD_spatial_mesh` and `XR_ML_world_mesh_detection` are all bound, all

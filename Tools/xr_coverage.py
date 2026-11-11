@@ -285,13 +285,14 @@ DEFAULT_IS_ENOUGH = {
     ("wxr-openxr", "request_viewport_scale"): "OpenXR's resolution is the swapchain's to choose, and a "
     "runtime that recommends nothing is a runtime at full resolution - which is what the request would "
     "have been ignored into anyway",
-    ("wxr-openxr", "light"): "no such extension exists, in any vendor's: the OpenXR registry has no "
-    "`XR_*light*` or `XR_*illumin*` extension name at all, and `openxr-sys` 0.14 - which is generated from "
-    "it - has no light-estimation symbol anywhere in it. Every other backend's room-understanding is "
-    "somebody's extension; this one has nobody's, so the default is the whole of the answer rather than a "
-    "feature waiting for a runtime",
+    ("wxr-openxr", "light"): "no multivendor extension exists: the registry's two are ByteDance's "
+    "`XR_BD_spatial_light_estimation` and Android's `XR_ANDROID_light_estimation`, and neither is in "
+    "`openxr-sys` 0.14, which is what this crate drives its raw calls through. Every other backend's "
+    "room-understanding is somebody's extension; this one has none it could ask for, so the default is the "
+    "whole of the answer rather than a feature waiting for a runtime",
     ("wxr-openxr", "light_probe"): "as `light`: the ambient direction and colour a probe carries is the "
-    "same measurement under another name, and it has the same non-existent extension behind it",
+    "same measurement under another name, and it has the same extension behind it that this backend cannot ask "
+    "for",
     ("wxr-openxr", "set_depth_range"): "deliberate, and said so where it was decided: a field nothing reads "
     "is a field that lies, and this compositor cannot be told",
     ("wxr-openxr", "meshes"): "four vendor extensions are bound and all raw - `XR_FB_triangle_mesh`, "
