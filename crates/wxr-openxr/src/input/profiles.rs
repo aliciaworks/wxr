@@ -5,10 +5,14 @@
 //! not one list of paths applied to every profile - a simple controller has no trigger, an Oculus Touch has
 //! no click on its trigger, and suggesting either costs the profile every binding it would have had.
 //!
-//! The profiles named here are the ones Khronos' own `hello_xr` suggests, plus the Vive controller: the set
-//! that the runtimes behind most headsets recognise. A controller outside the table is not a controller with
-//! no input - the runtime falls back to the simple controller, which is why that one is first and why every
-//! runtime has to understand it.
+//! The controller profiles named here are the ones Khronos' own `hello_xr` suggests, plus the Vive controller:
+//! the set that the runtimes behind most headsets recognise. A controller outside the table is not a
+//! controller with no input - the runtime falls back to the simple controller, which is why that one is first
+//! and why every runtime has to understand it.
+//!
+//! The two hand profiles are the same idea for a hand: a pinch is the select and a grasp is the squeeze. They
+//! are not in the fallback, because a profile an extension defines is a path the runtime only knows while
+//! that extension is enabled - so a row that needs one is only suggested on an instance that took it.
 
 use openxr as xr;
 
@@ -33,6 +37,8 @@ enum Control {
     Menu,
     /// The analogue trigger, the same control `Select` is on most controllers.
     Trigger,
+    /// The analogue select, which is a tracked hand's pinch and nothing a controller has.
+    SelectValue,
     /// The analogue grip, the same control `Squeeze` is on some controllers.
     SqueezeValue,
     /// The stick.
@@ -64,10 +70,34 @@ impl Sides {
 /// One binding: what is bound, where, and on which hands.
 type Entry = (Control, &'static str, Sides);
 
-/// A profile, and every part of this set that it can be bound to.
+/// What an instance has to have been made with for a profile to be a path at all.
+///
+/// A profile an extension defines is not a path a runtime knows until that extension is enabled, so
+/// suggesting one anyway is a suggestion refused and a warning logged about a runtime that is behaving
+/// exactly as it should. The core profiles need nothing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Requires {
+    Nothing,
+    ExtHand,
+    MsftHand,
+}
+
+impl Requires {
+    /// Whether an instance made with these extensions knows this profile's path.
+    fn enabled(self, input: crate::InputExtensions) -> bool {
+        match self {
+            Requires::Nothing => true,
+            Requires::ExtHand => input.ext_hand,
+            Requires::MsftHand => input.msft_hand,
+        }
+    }
+}
+
+/// A profile, every part of this set that it can be bound to, and what makes it a path.
 struct Profile {
     /// The runtime's path for it, which is what the suggestion is made with.
     path: &'static str,
+    requires: Requires,
     entries: &'static [Entry],
 }
 
@@ -80,6 +110,7 @@ const PROFILES: &[Profile] = &[
     // has a select and a menu and no trigger, no stick and no grip button.
     Profile {
         path: "/interaction_profiles/khr/simple_controller",
+        requires: Requires::Nothing,
         entries: &[
             (Control::Grip, "/input/grip/pose", Sides::Both),
             (Control::Aim, "/input/aim/pose", Sides::Both),
@@ -93,6 +124,7 @@ const PROFILES: &[Profile] = &[
     // of axes being whichever of the two a controller has.
     Profile {
         path: "/interaction_profiles/htc/vive_controller",
+        requires: Requires::Nothing,
         entries: &[
             (Control::Grip, "/input/grip/pose", Sides::Both),
             (Control::Aim, "/input/aim/pose", Sides::Both),
@@ -107,6 +139,7 @@ const PROFILES: &[Profile] = &[
     // Windows Mixed Reality: a grip button, a trigger with no click of its own, and both a stick and a pad.
     Profile {
         path: "/interaction_profiles/microsoft/motion_controller",
+        requires: Requires::Nothing,
         entries: &[
             (Control::Grip, "/input/grip/pose", Sides::Both),
             (Control::Aim, "/input/aim/pose", Sides::Both),
@@ -121,6 +154,7 @@ const PROFILES: &[Profile] = &[
     // the left hand only.
     Profile {
         path: "/interaction_profiles/oculus/touch_controller",
+        requires: Requires::Nothing,
         entries: &[
             (Control::Grip, "/input/grip/pose", Sides::Both),
             (Control::Aim, "/input/aim/pose", Sides::Both),
@@ -135,6 +169,7 @@ const PROFILES: &[Profile] = &[
     // button is the runtime's rather than a game's.
     Profile {
         path: "/interaction_profiles/valve/index_controller",
+        requires: Requires::Nothing,
         entries: &[
             (Control::Grip, "/input/grip/pose", Sides::Both),
             (Control::Aim, "/input/aim/pose", Sides::Both),
@@ -145,6 +180,31 @@ const PROFILES: &[Profile] = &[
             (Control::Haptic, "/output/haptic", Sides::Both),
         ],
     },
+    // A tracked hand, in Khronos' spelling: the pinch is the select and the grasp is the squeeze, both
+    // analogue and neither with a digital side. There is no menu, no stick and no actuator, and the pose
+    // that is held is the grip - a hand's aim is the other one.
+    Profile {
+        path: "/interaction_profiles/ext/hand_interaction_ext",
+        requires: Requires::ExtHand,
+        entries: &[
+            (Control::Grip, "/input/grip/pose", Sides::Both),
+            (Control::Aim, "/input/aim/pose", Sides::Both),
+            (Control::SelectValue, "/input/pinch_ext/value", Sides::Both),
+            (Control::SqueezeValue, "/input/grasp_ext/value", Sides::Both),
+        ],
+    },
+    // Microsoft's spelling of the same two controls, and the older of the two extensions - the one a Windows
+    // runtime is likelier to have. The names are plain because this profile predates the `_ext` suffix.
+    Profile {
+        path: "/interaction_profiles/microsoft/hand_interaction",
+        requires: Requires::MsftHand,
+        entries: &[
+            (Control::Grip, "/input/grip/pose", Sides::Both),
+            (Control::Aim, "/input/aim/pose", Sides::Both),
+            (Control::SelectValue, "/input/select/value", Sides::Both),
+            (Control::SqueezeValue, "/input/squeeze/value", Sides::Both),
+        ],
+    },
 ];
 
 /// Tell the runtime what each action would mean on each profile.
@@ -152,8 +212,11 @@ const PROFILES: &[Profile] = &[
 /// A failure is logged rather than discarded. The call binds a whole profile or none of it, so a rejection
 /// leaves every button on that controller dead - which shows up as "the trigger does nothing on this
 /// headset" and gives nobody anything to go on.
-pub(super) fn suggest(instance: &xr::Instance, hands: &Hands) {
-    for profile in PROFILES {
+pub(super) fn suggest(instance: &xr::Instance, hands: &Hands, input: crate::InputExtensions) {
+    for profile in PROFILES
+        .iter()
+        .filter(|profile| profile.requires.enabled(input))
+    {
         let Ok(path) = instance.string_to_path(profile.path) else {
             continue;
         };
@@ -203,6 +266,7 @@ impl Hand {
             Control::SqueezeValue => xr::Binding::new(&self.squeeze_value, path),
             Control::Menu => xr::Binding::new(&self.menu, path),
             Control::Trigger => xr::Binding::new(&self.trigger, path),
+            Control::SelectValue => xr::Binding::new(&self.select_value, path),
             Control::Thumbstick => xr::Binding::new(&self.thumbstick, path),
             Control::Haptic => match &self.haptic {
                 Some(haptic) => xr::Binding::new(haptic, path),
@@ -243,6 +307,22 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A profile an extension defines is only a path while that extension is enabled, and the two
+    /// extensions are not each other.
+    #[test]
+    fn an_extension_profile_needs_its_own_extension() {
+        let none = crate::InputExtensions::default();
+        assert!(!Requires::ExtHand.enabled(none));
+        assert!(!Requires::MsftHand.enabled(none));
+        let ext = crate::InputExtensions {
+            ext_hand: true,
+            ..none
+        };
+        assert!(Requires::ExtHand.enabled(ext));
+        assert!(!Requires::MsftHand.enabled(ext));
+        assert!(Requires::Nothing.enabled(none));
     }
 
     /// A controller with no grip pose or no aim pose would be a controller that cannot be pointed at

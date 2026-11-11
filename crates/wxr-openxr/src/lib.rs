@@ -72,7 +72,7 @@ mod session;
 
 pub use import::Images;
 pub use session::{DepthImage, OpenXrSession};
-pub(crate) use session::{HapticExtensions, LayerExtensions, SpatialExtensions};
+pub(crate) use session::{HapticExtensions, InputExtensions, LayerExtensions, SpatialExtensions};
 
 /// The pose conversion `input` reaches by name, kept at the root so a module can say `crate::pose`.
 pub(crate) use convert::pose;
@@ -108,6 +108,10 @@ pub struct OpenXr {
     /// can say about the room was therefore decided before the session existed, which is the reason this is
     /// carried rather than asked again.
     spatial: SpatialExtensions,
+    /// Which hand-interaction profiles it was made with, fixed at the same moment. A profile is a path the
+    /// runtime only knows while its extension is enabled, so which of the two can be suggested was decided
+    /// here as well.
+    input: InputExtensions,
 }
 
 impl OpenXr {
@@ -140,6 +144,12 @@ impl OpenXr {
         // Hand tracking is asked for the same way: a session with no skeleton is a session, and an instance the
         // runtime refuses is not.
         extensions.ext_hand_tracking = supported.ext_hand_tracking;
+        // The two hand-interaction profiles, which are a second story about hands: tracking is where the
+        // fingers are, and these are how a pinch and a grasp become a button. Each profile belongs to its own
+        // extension and is only a path the runtime knows while that extension is enabled, so the two are
+        // asked for separately and remembered for the profile table.
+        extensions.ext_hand_interaction = supported.ext_hand_interaction;
+        extensions.msft_hand_interaction = supported.msft_hand_interaction;
         // Foveation is two extensions that go together: one makes a profile, the other puts it on the swapchain
         // the compositor samples. Both only from a runtime that lists them, like the two above.
         extensions.fb_foveation = supported.fb_foveation;
@@ -200,6 +210,10 @@ impl OpenXr {
             raycast: extensions.meta_environment_raycast,
             depth: extensions.meta_environment_depth,
         };
+        let input = InputExtensions {
+            ext_hand: extensions.ext_hand_interaction,
+            msft_hand: extensions.msft_hand_interaction,
+        };
 
         // The loader validates this: an application with no name is not an application it will make an
         // instance for, and that is a real check rather than a formality - a runtime's logs are read by
@@ -245,6 +259,7 @@ impl OpenXr {
             refresh_rate: extensions.fb_display_refresh_rate,
             haptics,
             spatial,
+            input,
         })
     }
 

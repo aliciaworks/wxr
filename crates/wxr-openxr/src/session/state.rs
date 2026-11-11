@@ -173,6 +173,20 @@ pub(crate) struct HapticExtensions {
     pub(crate) pcm: bool,
 }
 
+/// Which hand-interaction profiles the instance was made with.
+///
+/// Hand tracking says where the fingers are; these two say how a pinch and a grasp become a click. Each is a
+/// profile defined by an extension of its own - Microsoft's `/interaction_profiles/microsoft/hand_interaction`
+/// and the Khronos `/interaction_profiles/ext/hand_interaction_ext` - and a runtime with neither is a runtime
+/// whose hands have no buttons, which is a different thing from a runtime with no hands.
+///
+/// Like the layer and haptic sets, this is fixed at `xrCreateInstance` and remembered rather than asked again.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct InputExtensions {
+    pub(crate) ext_hand: bool,
+    pub(crate) msft_hand: bool,
+}
+
 /// Which of the four world-modelling extensions the instance was made with.
 ///
 /// All four are asked for from a runtime that lists them and no others, and all four are facilities rather

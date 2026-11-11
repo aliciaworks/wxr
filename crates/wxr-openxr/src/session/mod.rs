@@ -20,7 +20,7 @@ use depth::{EnvironmentDepth, MeasuredDepth};
 use hits::Raycaster;
 use planes::PlaneDetector;
 
-pub(crate) use state::{HapticExtensions, LayerExtensions, SpatialExtensions};
+pub(crate) use state::{HapticExtensions, InputExtensions, LayerExtensions, SpatialExtensions};
 
 pub use depth::DepthImage;
 pub use state::OpenXrSession;

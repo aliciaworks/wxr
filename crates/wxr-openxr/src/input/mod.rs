@@ -51,6 +51,10 @@ struct Hand {
     grip: xr::Space,
     aim: xr::Space,
     select: xr::Action<bool>,
+    /// The pinch of a tracked hand, when the runtime has a hand-interaction profile. It is a second action
+    /// for the same reason `squeeze_value` is: a binding is typed, and `pinch_ext/value` is a float where a
+    /// controller's `select/click` is a bool.
+    select_value: xr::Action<f32>,
     squeeze: xr::Action<bool>,
     menu: xr::Action<bool>,
     trigger: xr::Action<f32>,
@@ -78,11 +82,13 @@ impl Hands {
     ///
     /// `haptics` is which of the haptic extensions the instance was made with: an output action can only be
     /// made where the runtime has the path for one, and PCM can only be played where the runtime took the
-    /// extension for it.
+    /// extension for it. `input` is the same kind of answer about the two hand-interaction profiles, which
+    /// are paths the runtime only knows while their extensions are enabled.
     pub fn new(
         instance: &xr::Instance,
         session: &xr::Session<xr::Vulkan>,
         haptics: crate::HapticExtensions,
+        input: crate::InputExtensions,
     ) -> Result<Self, Error> {
         let set = instance
             .create_action_set("hands", "Hands", 0)
@@ -176,6 +182,13 @@ impl Hands {
                         &[path],
                     )
                     .map_err(|error| Error::runtime("create an action", error))?,
+                select_value: set
+                    .create_action::<f32>(
+                        &format!("{side}_select_value"),
+                        &format!("{side} select value"),
+                        &[path],
+                    )
+                    .map_err(|error| Error::runtime("create an action", error))?,
                 squeeze_value: set
                     .create_action::<f32>(
                         &format!("{side}_squeeze_value"),
@@ -204,7 +217,7 @@ impl Hands {
             pending: VecDeque::new(),
             pcm: haptics.pcm,
         };
-        profiles::suggest(instance, &hands);
+        profiles::suggest(instance, &hands, input);
         session
             .attach_action_sets(&[&hands.set])
             .map_err(|error| Error::runtime("attach the action set", error))?;
@@ -266,11 +279,14 @@ impl Hands {
             };
             // A controller's trigger and grip are not buttons on every profile: a Touch and a Windows Mixed
             // Reality pad report both as floats and have no `select/click`, an Index reads the grip the same
-            // way. The two float actions are read anyway - one of them is `Axes` - and on the profiles that
-            // do have a digital button the float is the same control, so either one being down is a press.
+            // way, and a tracked hand has only a pinch and a grasp. The float actions are read anyway - one
+            // of them is `Axes` - and on the profiles that do have a digital button the float is the same
+            // control, so any one of them being down is a press.
             let trigger = value(&hand.trigger, hand.path);
+            let select_value = value(&hand.select_value, hand.path);
             let squeeze_value = value(&hand.squeeze_value, hand.path);
-            let select = boolean(&hand.select, hand.path) || pressed(trigger);
+            let select =
+                boolean(&hand.select, hand.path) || pressed(trigger) || pressed(select_value);
             let squeeze = boolean(&hand.squeeze, hand.path) || pressed(squeeze_value);
 
             // OpenXR hands a boolean's state out once a frame, so a press is a change from what it was - and
@@ -318,7 +334,11 @@ impl Hands {
                     menu: boolean(&hand.menu, hand.path),
                 },
                 axes: wxr::Axes {
-                    trigger,
+                    // A hand has no trigger, and the analogue select it does have is the pinch - so the one
+                    // axis the core has for "how far the thing is pulled" carries whichever of the two this
+                    // profile gave. It is also what the browser reports for a hand, whose pinch arrives in
+                    // the same place a controller's trigger does.
+                    trigger: trigger.max(select_value),
                     thumbstick: hand
                         .thumbstick
                         .state::<xr::Vulkan>(session, hand.path)

@@ -117,13 +117,14 @@ impl OpenXrSession {
 
         // Inputs are declared here and not in the constructor: they need a session, and a runtime that will
         // not take them is a session without hands rather than a session that failed.
-        let hands = match input::Hands::new(&backend.instance, &session, backend.haptics) {
-            Ok(hands) => Some(hands),
-            Err(error) => {
-                log::warn!("wxr-openxr: no inputs: {error}");
-                None
-            }
-        };
+        let hands =
+            match input::Hands::new(&backend.instance, &session, backend.haptics, backend.input) {
+                Ok(hands) => Some(hands),
+                Err(error) => {
+                    log::warn!("wxr-openxr: no inputs: {error}");
+                    None
+                }
+            };
 
         // Created once and located every frame, because `VIEW` is the head and the head is what a scene that
         // wants the camera on the viewer asks for.
