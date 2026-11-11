@@ -22,6 +22,7 @@ use openxr as xr;
 use crate::Error;
 
 mod haptics;
+mod profiles;
 
 /// The hands, and what they are doing.
 pub struct Hands {
@@ -192,102 +193,11 @@ impl Hands {
             pending: VecDeque::new(),
             pcm: haptics.pcm,
         };
-        hands.suggest(instance);
+        profiles::suggest(instance, &hands);
         session
             .attach_action_sets(&[&hands.set])
             .map_err(|error| Error::runtime("attach the action set", error))?;
         Ok(hands)
-    }
-
-    /// Tell the runtime what each action would mean on each of the profiles worth naming.
-    ///
-    /// The simple controller every runtime must understand, and the three that cover most of what people
-    /// own. A controller outside the list still gets its poses - a runtime falls back to what it knows
-    /// rather than refusing - and it is the buttons that a missing profile costs. A suggestion a runtime
-    /// does not recognise is ignored by it, so failing here is not failing.
-    fn suggest(&self, instance: &xr::Instance) {
-        for profile in [
-            "/interaction_profile/khr/simple_controller",
-            "/interaction_profile/oculus/touch_controller",
-            "/interaction_profile/valve/index_controller",
-            "/interaction_profile/microsoft/mixed_reality_controller",
-        ] {
-            let Ok(profile) = instance.string_to_path(profile) else {
-                continue;
-            };
-            let mut bindings = Vec::new();
-            for hand in &self.hands {
-                let side = match hand.handedness {
-                    wxr::Handedness::Left => "left",
-                    _ => "right",
-                };
-                bind(
-                    instance,
-                    side,
-                    &hand.grip_action,
-                    "/input/grip/pose",
-                    &mut bindings,
-                );
-                bind(
-                    instance,
-                    side,
-                    &hand.aim_action,
-                    "/input/aim/pose",
-                    &mut bindings,
-                );
-                // The names here are the specification's, not this crate's: `select`, `squeeze` and
-                // `thumbstick` are the common ones, and a profile with a trigger of its own says so under
-                // its own name - which is why the trigger is suggested twice.
-                bind(
-                    instance,
-                    side,
-                    &hand.select,
-                    "/input/select/click",
-                    &mut bindings,
-                );
-                bind(
-                    instance,
-                    side,
-                    &hand.squeeze,
-                    "/input/squeeze/click",
-                    &mut bindings,
-                );
-                bind(
-                    instance,
-                    side,
-                    &hand.menu,
-                    "/input/menu/click",
-                    &mut bindings,
-                );
-                bind(
-                    instance,
-                    side,
-                    &hand.trigger,
-                    "/input/trigger/value",
-                    &mut bindings,
-                );
-                bind(
-                    instance,
-                    side,
-                    &hand.trigger,
-                    "/input/select/value",
-                    &mut bindings,
-                );
-                bind(
-                    instance,
-                    side,
-                    &hand.thumbstick,
-                    "/input/thumbstick",
-                    &mut bindings,
-                );
-                // The one binding that is an output: the runtime knows where a hand's actuator is, and this
-                // says that this action's vibrations go there.
-                if let Some(haptic) = &hand.haptic {
-                    bind(instance, side, haptic, "/output/haptic", &mut bindings);
-                }
-            }
-            let _ = instance.suggest_interaction_profile_bindings(profile, &bindings);
-        }
     }
 
     /// Ask the runtime for this frame's action states. Nothing can be read before this, and it is once per
@@ -442,22 +352,6 @@ impl Hands {
     /// channels even when one platform's state is the source of both.
     pub fn poll(&mut self) -> Option<wxr::Event> {
         self.pending.pop_front()
-    }
-}
-
-/// Suggest one action on one path, if the runtime knows the path.
-///
-/// A `fn` and not a closure because the actions are typed: the same binding is suggested for a `bool`, an
-/// `f32`, a `Vector2f` and a pose, and a closure would be one of those four.
-fn bind<'a, T: xr::ActionTy>(
-    instance: &xr::Instance,
-    side: &str,
-    action: &'a xr::Action<T>,
-    path: &str,
-    bindings: &mut Vec<xr::Binding<'a>>,
-) {
-    if let Ok(path) = instance.string_to_path(&format!("/user/hand/{side}{path}")) {
-        bindings.push(xr::Binding::new(action, path));
     }
 }
 
