@@ -54,6 +54,10 @@ struct Hand {
     squeeze: xr::Action<bool>,
     menu: xr::Action<bool>,
     trigger: xr::Action<f32>,
+    /// The grip of a controller whose squeeze is analogue rather than a click - a Touch, an Index, a hand.
+    /// It is a second action because a binding is typed: `squeeze/click` is a `bool` and `squeeze/value` is
+    /// an `f32`, and one action cannot be bound to both.
+    squeeze_value: xr::Action<f32>,
     thumbstick: xr::Action<xr::Vector2f>,
     /// The skeleton, when the runtime has `XR_EXT_hand_tracking` and made one for this hand. A hand without it
     /// is a pose and no fingers, which is what most hands are.
@@ -172,6 +176,13 @@ impl Hands {
                         &[path],
                     )
                     .map_err(|error| Error::runtime("create an action", error))?,
+                squeeze_value: set
+                    .create_action::<f32>(
+                        &format!("{side}_squeeze_value"),
+                        &format!("{side} squeeze value"),
+                        &[path],
+                    )
+                    .map_err(|error| Error::runtime("create an action", error))?,
                 thumbstick: set
                     .create_action::<xr::Vector2f>(
                         &format!("{side}_thumbstick"),
@@ -247,8 +258,20 @@ impl Hands {
                     .map(|state| state.current_state)
                     .unwrap_or(false)
             };
-            let select = boolean(&hand.select, hand.path);
-            let squeeze = boolean(&hand.squeeze, hand.path);
+            let value = |action: &xr::Action<f32>, path: xr::Path| {
+                action
+                    .state::<_>(session, path)
+                    .map(|state| state.current_state)
+                    .unwrap_or(0.0)
+            };
+            // A controller's trigger and grip are not buttons on every profile: a Touch and a Windows Mixed
+            // Reality pad report both as floats and have no `select/click`, an Index reads the grip the same
+            // way. The two float actions are read anyway - one of them is `Axes` - and on the profiles that
+            // do have a digital button the float is the same control, so either one being down is a press.
+            let trigger = value(&hand.trigger, hand.path);
+            let squeeze_value = value(&hand.squeeze_value, hand.path);
+            let select = boolean(&hand.select, hand.path) || pressed(trigger);
+            let squeeze = boolean(&hand.squeeze, hand.path) || pressed(squeeze_value);
 
             // OpenXR hands a boolean's state out once a frame, so a press is a change from what it was - and
             // that is the whole of what it takes to make the events a browser makes for itself.
@@ -295,11 +318,7 @@ impl Hands {
                     menu: boolean(&hand.menu, hand.path),
                 },
                 axes: wxr::Axes {
-                    trigger: hand
-                        .trigger
-                        .state::<xr::Vulkan>(session, hand.path)
-                        .map(|state| state.current_state)
-                        .unwrap_or(0.0),
+                    trigger,
                     thumbstick: hand
                         .thumbstick
                         .state::<xr::Vulkan>(session, hand.path)
@@ -364,6 +383,15 @@ fn thumbstick(value: xr::Vector2f) -> wxr::glam::Vec2 {
     wxr::glam::Vec2::new(value.x, -value.y)
 }
 
+/// Whether an analogue button has been pushed far enough to be down.
+///
+/// A trigger or a grip is a float from 0 to 1 and the core's buttons are digital, so the two need a
+/// threshold. Halfway is where every runtime's own input mapping puts it and where a user would say the
+/// button was pressed; anything lower makes a resting finger click.
+fn pressed(value: f32) -> bool {
+    value > 0.5
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,5 +401,14 @@ mod tests {
     fn a_thumbstick_y_axis_points_up() {
         let stick = thumbstick(xr::Vector2f { x: 0.5, y: 0.25 });
         assert_eq!(stick, wxr::glam::Vec2::new(0.5, -0.25));
+    }
+
+    /// An analogue button is down once it is past half, and a resting trigger is not.
+    #[test]
+    fn an_analogue_button_is_down_past_half() {
+        assert!(!pressed(0.0), "a trigger nobody touched is not pressed");
+        assert!(!pressed(0.5), "halfway is not yet a press");
+        assert!(pressed(0.6));
+        assert!(pressed(1.0));
     }
 }

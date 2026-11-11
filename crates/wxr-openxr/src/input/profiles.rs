@@ -33,6 +33,8 @@ enum Control {
     Menu,
     /// The analogue trigger, the same control `Select` is on most controllers.
     Trigger,
+    /// The analogue grip, the same control `Squeeze` is on some controllers.
+    SqueezeValue,
     /// The stick.
     Thumbstick,
     /// The actuator.
@@ -122,6 +124,7 @@ const PROFILES: &[Profile] = &[
             (Control::Aim, "/input/aim/pose", Sides::Both),
             (Control::Menu, "/input/menu/click", Sides::Left),
             (Control::Trigger, "/input/trigger/value", Sides::Both),
+            (Control::SqueezeValue, "/input/squeeze/value", Sides::Both),
             (Control::Thumbstick, "/input/thumbstick", Sides::Both),
             (Control::Haptic, "/output/haptic", Sides::Both),
         ],
@@ -135,6 +138,7 @@ const PROFILES: &[Profile] = &[
             (Control::Aim, "/input/aim/pose", Sides::Both),
             (Control::Select, "/input/trigger/click", Sides::Both),
             (Control::Trigger, "/input/trigger/value", Sides::Both),
+            (Control::SqueezeValue, "/input/squeeze/value", Sides::Both),
             (Control::Thumbstick, "/input/thumbstick", Sides::Both),
             (Control::Haptic, "/output/haptic", Sides::Both),
         ],
@@ -194,6 +198,7 @@ impl Hand {
             Control::Aim => xr::Binding::new(&self.aim_action, path),
             Control::Select => xr::Binding::new(&self.select, path),
             Control::Squeeze => xr::Binding::new(&self.squeeze, path),
+            Control::SqueezeValue => xr::Binding::new(&self.squeeze_value, path),
             Control::Menu => xr::Binding::new(&self.menu, path),
             Control::Trigger => xr::Binding::new(&self.trigger, path),
             Control::Thumbstick => xr::Binding::new(&self.thumbstick, path),
