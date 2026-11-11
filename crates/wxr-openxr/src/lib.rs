@@ -150,6 +150,14 @@ impl OpenXr {
         // asked for separately and remembered for the profile table.
         extensions.ext_hand_interaction = supported.ext_hand_interaction;
         extensions.msft_hand_interaction = supported.msft_hand_interaction;
+        // The five controllers whose profile comes from an extension of its own. Same rule again - each only
+        // from a runtime that lists it - and the table below is what reads the answer.
+        extensions.ext_samsung_odyssey_controller = supported.ext_samsung_odyssey_controller;
+        extensions.ext_hp_mixed_reality_controller = supported.ext_hp_mixed_reality_controller;
+        extensions.htc_vive_cosmos_controller_interaction =
+            supported.htc_vive_cosmos_controller_interaction;
+        extensions.meta_touch_controller_plus = supported.meta_touch_controller_plus;
+        extensions.fb_touch_controller_pro = supported.fb_touch_controller_pro;
         // Foveation is two extensions that go together: one makes a profile, the other puts it on the swapchain
         // the compositor samples. Both only from a runtime that lists them, like the two above.
         extensions.fb_foveation = supported.fb_foveation;
@@ -213,6 +221,11 @@ impl OpenXr {
         let input = InputExtensions {
             ext_hand: extensions.ext_hand_interaction,
             msft_hand: extensions.msft_hand_interaction,
+            samsung_odyssey: extensions.ext_samsung_odyssey_controller,
+            hp_mixed_reality: extensions.ext_hp_mixed_reality_controller,
+            vive_cosmos: extensions.htc_vive_cosmos_controller_interaction,
+            touch_plus: extensions.meta_touch_controller_plus,
+            touch_pro: extensions.fb_touch_controller_pro,
         };
 
         // The loader validates this: an application with no name is not an application it will make an

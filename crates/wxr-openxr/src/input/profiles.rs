@@ -5,10 +5,10 @@
 //! not one list of paths applied to every profile - a simple controller has no trigger, an Oculus Touch has
 //! no click on its trigger, and suggesting either costs the profile every binding it would have had.
 //!
-//! The controller profiles named here are the ones Khronos' own `hello_xr` suggests, plus the Vive controller:
-//! the set that the runtimes behind most headsets recognise. A controller outside the table is not a
-//! controller with no input - the runtime falls back to the simple controller, which is why that one is first
-//! and why every runtime has to understand it.
+//! The controller profiles named here are the ones Chromium suggests, plus the Vive controller: the set that
+//! the runtimes behind most headsets recognise. A controller outside the table is not a controller with no
+//! input - the runtime falls back to the simple controller, which is why that one is first and why every
+//! runtime has to understand it.
 //!
 //! The two hand profiles are the same idea for a hand: a pinch is the select and a grasp is the squeeze. They
 //! are not in the fallback, because a profile an extension defines is a path the runtime only knows while
@@ -80,6 +80,11 @@ enum Requires {
     Nothing,
     ExtHand,
     MsftHand,
+    SamsungOdyssey,
+    HpMixedReality,
+    ViveCosmos,
+    TouchPlus,
+    TouchPro,
 }
 
 impl Requires {
@@ -89,6 +94,11 @@ impl Requires {
             Requires::Nothing => true,
             Requires::ExtHand => input.ext_hand,
             Requires::MsftHand => input.msft_hand,
+            Requires::SamsungOdyssey => input.samsung_odyssey,
+            Requires::HpMixedReality => input.hp_mixed_reality,
+            Requires::ViveCosmos => input.vive_cosmos,
+            Requires::TouchPlus => input.touch_plus,
+            Requires::TouchPro => input.touch_pro,
         }
     }
 }
@@ -136,6 +146,22 @@ const PROFILES: &[Profile] = &[
             (Control::Haptic, "/output/haptic", Sides::Both),
         ],
     },
+    // HTC's Cosmos: a trigger that is also the select, a grip button, and a menu on the left controller only
+    // - the right one has the system button, which is the runtime's.
+    Profile {
+        path: "/interaction_profiles/htc/vive_cosmos_controller",
+        requires: Requires::ViveCosmos,
+        entries: &[
+            (Control::Grip, "/input/grip/pose", Sides::Both),
+            (Control::Aim, "/input/aim/pose", Sides::Both),
+            (Control::Select, "/input/trigger/click", Sides::Both),
+            (Control::Squeeze, "/input/squeeze/click", Sides::Both),
+            (Control::Menu, "/input/menu/click", Sides::Left),
+            (Control::Trigger, "/input/trigger/value", Sides::Both),
+            (Control::Thumbstick, "/input/thumbstick", Sides::Both),
+            (Control::Haptic, "/output/haptic", Sides::Both),
+        ],
+    },
     // Windows Mixed Reality: a grip button, a trigger with no click of its own, and both a stick and a pad.
     Profile {
         path: "/interaction_profiles/microsoft/motion_controller",
@@ -150,11 +176,72 @@ const PROFILES: &[Profile] = &[
             (Control::Haptic, "/output/haptic", Sides::Both),
         ],
     },
+    // Samsung's Odyssey: the same shape as the Mixed Reality pad it grew out of - a grip button, a trigger
+    // with no click of its own, and a stick beside a pad.
+    Profile {
+        path: "/interaction_profiles/samsung/odyssey_controller",
+        requires: Requires::SamsungOdyssey,
+        entries: &[
+            (Control::Grip, "/input/grip/pose", Sides::Both),
+            (Control::Aim, "/input/aim/pose", Sides::Both),
+            (Control::Squeeze, "/input/squeeze/click", Sides::Both),
+            (Control::Menu, "/input/menu/click", Sides::Both),
+            (Control::Trigger, "/input/trigger/value", Sides::Both),
+            (Control::Thumbstick, "/input/thumbstick", Sides::Both),
+            (Control::Haptic, "/output/haptic", Sides::Both),
+        ],
+    },
+    // HP's Reverb: an Odyssey with both of its controls analogue. The grip is a float and the trigger is
+    // too, so neither has a click to bind.
+    Profile {
+        path: "/interaction_profiles/hp/mixed_reality_controller",
+        requires: Requires::HpMixedReality,
+        entries: &[
+            (Control::Grip, "/input/grip/pose", Sides::Both),
+            (Control::Aim, "/input/aim/pose", Sides::Both),
+            (Control::SqueezeValue, "/input/squeeze/value", Sides::Both),
+            (Control::Menu, "/input/menu/click", Sides::Both),
+            (Control::Trigger, "/input/trigger/value", Sides::Both),
+            (Control::Thumbstick, "/input/thumbstick", Sides::Both),
+            (Control::Haptic, "/output/haptic", Sides::Both),
+        ],
+    },
     // The Touch controller: a trigger that is the select, a grip that is an analogue squeeze, and a menu on
     // the left hand only.
     Profile {
         path: "/interaction_profiles/oculus/touch_controller",
         requires: Requires::Nothing,
+        entries: &[
+            (Control::Grip, "/input/grip/pose", Sides::Both),
+            (Control::Aim, "/input/aim/pose", Sides::Both),
+            (Control::Menu, "/input/menu/click", Sides::Left),
+            (Control::Trigger, "/input/trigger/value", Sides::Both),
+            (Control::SqueezeValue, "/input/squeeze/value", Sides::Both),
+            (Control::Thumbstick, "/input/thumbstick", Sides::Both),
+            (Control::Haptic, "/output/haptic", Sides::Both),
+        ],
+    },
+    // Quest 3's Touch Plus: the Touch controller with the extension that names it. The extra components that
+    // extension adds - curl, slide, force, proximity - have no word in the core, and a binding is a path the
+    // profile has, not every path it has: the ones here are the buttons the core speaks.
+    Profile {
+        path: "/interaction_profiles/meta/touch_controller_plus",
+        requires: Requires::TouchPlus,
+        entries: &[
+            (Control::Grip, "/input/grip/pose", Sides::Both),
+            (Control::Aim, "/input/aim/pose", Sides::Both),
+            (Control::Menu, "/input/menu/click", Sides::Left),
+            (Control::Trigger, "/input/trigger/value", Sides::Both),
+            (Control::SqueezeValue, "/input/squeeze/value", Sides::Both),
+            (Control::Thumbstick, "/input/thumbstick", Sides::Both),
+            (Control::Haptic, "/output/haptic", Sides::Both),
+        ],
+    },
+    // The Touch Pro, the same two hands with a stylus in one of them. Its base profile is the Touch's shape,
+    // and the stylus components are the rest of what its extension adds.
+    Profile {
+        path: "/interaction_profiles/facebook/touch_controller_pro",
+        requires: Requires::TouchPro,
         entries: &[
             (Control::Grip, "/input/grip/pose", Sides::Both),
             (Control::Aim, "/input/aim/pose", Sides::Both),
@@ -309,13 +396,22 @@ mod tests {
         }
     }
 
-    /// A profile an extension defines is only a path while that extension is enabled, and the two
-    /// extensions are not each other.
+    /// A profile an extension defines is only a path while that extension is enabled, and one extension is
+    /// not another.
     #[test]
     fn an_extension_profile_needs_its_own_extension() {
         let none = crate::InputExtensions::default();
-        assert!(!Requires::ExtHand.enabled(none));
-        assert!(!Requires::MsftHand.enabled(none));
+        for requires in [
+            Requires::ExtHand,
+            Requires::MsftHand,
+            Requires::SamsungOdyssey,
+            Requires::HpMixedReality,
+            Requires::ViveCosmos,
+            Requires::TouchPlus,
+            Requires::TouchPro,
+        ] {
+            assert!(!requires.enabled(none), "{requires:?} with no extension");
+        }
         let ext = crate::InputExtensions {
             ext_hand: true,
             ..none
@@ -323,6 +419,21 @@ mod tests {
         assert!(Requires::ExtHand.enabled(ext));
         assert!(!Requires::MsftHand.enabled(ext));
         assert!(Requires::Nothing.enabled(none));
+    }
+
+    /// Two rows for one path would be two suggestions for the same controller, and the second would be
+    /// wasted - or, worse, a copy of the first with half its entries.
+    #[test]
+    fn every_profile_is_named_once() {
+        for (index, profile) in PROFILES.iter().enumerate() {
+            assert!(
+                !PROFILES[index + 1..]
+                    .iter()
+                    .any(|other| other.path == profile.path),
+                "{} is in the table twice",
+                profile.path
+            );
+        }
     }
 
     /// A controller with no grip pose or no aim pose would be a controller that cannot be pointed at

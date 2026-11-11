@@ -185,6 +185,14 @@ pub(crate) struct HapticExtensions {
 pub(crate) struct InputExtensions {
     pub(crate) ext_hand: bool,
     pub(crate) msft_hand: bool,
+    /// The five controllers whose profile an extension of its own defines: Samsung's Odyssey, HP's Reverb,
+    /// HTC's Cosmos, Meta's Touch Plus and the Touch Pro. A profile is a path the runtime only knows while
+    /// its extension is enabled, so each is suggested only when the flag here says it can be.
+    pub(crate) samsung_odyssey: bool,
+    pub(crate) hp_mixed_reality: bool,
+    pub(crate) vive_cosmos: bool,
+    pub(crate) touch_plus: bool,
+    pub(crate) touch_pro: bool,
 }
 
 /// Which of the four world-modelling extensions the instance was made with.
