@@ -320,6 +320,18 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
                 source.aim.position.z,
             ));
         }
+        // The stub's controller has a pad where `xr-standard` puts one - the first pair of axes - and leaves
+        // the stick pair at zero. The core has one pair of axes, so a backend that read only the stick would
+        // call this controller centred; the pad at `(0.25, -0.5)` is the reading that says it did not.
+        for source in &sources {
+            let stick = source.axes.thumbstick;
+            if (stick.x - 0.25).abs() > 1e-6 || (stick.y - 0.5).abs() > 1e-6 {
+                return Err(format!(
+                    "a pad at (0.25, -0.5) was read as ({}, {}): the stick pair is not the only one",
+                    stick.x, stick.y
+                ));
+            }
+        }
     }
     // The skeletons, and one buzz each, both asked once. A joint is asked of a *hand* and a hand belongs to a
     // source, so the sources above are what a hand is found by - and a run that asked every frame would be a

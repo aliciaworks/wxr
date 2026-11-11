@@ -64,6 +64,14 @@ impl WebXrSession {
                     .and_then(|gamepad| gamepad.axes().get(index).as_f64())
                     .unwrap_or(0.0) as f32
             };
+            let (pad_x, pad_y) = (axis(0), axis(1));
+            let (stick_x, stick_y) = (axis(2), axis(3));
+            let (axis_x, axis_y) =
+                if stick_x == 0.0 && stick_y == 0.0 && (pad_x != 0.0 || pad_y != 0.0) {
+                    (pad_x, pad_y)
+                } else {
+                    (stick_x, stick_y)
+                };
 
             // A source with no grip pose is an aim and nothing to hold - a gaze cursor - and it is not
             // untracked: it has a direction, and the direction is the whole of it.
@@ -99,9 +107,16 @@ impl WebXrSession {
                 },
                 axes: wxr::Axes {
                     trigger: button(0).map(|button| button.value() as f32).unwrap_or(0.0),
-                    // A gamepad's Y axis is positive down - the Gamepad specification calls -1
-                    // "forward" - and the core's is positive up.
-                    thumbstick: wxr::glam::Vec2::new(axis(2), -axis(3)),
+                    // The core has one pair of axes and `xr-standard` has two places they can come from:
+                    // the touchpad in the first pair and the thumbstick in the second. A controller with
+                    // only a pad - a Vive wand, a Daydream remote - reports it in the first pair and leaves
+                    // the second at zero, so a nonzero first pair is the pad being used. A controller with
+                    // a stick is bound the other way round, and a stick at rest reads the same zero a pad
+                    // nobody is touching does.
+                    //
+                    // A gamepad's Y axis is positive down - the Gamepad specification calls -1 "forward" -
+                    // and the core's is positive up.
+                    thumbstick: wxr::glam::Vec2::new(axis_x, -axis_y),
                 },
             });
         }

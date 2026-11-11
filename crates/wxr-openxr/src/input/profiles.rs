@@ -89,7 +89,8 @@ const PROFILES: &[Profile] = &[
         ],
     },
     // HTC's wand: a trigger that is also the select, a grip button of its own, and a trackpad where the
-    // others have a stick - which is why a Vive has no thumbstick to bind.
+    // others have a stick - which is why the pad is what its `Thumbstick` is bound to, the core's one pair
+    // of axes being whichever of the two a controller has.
     Profile {
         path: "/interaction_profiles/htc/vive_controller",
         entries: &[
@@ -99,6 +100,7 @@ const PROFILES: &[Profile] = &[
             (Control::Squeeze, "/input/squeeze/click", Sides::Both),
             (Control::Menu, "/input/menu/click", Sides::Both),
             (Control::Trigger, "/input/trigger/value", Sides::Both),
+            (Control::Thumbstick, "/input/trackpad", Sides::Both),
             (Control::Haptic, "/output/haptic", Sides::Both),
         ],
     },

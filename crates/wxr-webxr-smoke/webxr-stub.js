@@ -470,7 +470,9 @@ function controller(handedness, x) {
     connected: true,
     timestamp: 0,
     mapping: 'xr-standard',
-    axes: [0, 0, 0, 0],
+    // A pad where `xr-standard` puts one - the first pair - and no stick in the second: the core has one
+    // pair of axes, so a backend that reads only the stick pair would call this controller centred.
+    axes: [0.25, -0.5, 0, 0],
     buttons: Array.from({ length: 4 }, () =>
       asPlatform({ pressed: false, touched: false, value: 0, bounce: 0 }, 'GamepadButton')),
     hapticActuators: [actuator],
