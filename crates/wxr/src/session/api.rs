@@ -85,11 +85,10 @@ pub trait Session: Any {
     }
 
     /// What this session's depth sensing is, when it asked for any - WebXR's `depthUsage`, `depthDataFormat`,
-    /// `depthType` and `depthActive`, which are four attributes of one thing and are one value here.
+    /// `depthType` and `depthActive`, four attributes of one thing and one value here.
     ///
-    /// `None` by default, and for two reasons a caller does not have to tell apart: a session that has no
-    /// depth sensing at all, and a platform whose depth is its compositor's rather than a measurement the app
-    /// asked for. Both are "there is nothing to read here", which is what this says.
+    /// `None` for a session with no depth sensing and for a platform whose depth is its compositor's rather
+    /// than a measurement the app asked for: both are "there is nothing to read here", which is what this says.
     fn depth_sensing(&self) -> Option<DepthSensing> {
         None
     }
@@ -104,25 +103,22 @@ pub trait Session: Any {
     }
 
     /// How this session reads its input - WebXR's `interactionMode`, `WorldSpace` by default because that is
-    /// what a session drawn into a display is. A browser's can also be `ScreenSpace` - the same page on a
-    /// phone, with a finger on it - so that backend asks rather than assuming.
+    /// what a session drawn into a display is. A browser's can be `ScreenSpace` too, so that backend asks.
     fn interaction_mode(&self) -> InteractionMode {
         InteractionMode::WorldSpace
     }
 
     /// The near and far planes the scene draws with, in metres - WebXR's `XRRenderState.depthNear` and
-    /// `depthFar`. A compositor that reprojects a frame with the depth buffer cannot read the planes off the
-    /// picture, so the app has to say what the values mean; `wgpu`'s depth is the same range on all three
-    /// platforms, which makes this the one number a renderer and a compositor have to agree on. Nothing by
-    /// default, because a backend with no depth to submit has no planes to set.
+    /// `depthFar`. A compositor that reprojects with the depth buffer cannot read the planes off the picture,
+    /// so the app says what the values mean - the one number a renderer and a compositor must agree on.
     fn set_depth_range(&mut self, _near: f32, _far: f32) {}
 
     /// How much foveation the compositor should apply, from `0` (none) to `1` (the most it has) - WebXR's
     /// `fixedFoveation`.
     ///
-    /// It is the fill-rate lever, and it is a *request*: a compositor that does not foveate ignores it, which is
-    /// why it is a knob and not a [`Features`] bit. Nothing is sent by default, because the default is the
-    /// runtime's own choice and a session that says nothing should keep it.
+    /// It is the fill-rate lever, and it is a *request*: a compositor that does not foveate ignores it, which
+    /// is why it is a knob and not a [`Features`] bit. Nothing is sent by default, which keeps the runtime's
+    /// own choice.
     fn set_foveation(&mut self, _amount: f32) {}
 
     /// The refresh rates the display offers, in hertz, appended to `out` - `XR_FB_display_refresh_rate`'s
@@ -147,10 +143,8 @@ pub trait Session: Any {
 
     /// Ask for a view to be rendered at `scale` of its full resolution - WebXR's `requestViewportScale`.
     ///
-    /// This is the application's half of the trade the foveation above makes for the compositor: fewer pixels
-    /// where the eye is not looking. `None` is ignored, which is what the specification says, so that passing a
-    /// [`crate::View::recommended_viewport_scale`] without checking it first is safe - and it lands on a later frame,
-    /// because a viewport is read per frame.
+    /// The app's half of the foveation trade above: fewer pixels where the eye is not looking. `None` is
+    /// ignored, so passing a [`crate::View::recommended_viewport_scale`] unchecked is safe.
     fn request_viewport_scale(&mut self, _view: usize, _scale: Option<f32>) {}
 
     /// The shape of every image this session presents.
@@ -161,6 +155,17 @@ pub trait Session: Any {
 
     /// The image at `index`, as this platform names it.
     fn image(&self, index: usize) -> Option<&Self::Image>;
+
+    /// How many layers this session may hand the compositor at once, when the runtime names a number -
+    /// WebXR's `maxRenderLayers`.
+    ///
+    /// The layers are the ones [`layer`](Session::layer) makes, and a runtime that takes four and not ten
+    /// would rather say so than fail an app's fifth. `None` for a runtime that does not name a limit, which
+    /// is not the same as zero: a compositor whose layer count is its own business is one to ask by making
+    /// one.
+    fn max_render_layers(&self) -> Option<u32> {
+        None
+    }
 
     /// Make a picture the compositor places itself, which is WebXR's `XRCompositionLayer`s and OpenXR's
     /// `XrCompositionLayer`s other than the projection one.

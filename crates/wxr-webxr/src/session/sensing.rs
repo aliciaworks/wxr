@@ -160,6 +160,21 @@ impl WebXrSession {
 }
 
 impl WebXrSession {
+    /// How many layers this session may hand the compositor, which is `XRSession.maxRenderLayers`.
+    ///
+    /// The property exists on every session object and only means something when `layers` was granted - an app
+    /// that never asked cannot make one, and a limit on a thing it cannot do is an answer about nothing. Zero
+    /// is the browser's way of saying there is no limit it will name, which is the core's `None`.
+    pub(super) fn max_render_layers_impl(&self) -> Option<u32> {
+        let session = self.inner.borrow().session.clone()?;
+        if !has_feature(&session, "layers") {
+            return None;
+        }
+        Some(session.max_render_layers()).filter(|layers| *layers > 0)
+    }
+}
+
+impl WebXrSession {
     /// The rate the display is running at, which is `XRSession.frameRate`.
     ///
     /// Not the rate the last request asked for: a request is granted on the runtime's own schedule, and this

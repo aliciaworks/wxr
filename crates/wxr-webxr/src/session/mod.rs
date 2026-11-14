@@ -456,6 +456,10 @@ impl wxr::Session for WebXrSession {
         self.depth_image.as_ref().map(|image| (image, info))
     }
 
+    fn max_render_layers(&self) -> Option<u32> {
+        self.max_render_layers_impl()
+    }
+
     fn layer(
         &mut self,
         space: wxr::ReferenceSpace,

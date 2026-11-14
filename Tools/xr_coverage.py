@@ -298,6 +298,10 @@ DEFAULT_IS_ENOUGH = {
     ("wxr-openxr", "set_depth_active"): "the provider behind `Session::depth` is started on the first ask "
     "and never stopped, for the reason `depth.rs` gives: a depth map that stopped between two frames is one "
     "that went missing where a renderer is looking - so there is no pause to send",
+    ("wxr-openxr", "max_render_layers"): "OpenXR names no limit: a frame is one `xrEndFrame` with however "
+    "many layers the app puts in it, and a runtime that cannot take them says so by failing the call rather "
+    "than by publishing a number to ask first. The `None` is the whole answer, not a query this backend has "
+    "not made",
     ("wxr-openxr", "meshes"): "four vendor extensions are bound and all raw - `XR_FB_triangle_mesh`, "
     "`XR_META_spatial_entity_mesh`, `XR_BD_spatial_mesh` and `XR_ML_world_mesh_detection` - and they are "
     "four different shapes: a triangle mesh with its own lifecycle, a component of a spatial entity, and two "
@@ -321,6 +325,8 @@ DEFAULT_IS_ENOUGH = {
     "caller has a handle to give back, and the no-op default is the whole of what releasing one would do",
     ("wxr-apple", "layer"): "CompositorServices has no compositing layers - the drawable is the frame, and "
     "there is no layer to make, pose, sub-image or release",
+    ("wxr-apple", "max_render_layers"): "as `layer`: a platform with no compositing layers has no count of "
+    "them to name",
     ("wxr-apple", "binding"): "as `layer`: a binding is for a layer the *app* draws into, and a platform "
     "without compositing layers has nothing to draw into that is not already the frame",
     ("wxr-apple", "layer_image"): "as `layer`",

@@ -162,6 +162,9 @@ struct Board {
     /// Whether the display's refresh rates have been read and asked for, which is once: the list is the
     /// session's, and the rate a request leaves behind is the stub's record.
     refresh_rate_checked: bool,
+    /// Whether the layer count the session names has been read, which is once and needs no frame: the number
+    /// is the session's and the stub says four.
+    max_layers_checked: bool,
     /// The tick the request was made on, so the event that follows it is checked on the next poll and not on
     /// the tick that asked: a handler fires synchronously, and the poll that reports it is one tick later.
     refresh_rate_asked: u32,
@@ -366,6 +369,7 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         retry_checked: false,
         viewport_scale_checked: false,
         refresh_rate_checked: false,
+        max_layers_checked: false,
         refresh_rate_asked: 0,
         refresh_rate_event: None,
         refresh_rate_event_checked: false,

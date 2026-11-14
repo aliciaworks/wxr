@@ -33,6 +33,18 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
         say(&format!("features: {:?}", session.features()));
     }
 
+    // The layer count is the session's, so it is asked once and before a frame. The stub names four: a
+    // backend that answered `None` would have said the limit was the compositor's own business.
+    if !board.max_layers_checked {
+        board.max_layers_checked = true;
+        match session.max_render_layers() {
+            Some(4) => say("the session takes four layers at once, as the stub says"),
+            other => {
+                return Err(format!("the layer limit was read as {other:?}, not four"));
+            }
+        }
+    }
+
     // Asked before the floor is, so that a check of the answer runs on the tick after the request settles.
     if !board.refusal_checked
         && let Some(unbounded) = board.unbounded
