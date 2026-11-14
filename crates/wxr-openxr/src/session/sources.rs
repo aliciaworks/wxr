@@ -30,6 +30,40 @@ impl OpenXrSession {
 }
 
 impl OpenXrSession {
+    /// The profile names for one source: the eyes' fixed one, or what the runtime reports for a hand.
+    ///
+    /// OpenXR has one current interaction profile per user path rather than a list, and an unknown or absent
+    /// profile is `Path::NULL` - a runtime that has none, which is the same empty answer a source this session
+    /// did not hand out gets. The name is the runtime's own, the `/interaction_profiles/...` path that
+    /// `xrPathToString` gives back, and not one of WebXR's short names.
+    pub(super) fn profiles_impl(
+        &mut self,
+        source: wxr::InputId,
+        out: &mut Vec<String>,
+    ) -> Result<(), wxr::Error> {
+        out.clear();
+        let Some(hands) = self.hands.as_ref() else {
+            return Ok(());
+        };
+        if let Some(profile) = hands.fixed_profile(source) {
+            out.push(profile.to_owned());
+            return Ok(());
+        }
+        let Some(user) = hands.user_path(source) else {
+            return Ok(());
+        };
+        let profile = self
+            .session
+            .current_interaction_profile(user)
+            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+        if profile != xr::Path::NULL
+            && let Ok(name) = self.instance.path_to_string(profile)
+        {
+            out.push(name);
+        }
+        Ok(())
+    }
+
     pub(super) fn hand_impl(
         &mut self,
         source: wxr::InputId,

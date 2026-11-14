@@ -4,7 +4,10 @@
 //! on [`Event`] and asks for a [`SessionMode`] - and the traits are what a backend is written against. The
 //! two are read by different people, and this file is the one the first of them opens.
 
-use super::*;
+use crate::input::InputId;
+use crate::space::{ReferenceSpace, SpaceKind};
+
+use super::Session;
 
 /// What the session's lifecycle is: the smallest thing a synchronous API needs and a promise does not.
 ///

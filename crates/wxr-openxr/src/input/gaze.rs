@@ -99,6 +99,14 @@ impl Gaze {
         }
     }
 
+    /// The profile name for the eyes' source, and `None` for any other.
+    ///
+    /// The eyes have one profile and the runtime does not report it per source, unlike a hand's - so this is
+    /// the fixed half of what `Session::profiles` answers.
+    pub(super) fn profile_of(&self, source: wxr::InputId) -> Option<&'static str> {
+        (source == wxr::InputId::new(ID)).then_some(PROFILE)
+    }
+
     /// This frame's source, which is one pose and nothing else.
     pub(super) fn push(&self, base: &xr::Space, time: xr::Time, out: &mut Vec<wxr::InputSource>) {
         let located = self.space.locate(base, time).ok();

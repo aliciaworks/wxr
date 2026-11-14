@@ -332,6 +332,21 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
                 ));
             }
         }
+        // And the names the stub gives each controller, in the order the browser has them: a list copied as
+        // it stands, which is what `XRInputSource.profiles` is.
+        for source in &sources {
+            let mut profiles = Vec::new();
+            if let Err(error) = session.profiles(source.id, &mut profiles) {
+                return Err(format!("profiles failed: {error}"));
+            }
+            let names: Vec<&str> = profiles.iter().map(String::as_str).collect();
+            if names != ["wxr-stub", "generic-trigger-squeeze"] {
+                return Err(format!(
+                    "the stub's profiles were read as {names:?}, not the two it gave"
+                ));
+            }
+        }
+        say("both controllers' profiles came through as the stub gave them");
     }
     // The skeletons, and one buzz each, both asked once. A joint is asked of a *hand* and a hand belongs to a
     // source, so the sources above are what a hand is found by - and a run that asked every frame would be a

@@ -335,6 +335,12 @@ impl wxr::Session for OpenXrSession {
         self.hand_impl(source, space, out)
     }
 
+    /// The interaction profile the runtime reports for one source, which is
+    /// `xrGetCurrentInteractionProfile` - and the eyes' fixed one.
+    fn profiles(&mut self, source: wxr::InputId, out: &mut Vec<String>) -> Result<(), wxr::Error> {
+        self.profiles_impl(source, out)
+    }
+
     /// A vibration on one source, which is `xrApplyHapticFeedback` with a `XrHapticVibration`.
     ///
     /// A source that has no output path - and every source on a runtime without the extension - is

@@ -304,6 +304,11 @@ impl wxr::Session for WebXrSession {
         self.hand_impl(source, space, out)
     }
 
+    /// A source's profiles, which is `XRInputSource.profiles` copied as it stands.
+    fn profiles(&mut self, source: wxr::InputId, out: &mut Vec<String>) -> Result<(), wxr::Error> {
+        self.profiles_impl(source, out)
+    }
+
     /// A buzz on one source, which is the gamepad's own `pulse`.
     ///
     /// The prompt one where there is a choice between this and `play_pcm`: the standard call is what every

@@ -218,6 +218,15 @@ impl wxr::Session for AppleSession {
         self.hand_impl(source, space, out)
     }
 
+    /// A controller's product category, which is the name GameController gives it.
+    ///
+    /// A hand is ARKit's and has no profile in this framework, so it answers with nothing; a pad is a
+    /// `GCController`, whose `productCategory` is what an app switches on to draw the right picture.
+    fn profiles(&mut self, source: wxr::InputId, out: &mut Vec<String>) -> Result<(), wxr::Error> {
+        self.controllers.profiles(source, out);
+        Ok(())
+    }
+
     /// A buzz on a controller, which is a Core Haptics pattern played on an engine for it.
     ///
     /// A source with no actuator - every hand, and a pad GameController says has none - is `Unsupported`

@@ -30,7 +30,7 @@ use objc2_core_haptics::{
 };
 use objc2_foundation_visionos::NSArray;
 use objc2_game_controller::{
-    GCController, GCControllerAxisInput, GCControllerButtonInput, GCExtendedGamepad,
+    GCController, GCControllerAxisInput, GCControllerButtonInput, GCDevice, GCExtendedGamepad,
     GCHapticsLocalityDefault,
 };
 
@@ -158,6 +158,26 @@ impl GameControllers {
         }
         self.pending.extend(edges);
         changed
+    }
+
+    /// The name the framework gives a controller, which is its product category.
+    ///
+    /// `GCDevice.productCategory` is a string like `"DualSense"` or `"Xbox One"`, and it is the only name a
+    /// pad has here: it is what an app switches on to draw the right picture, and it does not change while a
+    /// controller stays connected. A controller that has gone away keeps its id but answers with nothing,
+    /// which is the same as one this session never handed out.
+    pub fn profiles(&self, id: wxr::InputId, out: &mut Vec<String>) {
+        out.clear();
+        let Some(known) = self.known.iter().find(|known| known.id == id) else {
+            return;
+        };
+        if !known.connected {
+            return;
+        }
+        // SAFETY: the controller is live, and `GCDevice` is a protocol it conforms to - the property is the
+        // framework's own answer about its own device.
+        let device: &ProtocolObject<dyn GCDevice> = ProtocolObject::from_ref(&*known.controller);
+        out.push(unsafe { device.productCategory() }.to_string());
     }
 
     /// Whether any connected controller has an actuator to send to, which is the capability bit.

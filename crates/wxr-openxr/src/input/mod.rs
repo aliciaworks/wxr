@@ -367,6 +367,25 @@ impl Hands {
         self.pending.extend(edges);
     }
 
+    /// The user path a source is a hand on, which is what a runtime's profile is asked about.
+    ///
+    /// `None` for a source this session did not hand out and for the eyes, which have a profile of their own
+    /// rather than one the runtime reports per hand.
+    pub fn user_path(&self, source: wxr::InputId) -> Option<xr::Path> {
+        self.hands
+            .iter()
+            .find(|hand| hand.id == source)
+            .map(|hand| hand.path)
+    }
+
+    /// The profile a source has without asking the runtime, which is the eyes' one.
+    pub fn fixed_profile(&self, source: wxr::InputId) -> Option<&'static str> {
+        match &self.gaze {
+            Some(gaze) => gaze.profile_of(source),
+            None => None,
+        }
+    }
+
     /// A hand's skeleton, from the tracker for it, when the runtime made one.
     pub fn hand(&self, index: usize, base: &xr::Space, time: xr::Time, out: &mut wxr::Hand) {
         out.clear();

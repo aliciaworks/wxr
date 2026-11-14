@@ -3,6 +3,7 @@
 //! Delegated from `wxr::Session`, which gets one implementation per type: the bodies live here.
 
 use super::*;
+use crate::sys::XrInputSource;
 
 impl WebXrSession {
     pub(super) fn inputs_impl(
@@ -125,6 +126,29 @@ impl WebXrSession {
 }
 
 impl WebXrSession {
+    /// A source's profile names, which are fixed for as long as the browser hands the same object over.
+    ///
+    /// No frame is needed: `profiles` is an attribute of the source and not of the pose it has this frame, so
+    /// a source found in the registry answers even between frames. A name the browser gives as something other
+    /// than a string is skipped rather than made up - an empty list is the honest answer for a source it
+    /// cannot name, and the same one a session that never handed the source out gives.
+    pub(super) fn profiles_impl(
+        &mut self,
+        source: wxr::InputId,
+        out: &mut Vec<String>,
+    ) -> Result<(), wxr::Error> {
+        out.clear();
+        let Some(input) = self.sources.get(source) else {
+            return Ok(());
+        };
+        for profile in XrInputSource::profiles(&input).iter() {
+            if let Some(profile) = profile.as_string() {
+                out.push(profile);
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn hand_impl(
         &mut self,
         source: wxr::InputId,
