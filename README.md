@@ -26,8 +26,8 @@ column only on a Mac, since that one counts the SDK's own headers rather than an
 
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
-| **Native API reached** - of each backend's own spec | 216/290 | 73/551 | 103/618 |
-| *as a percentage* | 74% | 13% | 17% |
+| **Native API reached** - of each backend's own spec | 216/290 | 76/551 | 103/618 |
+| *as a percentage* | 74% | 14% | 17% |
 | **WebXR API reached** - of the whole API | 351/452 | 238/452 | 229/452 |
 | *as a percentage* | 78% | 53% | 51% |
 

@@ -513,6 +513,10 @@ OPENXR_RENAMES = {
     "xrGetVulkanGraphicsRequirementsKHR": "requirements",
     "xrGetVulkanGraphicsDeviceKHR": "vulkan_graphics_device",
     "xrRequestExitSession": "request_exit",
+    # Two getters the crate names for the thing got rather than for the call: `Instance::properties` and
+    # `Instance::view_configuration_properties`.
+    "xrGetInstanceProperties": "properties",
+    "xrGetViewConfigurationProperties": "view_configuration_properties",
 }
 
 

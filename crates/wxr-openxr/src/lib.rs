@@ -236,12 +236,50 @@ impl OpenXr {
             .create_instance(&app_info, &extensions, &[], &())
             .map_err(|error| Error::runtime("create the instance", error))?;
 
+        // Which runtime answered, before anything is asked of it: the name and version are the first two things
+        // a runtime's own bug report wants, and reading them costs one call at startup.
+        if let Ok(properties) = instance.properties() {
+            log::info!(
+                "wxr-openxr: runtime {} {:?}",
+                properties.runtime_name,
+                properties.runtime_version
+            );
+        }
+
         let system = instance
             .system(xr::FormFactor::HEAD_MOUNTED_DISPLAY)
             .map_err(|error| Error::runtime("find a headset", error))?;
 
+        // The configuration this backend draws, asked for rather than assumed: the specification has an app
+        // enumerate what the runtime offers and choose one, and a runtime that offers no stereo pair is one
+        // this backend has nothing to draw into.
+        let configuration = xr::ViewConfigurationType::PRIMARY_STEREO;
+        let configurations = instance
+            .enumerate_view_configurations(system)
+            .map_err(|error| Error::runtime("enumerate view configurations", error))?;
+        if !configurations.contains(&configuration) {
+            return Err(Error::Unsupported(format!(
+                "the runtime offers {} view configuration(s) and not primary stereo",
+                configurations.len()
+            )));
+        }
+        // And what it says about that one. A mutable field of view is the runtime telling an app it may choose
+        // one; this backend hands back the runtime's own views, so the answer goes in the log rather than into
+        // a decision.
+        match instance.view_configuration_properties(system, configuration) {
+            Ok(properties) => log::debug!(
+                "wxr-openxr: primary stereo, field of view {}",
+                if properties.fov_mutable {
+                    "mutable"
+                } else {
+                    "fixed"
+                }
+            ),
+            Err(error) => log::debug!("wxr-openxr: no view configuration properties: {error:?}"),
+        }
+
         let views = instance
-            .enumerate_view_configuration_views(system, xr::ViewConfigurationType::PRIMARY_STEREO)
+            .enumerate_view_configuration_views(system, configuration)
             .map_err(|error| Error::runtime("enumerate the views", error))?;
         if views.len() != 2 {
             return Err(Error::Unsupported(format!(
@@ -251,7 +289,7 @@ impl OpenXr {
         }
 
         let blend = *instance
-            .enumerate_environment_blend_modes(system, xr::ViewConfigurationType::PRIMARY_STEREO)
+            .enumerate_environment_blend_modes(system, configuration)
             .map_err(|error| Error::runtime("enumerate blend modes", error))?
             .first()
             .ok_or_else(|| Error::Unsupported("the runtime offers no blend mode".into()))?;
