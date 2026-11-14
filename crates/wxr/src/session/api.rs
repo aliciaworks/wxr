@@ -128,10 +128,8 @@ pub trait Session: Any {
     }
 
     /// Ask the display to run at `rate` hertz - the other half of [`refresh_rates`](Session::refresh_rates).
-    ///
     /// A *request*, like [`set_foveation`](Session::set_foveation): a runtime that cannot change its rate, or
-    /// will not take this one, keeps the rate it has. Nothing is sent by default, because the default is the
-    /// display's own choice.
+    /// will not take this one, keeps the rate it has - and that default is the display's own choice.
     fn set_refresh_rate(&mut self, _rate: f32) {}
 
     /// Ask for a view to be rendered at `scale` of its full resolution - WebXR's `requestViewportScale`.
@@ -153,9 +151,8 @@ pub trait Session: Any {
     /// WebXR's `maxRenderLayers`.
     ///
     /// The layers are the ones [`layer`](Session::layer) makes, and a runtime that takes four and not ten
-    /// would rather say so than fail an app's fifth. `None` for a runtime that does not name a limit, which
-    /// is not the same as zero: a compositor whose layer count is its own business is one to ask by making
-    /// one.
+    /// would rather say so than fail an app's fifth. `None` for a runtime that does not name a limit - not
+    /// the same as zero, and a compositor whose layer count is its own business is asked by making one.
     fn max_render_layers(&self) -> Option<u32> {
         None
     }
@@ -184,9 +181,8 @@ pub trait Session: Any {
     /// What to draw into for a layer this frame, and where in it.
     ///
     /// `None` while there is nothing to draw into yet - a layer is made asynchronously on every platform that
-    /// has them, and a layer's image is the compositor's for one frame and not the app's to keep - and `None`
-    /// for a backend that was never taught layers at all, which is the same answer to a caller that only draws
-    /// when it has something to draw into.
+    /// has them, and its image is the compositor's for one frame and not the app's to keep - and `None` for a
+    /// backend never taught layers at all: the same answer to a caller that only draws when it has something.
     fn layer_image(&mut self, _layer: Layer) -> Option<(&Self::Image, LayerImage)> {
         None
     }
@@ -225,9 +221,8 @@ pub trait Session: Any {
 
     /// Tell the runtime the app is done with a layer.
     ///
-    /// Nothing by default, because a backend with no layers has none to release - and unlike an anchor or a
-    /// light probe, a layer holds an image the runtime wants back, which is a reason to say so rather than to
-    /// let a handle go out of scope.
+    /// Nothing by default: a backend with no layers has none to release, and unlike an anchor or a light probe
+    /// a layer holds an image the runtime wants back - a reason to say so rather than let a handle go.
     fn release_layer(&mut self, _layer: Layer) {}
 
     /// Ask for a space to measure poses in. A runtime that does not have the one asked for says so, rather
@@ -273,8 +268,7 @@ pub trait Session: Any {
     ///
     /// WebXR's `XRFrame.getJointPose`, asked once for the whole hand rather than once per joint. A source with
     /// no skeleton says so with `InputSource::hand`, and a hand half out of view has joints that are not
-    /// tracked: both are an empty [`Hand`], because a missing finger is not a failed frame. Empty by default
-    /// for the same reason.
+    /// tracked: both are an empty [`Hand`], because a missing finger is not a failed frame.
     fn hand(
         &mut self,
         _source: InputId,
@@ -301,12 +295,11 @@ pub trait Session: Any {
     /// Make a source buzz: `intensity` from `0` to `1`, for `duration` - WebXR's
     /// `GamepadHapticActuator.pulse`, and the one shape every platform with an actuator can be asked for.
     ///
-    /// It is a *request*, like [`set_foveation`](Session::set_foveation): intensity is clamped rather than
-    /// refused, a source with no actuator is a source that does not move, and a platform that cannot reach
-    /// its hardware answers [`Error::Unsupported`] rather than pretending. Which is why
-    /// [`InputSource::haptics`] is worth reading first: it is the difference between a game that checks and
-    /// one that asks a question whose answer it could have known. Whether there is anything to ask at all is
-    /// [`Features::HAPTICS`].
+    /// A *request*, like [`set_foveation`](Session::set_foveation): intensity is clamped rather than refused,
+    /// and a platform that cannot reach its hardware answers [`Error::Unsupported`] rather than pretending.
+    /// Which is why [`InputSource::haptics`] is worth reading first - the difference between a game that
+    /// checks and one that asks a question whose answer it could have known - and [`Features::HAPTICS`] says
+    /// whether there is anything to ask at all.
     fn pulse(
         &mut self,
         _source: InputId,
@@ -316,17 +309,28 @@ pub trait Session: Any {
         Err(Error::Unsupported("haptics".into()))
     }
 
+    /// Stop a source's vibration before its `duration` runs out - WebXR's `GamepadHapticActuator.reset` and
+    /// OpenXR's `xrStopHapticFeedback`.
+    ///
+    /// The other half of [`pulse`](Session::pulse), and a call of its own because a duration is a guess: the app
+    /// learns it was wrong - the level ended, the hand let go - and a motor that runs to the end of a duration
+    /// nobody wants is a controller buzzing at a menu. An id this session never handed out and a source with no
+    /// actuator answer [`Error::Unsupported`], as [`pulse`](Session::pulse) does; one that is simply not buzzing
+    /// is `Ok(())`.
+    fn stop_pulse(&mut self, _source: InputId) -> Result<(), Error> {
+        Err(Error::Unsupported("haptics".into()))
+    }
+
     /// Play a buffer of haptic samples on a source - WebXR's `GamepadHapticActuator.playPCM` and OpenXR's
     /// `XR_FB_haptic_pcm`, which are the same idea: the app hands over the waveform instead of describing it
     /// with an intensity.
     ///
     /// `samples` are amplitudes in `-1..=1` at `sample_rate` hertz, which is what a platform's PCM haptics
-    /// want and what a browser's `AudioBuffer` carries - so an app that already has an audio buffer has the
+    /// want and what a browser's `AudioBuffer` carries, so an app that already has an audio buffer has the
     /// hard part. A backend without PCM output answers [`Error::Unsupported`], and a source that cannot be
-    /// felt is the same quiet no-op [`pulse`](Session::pulse) makes of one.
-    ///
-    /// Not every session has this even where it has [`pulse`](Session::pulse): OpenXR's PCM is Meta's
-    /// extension on top of the vibration one, so a runtime can have the buzz and not the waveform.
+    /// felt is the same quiet no-op [`pulse`](Session::pulse) makes of one. Not every session has this even
+    /// where it has a pulse: OpenXR's PCM is Meta's extension on top of the vibration one, so a runtime can
+    /// have the buzz and not the waveform.
     fn play_pcm(
         &mut self,
         _source: InputId,
@@ -393,19 +397,15 @@ pub trait Session: Any {
         Ok(())
     }
 
-    /// Let a source of hits go, which is WebXR's `XRHitTestSource.cancel`.
-    ///
-    /// A source is a handle this session holds until the session ends, so one nothing will be asked about
-    /// again has nothing left to give, and `hits` on it is an empty list rather than an error. What is behind
-    /// it differs: WebXR has a `cancel()` to call and a promise in flight to keep cancelled when it lands,
-    /// while OpenXR's raycaster has no per-source object, so there is only this backend's slot to clear.
+    /// Let a source of hits go, which is WebXR's `XRHitTestSource.cancel`. `hits` on a released one is an
+    /// empty list rather than an error. What is behind it differs: WebXR has a `cancel()` to call and a
+    /// promise in flight to keep cancelled when it lands, while OpenXR's raycaster has no per-source object,
+    /// so there is only this backend's slot to clear.
     fn release_hit_test_source(&mut self, _source: HitTestSource) {}
 
-    /// Ask for a probe of the room's light, which is WebXR's `requestLightProbe`.
-    ///
-    /// A handle the way a hit-test source is, and for the same reason: a runtime makes one asynchronously. The
-    /// estimate it gives is in the runtime's own probe space, which is not one of this session's - see
-    /// [`LightEstimate`].
+    /// Ask for a probe of the room's light, which is WebXR's `requestLightProbe`. A handle the way a hit-test
+    /// source is, and for the same reason: a runtime makes one asynchronously. The estimate it gives is in the
+    /// runtime's own probe space, which is not one of this session's - see [`LightEstimate`].
     fn light_probe(&mut self) -> Result<LightProbe, Error> {
         Err(Error::Unsupported("light estimation".into()))
     }
@@ -452,12 +452,10 @@ pub trait Session: Any {
         None
     }
 
-    /// Ask the runtime where a place it named has ended up, which is WebXR's `restorePersistentAnchor`.
-    ///
-    /// The other half of [`Session::anchor_id`], and asynchronous like every anchor: the handle arrives
-    /// before the place is found, so `anchor_pose` is `None` until it is - and stays `None` for a name the
-    /// runtime does not have, which is a place that is not there rather than a failed request. A runtime that
-    /// keeps no names between sessions is [`Error::Unsupported`].
+    /// Ask the runtime where a place it named has ended up, which is WebXR's `restorePersistentAnchor` - the
+    /// other half of [`Session::anchor_id`], and asynchronous like every anchor: the handle arrives before the
+    /// place is found, so `anchor_pose` is `None` until it is, and stays `None` for a name the runtime does not
+    /// have. A runtime that keeps no names between sessions is [`Error::Unsupported`].
     fn restore_anchor(&mut self, _id: AnchorId) -> Result<Anchor, Error> {
         Err(Error::Unsupported("anchors from an earlier session".into()))
     }
@@ -473,9 +471,8 @@ pub trait Session: Any {
     /// `XRFrame.getDepthInformation`, OpenXR's environment depth.
     ///
     /// `None` for a runtime with no depth sensing, for a view it has none for, for one that has paused it, and
-    /// for a backend that never had any - which are the same answer to a caller asking how far away the wall
-    /// is. Whether a session has this at all is [`Features::DEPTH`], because `None` here cannot tell those
-    /// apart.
+    /// for a backend that never had any - the same answer to a caller asking how far away the wall is, and why
+    /// [`Features::DEPTH`] is what says whether a session has this at all.
     ///
     /// Ask once per frame, like a view: the way a runtime delivers depth is a buffer made for the frame and
     /// taken back at the end of it, and the metadata says what the values in it mean. The buffer is the

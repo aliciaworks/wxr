@@ -44,7 +44,8 @@ impl Features {
     /// list, pick one, ask - and a backend that has no way to change the rate has nothing to say here.
     pub const REFRESH_RATE: Self = Self(1 << 10);
 
-    /// A source that can be made to buzz: [`crate::Session::pulse`] and [`crate::Session::play_pcm`].
+    /// A source that can be made to buzz: [`crate::Session::pulse`] and [`crate::Session::play_pcm`], and
+    /// [`crate::Session::stop_pulse`] to end one early.
     ///
     /// A bit of its own rather than something a caller reads off a source, because whether *this* session has
     /// any is a question an app asks before it decides what to offer - and because a platform can have the

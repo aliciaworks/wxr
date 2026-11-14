@@ -1,9 +1,9 @@
 //! Haptics: the buzz a controller can be asked for.
 //!
 //! WebXR has no haptics of its own. A source that can be felt carries a gamepad, and the gamepad carries
-//! actuators, so this is where the gamepads module's `hapticActuators` meets the core's call. The one it
-//! implements is the Gamepad specification's `pulse` - an intensity and a length, which is the shape every
-//! browser that has an actuator has.
+//! actuators, so this is where the gamepads module's `hapticActuators` meets the core's calls. The two it
+//! implements are the Gamepad specification's `pulse` - an intensity and a length, which is the shape every
+//! browser that has an actuator has - and `reset`, the same buzz ended before its length is up.
 //!
 //! The draft's `playPCM` is *bound* (`Tools/refresh_webxr_idl.py` generates it) and not called here, and the
 //! reason is the argument it takes: an `AudioBuffer` is a Web Audio object, made by an `AudioContext`, and
@@ -69,6 +69,23 @@ impl WebXrSession {
             // buzz at all, and the browser takes the number as a double.
             duration.as_secs_f64() * 1000.0,
         );
+        Ok(())
+    }
+
+    /// `GamepadHapticActuator.reset`, which is the buzz taken back rather than allowed to run out.
+    ///
+    /// The same two refusals as [`pulse_impl`](WebXrSession::pulse_impl) and for the same reason - a source
+    /// that has no motor cannot be told to stop one - and the promise is dropped for the same reason too. A
+    /// source that is simply not buzzing is `Ok`: the browser stops what it has, and a stop with nothing
+    /// behind it is a request the platform has already answered.
+    pub(super) fn stop_impl(&mut self, source: wxr::InputId) -> Result<(), wxr::Error> {
+        let input = self
+            .sources
+            .get(source)
+            .ok_or_else(|| wxr::Error::Unsupported("haptics".into()))?;
+        let actuator = actuator(&input)
+            .ok_or_else(|| wxr::Error::Unsupported("haptics on this source".into()))?;
+        let _ = actuator.reset();
         Ok(())
     }
 }

@@ -27,4 +27,9 @@ extern "C" {
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/GamepadHapticActuator/pulse)"]
     pub fn pulse(this: &GamepadHapticActuator, value: f64, duration: f64) -> ::js_sys::Promise;
+    #[wasm_bindgen(method, js_class = "GamepadHapticActuator")]
+    #[doc = "The `reset()` method."]
+    #[doc = ""]
+    #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/GamepadHapticActuator/reset)"]
+    pub fn reset(this: &GamepadHapticActuator) -> ::js_sys::Promise;
 }

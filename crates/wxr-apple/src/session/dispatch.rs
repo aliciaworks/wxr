@@ -242,6 +242,11 @@ impl wxr::Session for AppleSession {
         self.controllers.pulse(source, intensity, duration)
     }
 
+    /// The buzz taken back, which is the retained player's `stopAtTime:`.
+    fn stop_pulse(&mut self, source: wxr::InputId) -> Result<(), wxr::Error> {
+        self.controllers.stop(source)
+    }
+
     fn planes(
         &mut self,
         space: wxr::ReferenceSpace,

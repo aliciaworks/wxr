@@ -45,11 +45,13 @@ typedef any Gamepad;
 
 // Its actuator is the one exception, and it is the haptics draft that makes it one: the draft declares
 // `partial interface GamepadHapticActuator`, so the base has to be declared somewhere, and once it is, the
-// standard `pulse` belongs with it - one generated type with both calls, rather than one that can play a
-// waveform and not a buzz. `web-sys`'s own `GamepadHapticActuator` stays off, because two Rust types under
-// one JavaScript name is the duplicate `wasm-bindgen` refuses.
+// standard members belong with it - `pulse` to start a buzz and `reset` to end one early, which are the two
+// halves the core's `pulse` and `stop_pulse` ask for. One generated type with all three calls, rather than
+// one that can play a waveform and not a buzz. `web-sys`'s own `GamepadHapticActuator` stays off, because two
+// Rust types under one JavaScript name is the duplicate `wasm-bindgen` refuses.
 interface GamepadHapticActuator {
   Promise<boolean> pulse(double value, double duration);
+  Promise<boolean> reset();
 };
 
 // A `typedef` and not an `enum`, which needs explaining: a generated string enum is a JavaScript object that

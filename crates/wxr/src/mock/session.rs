@@ -423,6 +423,17 @@ impl Session for MockSession {
         Ok(())
     }
 
+    fn stop_pulse(&mut self, source: InputId) -> Result<(), Error> {
+        // Same id rule as the other two, and the same answer for the same reason: a number past the set
+        // `inputs` hands out names no source, and every backend says so rather than recording a stop nobody
+        // felt.
+        if source.get() >= INPUT_COUNT {
+            return Err(Error::Unsupported("haptics on this source".into()));
+        }
+        self.stops.push(source);
+        Ok(())
+    }
+
     fn play_pcm(
         &mut self,
         source: InputId,

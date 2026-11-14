@@ -32,6 +32,7 @@ use wxr::{Backend as _, Session as _};
 
 mod anchors;
 mod hands;
+mod haptics;
 mod images;
 mod layers;
 mod tick;

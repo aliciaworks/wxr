@@ -518,6 +518,9 @@ OPENXR_RENAMES = {
     "xrGetVulkanGraphicsRequirementsKHR": "requirements",
     "xrGetVulkanGraphicsDeviceKHR": "vulkan_graphics_device",
     "xrRequestExitSession": "request_exit",
+    # The buzz's other half: the core names the pair after what the app asked for, and the runtime names the
+    # command after the feedback it stops.
+    "xrStopHapticFeedback": "stop_pulse",
     # Two getters the crate names for the thing got rather than for the call: `Instance::properties` and
     # `Instance::view_configuration_properties`.
     "xrGetInstanceProperties": "properties",

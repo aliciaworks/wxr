@@ -3,6 +3,7 @@
 use super::*;
 
 mod frames;
+mod haptics;
 mod inputs;
 
 /// Drive the mock the way an app would: poll to `Visible`, then run frames.
@@ -126,34 +127,6 @@ fn a_press_is_a_start_an_end_and_a_selection() {
     assert_eq!(session.poll(), Some(Event::SelectEnd(id)));
     assert_eq!(session.poll(), Some(Event::Select(id)));
     assert_eq!(session.poll(), None);
-}
-
-#[test]
-fn a_pulse_names_the_source_it_reaches() {
-    let mut session = running();
-    let space = session.space(SpaceKind::LocalFloor).expect("a floor");
-    let mut sources = Vec::new();
-    session.inputs(space, &mut sources).unwrap();
-    // The controllers have actuators, so this call can be answered; `Ok` alone would not say it moved.
-    assert!(sources[0].haptics);
-    assert!(session.features().contains(crate::Features::HAPTICS));
-
-    let id = sources[1].id;
-    session.pulse(id, 0.5, Duration::from_millis(25)).unwrap();
-    // Clamped rather than refused; a NaN is the quietest request there is, which is what the backends send.
-    session.pulse(id, 7.0, Duration::from_millis(5)).unwrap();
-    session.pulse(id, f32::NAN, Duration::ZERO).unwrap();
-    assert_eq!(
-        session.pulses(),
-        &[
-            (id, 0.5, Duration::from_millis(25)),
-            (id, 1.0, Duration::from_millis(5)),
-            (id, 0.0, Duration::ZERO),
-        ]
-    );
-
-    session.play_pcm(id, &[0.0, 1.0, 0.0], 800.0).unwrap();
-    assert_eq!(session.waveforms(), &[(id, 3, 800.0)]);
 }
 
 #[test]

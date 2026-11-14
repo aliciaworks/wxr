@@ -341,11 +341,9 @@ impl wxr::Session for OpenXrSession {
         self.profiles_impl(source, out)
     }
 
-    /// A vibration on one source, which is `xrApplyHapticFeedback` with a `XrHapticVibration`.
-    ///
-    /// A source that has no output path - and every source on a runtime without the extension - is
-    /// `Unsupported` rather than a silent nothing, because unlike foveation this is a call the app chose to
-    /// make and an answer it can act on.
+    /// A vibration on one source, which is `xrApplyHapticFeedback` with a `XrHapticVibration`. A source with
+    /// no output path - and every source on a runtime without the extension - is `Unsupported` rather than a
+    /// silent nothing: this is a call the app chose to make, so an answer it can act on is worth more.
     fn pulse(
         &mut self,
         source: wxr::InputId,
@@ -358,6 +356,14 @@ impl wxr::Session for OpenXrSession {
         hands
             .pulse(&self.session, source, intensity, duration)
             .map_err(wxr::Error::from)
+    }
+
+    /// A vibration taken back, which is `xrStopHapticFeedback` on the same action.
+    fn stop_pulse(&mut self, source: wxr::InputId) -> Result<(), wxr::Error> {
+        let Some(hands) = &self.hands else {
+            return Err(wxr::Error::Unsupported("haptics".into()));
+        };
+        hands.stop(&self.session, source).map_err(wxr::Error::from)
     }
 
     /// A waveform on one source, which is `XR_FB_haptic_pcm`'s vibration.
@@ -377,10 +383,9 @@ impl wxr::Session for OpenXrSession {
 
     /// The surfaces the runtime has found this frame, which is `XR_EXT_plane_detection`'s state machine.
     ///
-    /// Looking for planes is asynchronous on OpenXR: a pass is begun, polled until it is done, read, and
-    /// begun again - so one call here is one *step* of that loop and an empty list is what a pass that has
-    /// not finished looks like. That is the same shape the frame's views have, and for the same reason: this
-    /// is what was found this frame and not a list to keep.
+    /// Looking for planes is asynchronous on OpenXR: a pass is begun, polled until it is done, read, and begun
+    /// again - so one call here is one *step* of that loop, and an empty list is a pass that has not finished.
+    /// That is the shape the frame's views have, and for the same reason: this frame's, not a list to keep.
     fn planes(
         &mut self,
         space: wxr::ReferenceSpace,
@@ -420,9 +425,8 @@ impl wxr::Session for OpenXrSession {
     /// Ask for a source of hits along a space's own aim, which is `XR_META_environment_raycast`.
     ///
     /// The ray is not part of the source here: OpenXR's raycaster takes the ray per call, so a source is the
-    /// space the ray is measured out of and `hits` is where it lands. The raycaster itself is made on the
-    /// first one, asynchronously, so a source made a frame or two ago may still have nothing behind it -
-    /// which is what the core said it would be.
+    /// space the ray is measured out of and `hits` is where it lands. The raycaster behind it is made on the
+    /// first call, asynchronously, so a source made a frame ago may still have nothing behind it.
     fn hit_test_source(
         &mut self,
         space: wxr::ReferenceSpace,
@@ -441,28 +445,26 @@ impl wxr::Session for OpenXrSession {
 
     /// Let a source of hits go, which on this backend is the slot the source's ray is measured from.
     ///
-    /// There is nothing to destroy: `XR_META_environment_raycast` has one raycaster for the whole session
-    /// and takes the ray and its filters with every call, so a source here has no runtime object behind it
-    /// at all - only the space it was made from, which is what clearing the entry drops. The entry has to
-    /// stay where it is rather than come out, because the id is its position.
+    /// There is nothing to destroy: `XR_META_environment_raycast` has one raycaster for the whole session and
+    /// takes the ray and its filters with every call, so a source here is only the space it was made from -
+    /// which clearing the entry drops. The entry itself stays, because the id is its position.
     fn release_hit_test_source(&mut self, source: wxr::HitTestSource) {
         self.release_hit_test_source_impl(source)
     }
 
     /// What the runtime measured of the room, which is `XR_META_environment_depth`'s depth map.
     ///
-    /// OpenXR's depth is a buffer the *runtime* fills and the app reads - the direction every other
-    /// swapchain goes - and it is acquired once a frame, between the frame being begun and ended. What comes
-    /// back is the image and what its values mean, which is the same split the core asks for.
+    /// OpenXR's depth is a buffer the *runtime* fills and the app reads, acquired once a frame between the
+    /// frame being begun and ended. What comes back is the image and what its values mean.
     fn depth(&mut self, view: usize) -> Option<(&Self::Depth, wxr::DepthInfo)> {
         self.depth_impl(view)
     }
 
     /// What this session's depth sensing is, once it has a depth provider.
     ///
-    /// `XR_META_environment_depth` is one measurement the app asked for, at a resolution the runtime picked,
-    /// in a buffer the runtime owns - which is WebXR's `cpu-optimized` with the platform's own resolution
-    /// rather than one an app negotiated.
+    /// `XR_META_environment_depth` is one measurement the app asked for, at a resolution the runtime picked and
+    /// in a buffer the runtime owns - WebXR's `cpu-optimized`, with the platform's resolution rather than one
+    /// an app negotiated.
     fn depth_sensing(&self) -> Option<wxr::DepthSensing> {
         self.depth_sensing_impl()
     }
@@ -483,9 +485,8 @@ impl wxr::Session for OpenXrSession {
 impl OpenXrSession {
     /// OpenXR's own session state, which says more than the core's two axes do.
     ///
-    /// It is the same thing [`wxr::Session::as_backend`] reaches, kept as a method because reaching it is
-    /// common enough here to be worth not spelling out: a program that already has an `OpenXrSession` should
-    /// not have to go through `Any` to ask it what OpenXR says.
+    /// It is the same thing [`wxr::Session::as_backend`] reaches, kept as a method because reaching it here is
+    /// common enough that a program with an `OpenXrSession` should not have to go through `Any` to ask.
     pub fn openxr_state(&self) -> xr::SessionState {
         self.openxr_state
     }

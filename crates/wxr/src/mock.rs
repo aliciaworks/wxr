@@ -108,6 +108,7 @@ impl Backend for MockBackend {
             image: 0,
             layers: Vec::new(),
             pulses: Vec::new(),
+            stops: Vec::new(),
             waveforms: Vec::new(),
             hand_asks: Vec::new(),
         })
@@ -156,6 +157,9 @@ pub struct MockSession {
     /// Every vibration asked for, oldest first: what source, how hard, and for how long. A mock records
     /// because a `pulse` that returns `Ok` and does nothing is indistinguishable from one that failed.
     pulses: Vec<(InputId, f32, Duration)>,
+    /// Every vibration told to stop, oldest first. Recorded for the same reason the pulses are, and read the
+    /// other way round: a stop is only worth sending for a buzz that was sent.
+    stops: Vec<InputId>,
     /// Every waveform asked for, as the source, how many samples, and the rate - the samples themselves are
     /// not kept, because what a test asks is whether the call happened and with what.
     waveforms: Vec<(InputId, usize, f32)>,

@@ -31,9 +31,8 @@ use crate::{depth, hit, input, planes, throws};
 impl Drop for WebXrSession {
     /// End the browser's session when this one is dropped.
     ///
-    /// A WebXR session belongs to the browser, and without this it keeps it - and the display it holds - until
-    /// the page goes away. Dropping the handle is how an app says it is finished, so this is where the browser
-    /// is told.
+    /// A WebXR session belongs to the browser, and without this it keeps it - and the display - until the page
+    /// goes away. Dropping the handle is how an app says it is finished, so this is where the browser is told.
     fn drop(&mut self) {
         if let Some(session) = self.inner.borrow().session.clone() {
             // Caught: a session dropped from inside its own frame handler is still active, and `end` throws
@@ -97,11 +96,10 @@ impl WebXrSession {
 
     /// Ask for the binding and the layer, and keep them if the browser gives them.
     ///
-    /// Three things have to be true and only one of them is this crate's to arrange: the session has to have
-    /// come back with the `webgpu` feature, the device has to have been made from an XR-compatible adapter,
-    /// and the browser has to have the binding at all. Any of them missing leaves a session with a head, two
-    /// eyes and a clock and no picture - which is what this backend could already say for itself, so it is a
-    /// warning rather than a failure.
+    /// Three things have to be true and only one is this crate's to arrange: the session needs the `webgpu`
+    /// feature, the device must come from an XR-compatible adapter, and the browser needs the binding at all.
+    /// Any missing leaves a head, two eyes and a clock and no picture - which this backend could already say
+    /// for itself, so it is a warning rather than a failure.
     fn start_gpu(&mut self, session: &XrSession) {
         if self.gpu.is_some() || !has_feature(session, "webgpu") {
             return;
@@ -235,8 +233,7 @@ impl wxr::Session for WebXrSession {
     }
 
     /// The near and far planes, through the browser's own render state. Remembered as well as applied, because an
-    /// app is free to set them while the session is still `Connecting` - the honest order when the planes are the
-    /// renderer's choice and not the runtime's.
+    /// app may set them while the session is still `Connecting` - the planes are the renderer's choice.
     fn set_depth_range(&mut self, near: f32, far: f32) {
         self.depth_range = Some((near, far));
         self.apply_depth_range();
@@ -324,6 +321,10 @@ impl wxr::Session for WebXrSession {
         self.pulse_impl(source, intensity, duration)
     }
 
+    fn stop_pulse(&mut self, source: wxr::InputId) -> Result<(), wxr::Error> {
+        self.stop_impl(source)
+    }
+
     fn planes(
         &mut self,
         space: wxr::ReferenceSpace,
@@ -374,9 +375,8 @@ impl wxr::Session for WebXrSession {
 
     fn set_foveation(&mut self, amount: f32) {
         // `fixedFoveation` is a WebIDL `float`, and a `float` conversion rejects NaN and the infinities with a
-        // `TypeError` - an exception through the wasm frame, which is not a knob refusing a value. `clamp` passes
-        // NaN through and turns an infinity into the bound it is past, so NaN, which is not a request at all, is
-        // refused here and an infinity is made finite by the clamp below before the conversion sees it.
+        // `TypeError` - an exception through the wasm frame, which is not a knob refusing a value. So NaN, which
+        // is not a request at all, is refused here, and `clamp` makes an infinity finite before the conversion.
         if amount.is_nan() {
             log::debug!("wxr-webxr: no foveation for {amount}, which is not a number");
             return;

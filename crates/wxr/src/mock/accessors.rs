@@ -43,6 +43,15 @@ impl MockSession {
         &self.waveforms
     }
 
+    /// Every vibration told to stop, oldest first, as the source that was told.
+    ///
+    /// The pair to [`pulses`](MockSession::pulses), and a separate list because a stop is a request in its own
+    /// right: a pulse followed by a stop is two things an app said, and a mock that folded one into the other
+    /// could not show a stop that went to the wrong hand.
+    pub fn stops(&self) -> &[InputId] {
+        &self.stops
+    }
+
     /// Every skeleton asked for, oldest first, as the source that was asked.
     ///
     /// A mock answers an unasked question with nothing, so the count is the interesting half: a caller asking a

@@ -6,9 +6,10 @@
 //! [`wxr::InputSource::haptics`]: `GCDeviceHaptics` is the set of actuators, and a controller whose set is
 //! empty is a controller that does not buzz.
 //!
-//! Only the buzz is here. Where a controller is in the room comes from ARKit's accessory tracking rather than
-//! from GameController - `ar_accessory_anchor_*`, which is the next piece - so a controller here is a device
-//! with buttons and an actuator and no place, which is exactly what a plain Bluetooth gamepad is.
+//! Only the buzz is here, and stopping one early: where a controller is in the room comes from ARKit's
+//! accessory tracking rather than from GameController - `ar_accessory_anchor_*`, which is the next piece - so a
+//! controller here is a device with buttons and an actuator and no place, which is exactly what a plain
+//! Bluetooth gamepad is.
 //! [`wxr::InputSource::tracked`] is `false` and the poses are the identity, and neither is a placeholder:
 //! they are what "a gamepad" means. A spatial accessory gets a place the day the ARKit half is written, and
 //! then this one says `true`.
@@ -246,6 +247,33 @@ impl GameControllers {
         // it, which stops the thing that was asked to buzz.
         known.player = Some(player);
         Ok(())
+    }
+
+    /// Stop the buzz a controller is playing, if it is playing one - `CHHapticPatternPlayer.stopAtTime:`.
+    ///
+    /// The player is the object the buzz was started on, so stopping it is the same one asked the other
+    /// question, and the pattern ends where it is rather than being dropped: a player released mid-pattern
+    /// *is* the stop, but it is the allocator's answer rather than one the framework gives an error for.
+    ///
+    /// A controller with no player is `Ok` - it is not buzzing, which is what was asked for - and the other
+    /// two refusals are [`pulse`](GameControllers::pulse)'s: an id this session never had, and a controller
+    /// that has gone away since.
+    pub fn stop(&mut self, id: wxr::InputId) -> Result<(), wxr::Error> {
+        let Some(known) = self.known.iter_mut().find(|known| known.id == id) else {
+            return Err(wxr::Error::Unsupported("haptics on this source".into()));
+        };
+        if !known.connected {
+            return Err(wxr::Error::Unsupported(
+                "haptics on a controller that is gone".into(),
+            ));
+        }
+        let Some(player) = known.player.take() else {
+            return Ok(());
+        };
+        // SAFETY: the player is live, and `CHHapticTimeImmediate` is the framework's "as soon as possible" -
+        // the same time the buzz was started with, which is what ending it now means.
+        unsafe { player.stopAtTime_error(CHHapticTimeImmediate) }
+            .map_err(|error| wxr::Error::Rejected(format!("{error}")))
     }
 }
 

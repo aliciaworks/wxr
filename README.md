@@ -26,7 +26,7 @@ column only on a Mac, since that one counts the SDK's own headers rather than an
 
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
-| **Native API reached** - of each backend's own spec | 218/290 | 76/551 | 103/618 |
+| **Native API reached** - of each backend's own spec | 218/290 | 77/551 | 103/618 |
 | *as a percentage* | 75% | 14% | 17% |
 | **WebXR API reached** - of the whole API | 356/452 | 238/452 | 229/452 |
 | *as a percentage* | 79% | 53% | 51% |
@@ -405,9 +405,9 @@ are in it. A native item with no counterpart in the core is one no backend will 
 can reach 100% by design.
 
 The second is the direction that says whether the *unification* is done, and it has two factors. The core
-speaks 64% of WebXR's vocabulary - 288 of the 452 members across every specification - it is the vocabulary all
+speaks 69% of WebXR's vocabulary - 312 of the 452 members across every specification - it is the vocabulary all
 three backends share rather than a mirror of the spec - and of its own `Session` methods the backends define
-**87%**, **82%** and **56%**. So a backend cannot reach the whole of WebXR by implementing
+**93%**, **76%** and **51%**. So a backend cannot reach the whole of WebXR by implementing
 methods: the word has to exist in the core first. Widening the core and filling the methods are the two things
 that move this, and both are work.
 

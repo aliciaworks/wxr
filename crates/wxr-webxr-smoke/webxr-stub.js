@@ -472,6 +472,12 @@ function controller(handedness, x) {
       // would be a stub that could not tell a buzz that was sent from one that was not.
       return Promise.resolve({ intensity, durationMs });
     },
+    // An own property, not the platform's: `asPlatform` puts the real prototype underneath, and Chromium's
+    // own `reset` throws on an object it did not make. This one is what a count of stops is read from.
+    reset() {
+      globalThis.__wxrHapticResets = (globalThis.__wxrHapticResets || 0) + 1;
+      return Promise.resolve(true);
+    },
   }, 'GamepadHapticActuator');
   const gamepad = asPlatform({
     id: `wxr-stub ${handedness}`,

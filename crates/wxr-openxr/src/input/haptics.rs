@@ -53,6 +53,24 @@ impl Hands {
             .map_err(|error| Error::runtime("send a vibration", error))
     }
 
+    /// Stop a vibration before its `duration` runs out, which is `xrStopHapticFeedback`.
+    ///
+    /// The same structure and the same action as [`Hands::pulse`], with nothing in it: the runtime stops
+    /// whatever that action is doing on that path, so a source that is not buzzing is `Ok`. A source with no
+    /// output path is `Unsupported`, as it is for the buzz itself.
+    pub fn stop(
+        &self,
+        session: &xr::Session<xr::Vulkan>,
+        source: wxr::InputId,
+    ) -> Result<(), Error> {
+        let Some((action, path)) = self.output(source) else {
+            return Err(Error::Unsupported("haptics on this source".into()));
+        };
+        action
+            .stop_feedback(session, path)
+            .map_err(|error| Error::runtime("stop a vibration", error))
+    }
+
     /// Play a waveform on one source, when the runtime took `XR_FB_haptic_pcm`.
     ///
     /// `samples` are amplitudes in `-1..=1` at `sample_rate` hertz. Not looping: an app that wants a held

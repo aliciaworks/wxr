@@ -436,16 +436,8 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
             if board.gpu {
                 hands::check_hand(&board.hands[index], source.handedness)?;
             }
-            // A buzz is a request that has been sent and nothing more: the answer is whether the platform
-            // took it, not whether a motor moved, which is a thing no frame can see.
-            match session.pulse(source.id, 0.5, Duration::from_millis(100)) {
-                Ok(()) => say(&format!("  {:?} buzz sent", source.handedness)),
-                Err(error) => say(&format!(
-                    "  {:?} would not buzz: {error}",
-                    source.handedness
-                )),
-            }
         }
+        haptics::buzz(session, &sources)?;
     }
 
     // A handle this session never handed out is refused rather than answered with nothing. The difference is
