@@ -269,8 +269,17 @@ impl Hands {
         // are borrowed for the loop below, and `pending` cannot be borrowed at the same time.
         let mut edges = Vec::new();
         for hand in &mut self.hands {
-            let grip = hand.grip.locate(base, time).ok();
+            // Located with its velocity in one call, because `xrLocateSpace` reports both and a controller's
+            // speed is the speed of the thing held; the aim is the same object pointing, not a second hand.
+            let grip = hand.grip.relate(base, time).ok();
             let aim = hand.aim.locate(base, time).ok();
+            let grip_pose = grip
+                .as_ref()
+                .map(|(location, _)| crate::pose(location.pose))
+                .unwrap_or(wxr::Pose::IDENTITY);
+            let grip_motion = grip
+                .as_ref()
+                .and_then(|(_, velocity)| crate::motion(velocity));
             let pose = |location: &Option<xr::SpaceLocation>| {
                 location
                     .as_ref()
@@ -339,9 +348,14 @@ impl Hands {
                 haptics: hand.haptic.is_some(),
                 // OpenXR has no answer to "did you draw it", so the model is the app's.
                 skip_rendering: false,
-                grip: pose(&grip),
+                grip: grip_pose,
                 aim: pose(&aim),
-                tracked: tracked(&grip) || tracked(&aim),
+                // The grip's speed, or nothing when the runtime did not report a valid half.
+                motion: grip_motion,
+                tracked: grip
+                    .as_ref()
+                    .is_some_and(|(location, _)| tracked_one(location))
+                    || tracked(&aim),
                 buttons: wxr::Buttons {
                     select,
                     squeeze,
@@ -436,14 +450,14 @@ impl Hands {
 /// Tracked is a question about the position *and* the orientation: a hand behind the user's back has a
 /// direction and no place, and a gaze ray the runtime has stopped following is neither.
 fn tracked(location: &Option<xr::SpaceLocation>) -> bool {
-    location.as_ref().is_some_and(|location| {
-        location
-            .location_flags
-            .contains(xr::SpaceLocationFlags::POSITION_TRACKED)
-            && location
-                .location_flags
-                .contains(xr::SpaceLocationFlags::ORIENTATION_TRACKED)
-    })
+    location.as_ref().is_some_and(tracked_one)
+}
+
+/// Whether one located space is tracked rather than estimated.
+fn tracked_one(location: &xr::SpaceLocation) -> bool {
+    let flags = location.location_flags;
+    flags.contains(xr::SpaceLocationFlags::POSITION_TRACKED)
+        && flags.contains(xr::SpaceLocationFlags::ORIENTATION_TRACKED)
 }
 
 /// A thumbstick in the core's terms, which is the one axis the two specifications disagree about.

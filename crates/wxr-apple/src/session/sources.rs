@@ -74,6 +74,9 @@ impl AppleSession {
                 haptics: false,
                 // ARKit draws no hand here, so a model of one is the app's.
                 skip_rendering: false,
+                // And no speed: an `ARHandAnchor` is a transform and not a velocity, so a hand here is
+                // sampled per frame and never reported as moving.
+                motion: None,
                 // A hand is a place and an orientation, and the pose's own orientation is the palm's
                 // direction: a game that wants a ray takes its -Z, which is what every ray in this workspace
                 // is. The aim is the same pose as the grip - there is no second point on a palm for ARKit to

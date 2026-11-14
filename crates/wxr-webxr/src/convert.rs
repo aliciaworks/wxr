@@ -4,7 +4,7 @@
 //! core says, kept together so the mappings can be read next to each other.
 
 use crate::sys::{
-    DomPointInit, XrHandJoint, XrReferenceSpace, XrReferenceSpaceType, XrRigidTransform,
+    DomPointInit, XrHandJoint, XrPose, XrReferenceSpace, XrReferenceSpaceType, XrRigidTransform,
     XrSessionMode, XrVisibilityState,
 };
 
@@ -131,6 +131,22 @@ pub(crate) fn transform(transform: XrRigidTransform) -> wxr::Pose {
             orientation.w() as f32,
         ),
     }
+}
+
+/// How fast a pose is moving, in the core's terms - WebXR's `XRPose.linearVelocity` and `angularVelocity`.
+///
+/// Both attributes are nullable and independent, so a pose the browser tracked the position of and not the
+/// rotation of is half a [`wxr::Motion`] rather than none: the core has an `Option` per half for exactly this.
+/// `None` when neither is there.
+pub(crate) fn motion(pose: &XrPose) -> Option<wxr::Motion> {
+    let point = |value: crate::sys::DomPointReadOnly| {
+        Vec3::new(value.x() as f32, value.y() as f32, value.z() as f32)
+    };
+    let motion = wxr::Motion {
+        linear_velocity: pose.linear_velocity().map(point),
+        angular_velocity: pose.angular_velocity().map(point),
+    };
+    motion.is_known().then_some(motion)
 }
 
 /// A field of view, derived from the projection matrix.

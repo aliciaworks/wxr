@@ -169,6 +169,8 @@ impl OpenXrSession {
         // runtime's own views and the space they were located in go with them, so a second call that fails
         // cannot leave `end` submitting the first call's eyes.
         out.views_mut().clear();
+        // The head's speed goes with its eyes: a second call that finds nothing leaves no motion behind either.
+        out.motion = None;
         self.located.clear();
         self.view_space = None;
         let Some(index) = self.space_index(space) else {
@@ -202,10 +204,13 @@ impl OpenXrSession {
         // The head, in the same space the views are in - the eyes are placed around it, and a scene that wants
         // the camera on the wearer rather than on an eye asks for it. It is checked the same way: a runtime
         // that will not stand behind the head's pose leaves the frame's viewer at its reset identity.
-        if let Ok(location) = self.view.locate(reference, self.predicted)
+        // The head's velocity arrives beside its location, from the same `xrLocateSpace` - which is the call
+        // a reprojecting renderer is making anyway, so the speed costs it nothing.
+        if let Ok((location, velocity)) = self.view.relate(reference, self.predicted)
             && is_located(location.location_flags)
         {
             out.viewer = pose(location.pose);
+            out.motion = crate::motion(&velocity);
             // OpenXR separates "valid" from "tracked": a position that is valid but not tracked is the
             // runtime's estimate, which is WebXR's `emulatedPosition` by another name.
             out.emulated_position = !location

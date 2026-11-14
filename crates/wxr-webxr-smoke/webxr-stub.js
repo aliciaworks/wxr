@@ -319,6 +319,10 @@ class XRViewerPose {
     // There is no head behind a desktop stub, so the head it reports is a guess - and saying so is what gives
     // a page something to check `XRPose.emulatedPosition` against. A runtime with tracking would say `false`.
     this.emulatedPosition = true;
+    // A head moving sideways and not turning, which is the half-known case: WebXR reports each half as a
+    // nullable attribute of its own, and a backend that required both would lose the one it was given.
+    this.linearVelocity = { x: 0.5, y: 0, z: 0, w: 0 };
+    this.angularVelocity = null;
     const views = [];
     for (const [eye, index, x] of [['left', 0, -IPD], ['right', 1, IPD]]) {
       views.push(new XRView(eye, index, compose(transform, [x, 0, 0, 0, 0, 0, 1]), near, far));
@@ -331,6 +335,10 @@ class XRPose {
   constructor(transform, emulated = false) {
     this.transform = rigid(transform);
     this.emulatedPosition = emulated;
+    // Both halves, because a controller is a hand that both travels and turns: the core's `Motion` carries
+    // them separately and a stub that sent only one would never exercise the other.
+    this.linearVelocity = { x: 0.1, y: 0, z: 0.2, w: 0 };
+    this.angularVelocity = { x: 0, y: 0.5, z: 0, w: 0 };
   }
 }
 

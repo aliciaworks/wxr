@@ -167,6 +167,9 @@ impl WebXrSession {
         // browser's views the depth pass is indexed by: a retry that returned early must not leave a count
         // that names views no longer in the frame.
         out.views_mut().clear();
+        // Nor is the head still going at last call's speed, for the same reason: this call's answer may be no
+        // views at all, and a speed with no head is a speed for the wrong frame.
+        out.motion = None;
         self.frame_views.clear();
         // Nor is the picture still this answer's: the sub-image was taken for the eyes that were just dropped,
         // and a caller left holding it has a texture with no viewport to draw it through. Clearing here rather
@@ -195,6 +198,9 @@ impl WebXrSession {
         // object: a runtime that has lost tracking still reports a head, and content pinned to the room is
         // what tells the two apart.
         out.emulated_position = pose.emulated_position();
+        // And how fast it is going, on the same pose and for the same reason: a renderer reprojecting this
+        // frame wants the head's speed, and WebXR reports it here or not at all.
+        out.motion = motion(pose.unchecked_ref::<XrPose>());
 
         let views = pose.views();
         let out_views = out.views_mut();

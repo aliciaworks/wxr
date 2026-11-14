@@ -77,6 +77,25 @@ pub(crate) fn pose(pose: xr::Posef) -> wxr::Pose {
     }
 }
 
+/// How fast a space is moving, in the core's terms - `XrSpaceVelocity`, which OpenXR reports beside a location.
+///
+/// The struct is chained into `xrLocateSpace` and its two halves have a validity flag each, unlike WebXR's
+/// nullable attributes: a runtime that tracks the direction of travel and not the rotation sets one flag and
+/// leaves the other's vector zeroed, so the flags are what is read and not the numbers.
+pub(crate) fn motion(velocity: &xr::SpaceVelocity) -> Option<wxr::Motion> {
+    let vector = |value: xr::Vector3f| Vec3::new(value.x, value.y, value.z);
+    let flags = velocity.velocity_flags;
+    let motion = wxr::Motion {
+        linear_velocity: flags
+            .contains(xr::SpaceVelocityFlags::LINEAR_VALID)
+            .then(|| vector(velocity.linear_velocity)),
+        angular_velocity: flags
+            .contains(xr::SpaceVelocityFlags::ANGULAR_VALID)
+            .then(|| vector(velocity.angular_velocity)),
+    };
+    motion.is_known().then_some(motion)
+}
+
 /// An OpenXR field of view in the core's terms.
 ///
 /// OpenXR gives the four directions as signed angles from the centre: for a symmetric field `angleRight`

@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::space::Pose;
+use crate::space::{Motion, Pose};
 
 /// Which eye a view is for.
 ///
@@ -129,6 +129,11 @@ pub struct Frame {
     /// what changes is that it is a guess, and content pinned to the room is the thing that shows it. `false`
     /// for a runtime that only reports poses it tracked, which is every one of the three that can say.
     pub emulated_position: bool,
+    /// How fast the head is moving, when the runtime tracks that - the same fact `emulated_position` is the
+    /// trustworthiness of, on the same pose.
+    ///
+    /// `None` for a runtime that does not report it, and filled by `views` the way [`Frame::viewer`] is.
+    pub motion: Option<Motion>,
     views: Vec<View>,
 }
 
@@ -151,6 +156,7 @@ impl Frame {
     pub fn reset(&mut self) {
         self.viewer = Pose::IDENTITY;
         self.emulated_position = false;
+        self.motion = None;
         self.views.clear();
     }
 
@@ -199,6 +205,10 @@ mod tests {
                 orientation: crate::glam::Quat::IDENTITY,
             },
             emulated_position: true,
+            motion: Some(Motion {
+                linear_velocity: Some(crate::glam::Vec3::Z),
+                angular_velocity: None,
+            }),
             ..Default::default()
         };
         frame.views_mut().push(View {
@@ -219,6 +229,10 @@ mod tests {
         assert!(
             !frame.emulated_position,
             "and nor is the old head's guess still this frame's"
+        );
+        assert!(
+            frame.motion.is_none(),
+            "and nor is the speed it was going when it was there"
         );
     }
 }

@@ -214,6 +214,9 @@ impl Session for MockSession {
         // exactly like a real runtime. Asking twice for one frame replaces the eyes rather than adding a
         // second pair to them: `views` fills the frame, and the caller's vector is the one a frame loop keeps.
         out.viewer = Pose::IDENTITY;
+        // A mock's head stands still, and a speed left over from a frame that had one would be this frame's
+        // answer too.
+        out.motion = None;
         let fov = FieldOfView::symmetric(std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
         let views = out.views_mut();
         if self.stereo {
@@ -293,6 +296,9 @@ impl Session for MockSession {
                 haptics: true,
                 // Nothing in a mock is drawn by the runtime, so every model is the app's.
                 skip_rendering: false,
+                // And nothing in a mock moves at a speed: a pose with a made-up velocity would be a mock that
+                // taught a game to believe one.
+                motion: None,
                 grip: Pose {
                     position: Vec3::new(x, 1.0, 0.0),
                     orientation: Quat::IDENTITY,

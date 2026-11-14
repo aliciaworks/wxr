@@ -216,6 +216,20 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
         if !board.frame.emulated_position {
             return Err("the stub's head is a guess, and the frame says it was tracked".into());
         }
+        // And how fast that guess is going: the stub sends a linear speed and no angular one, which is the
+        // half-known answer the core has to carry rather than fold into "no motion at all".
+        match board.frame.motion {
+            Some(motion)
+                if motion.angular_velocity.is_none()
+                    && motion.linear_velocity.is_some_and(|speed| {
+                        (speed - wxr::glam::Vec3::new(0.5, 0.0, 0.0)).length() < 1e-6
+                    }) => {}
+            other => {
+                return Err(format!(
+                    "the head's motion came through as {other:?}, not a sideways 0.5 m/s"
+                ));
+            }
+        }
     }
     // The image path, asserted once rather than per frame. Only once there are eyes: the floor space is a
     // promise, and the frame that asked for it has none yet.
@@ -364,6 +378,21 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
             ));
         }
         say("the runtime's own model was reported for the right hand only");
+        // And how fast each source is moving, which the stub reports on the grip pose: both halves here, so the
+        // check that the head lost nothing is not the only shape the conversion is tried against.
+        for source in &sources {
+            match source.motion {
+                Some(motion)
+                    if motion.linear_velocity.is_some()
+                        && motion.angular_velocity.is_some_and(|turn| {
+                            (turn - wxr::glam::Vec3::new(0.0, 0.5, 0.0)).length() < 1e-6
+                        }) => {}
+                ref other => {
+                    return Err(format!("a controller's motion came through as {other:?}"));
+                }
+            }
+        }
+        say("both controllers' speeds came through, half by half");
     }
     // The skeletons, and one buzz each, both asked once. A joint is asked of a *hand* and a hand belongs to a
     // source, so the sources above are what a hand is found by - and a run that asked every frame would be a

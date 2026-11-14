@@ -109,7 +109,9 @@ impl Gaze {
 
     /// This frame's source, which is one pose and nothing else.
     pub(super) fn push(&self, base: &xr::Space, time: xr::Time, out: &mut Vec<wxr::InputSource>) {
-        let located = self.space.locate(base, time).ok();
+        // The velocity comes back beside the location from the same call, and a gaze ray is a thing moving
+        // with the head: an app that fades a cursor by speed has as much use for it as for the pose.
+        let located = self.space.relate(base, time).ok();
         out.push(wxr::InputSource {
             id: wxr::InputId::new(ID),
             // Not a hand: the eyes belong to the head, and the core has a name for a source that is not
@@ -126,9 +128,14 @@ impl Gaze {
             grip: wxr::Pose::IDENTITY,
             aim: located
                 .as_ref()
-                .map(|location| crate::pose(location.pose))
+                .map(|(location, _)| crate::pose(location.pose))
                 .unwrap_or(wxr::Pose::IDENTITY),
-            tracked: tracked(&located),
+            motion: located
+                .as_ref()
+                .and_then(|(_, velocity)| crate::motion(velocity)),
+            tracked: located
+                .as_ref()
+                .is_some_and(|(location, _)| tracked_one(location)),
             buttons: wxr::Buttons::default(),
             axes: wxr::Axes::default(),
         });

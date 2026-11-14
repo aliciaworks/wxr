@@ -17,13 +17,13 @@ pub use state::{FrameImage, WebXrSession};
 use util::*;
 
 use crate::convert::{
-    field_of_view, hand_joint, offset_reference_space, reference_space_type, rigid, transform,
-    visibility,
+    field_of_view, hand_joint, motion, offset_reference_space, reference_space_type, rigid,
+    transform, visibility,
 };
 use crate::sys::{
     DomPointReadOnly, Event, XrBoundedReferenceSpace, XrDepthDataFormat, XrDepthType, XrDepthUsage,
     XrEnvironmentBlendMode, XrEye, XrFrame, XrHand, XrHandedness, XrInteractionMode, XrLayerLayout,
-    XrProjectionLayer, XrReferenceSpace, XrRenderStateInit, XrSession, XrSpace, XrView,
+    XrPose, XrProjectionLayer, XrReferenceSpace, XrRenderStateInit, XrSession, XrSpace, XrView,
     XrgpuBinding, XrgpuProjectionLayerInit, XrgpuQuadLayerInit,
 };
 use crate::{depth, hit, input, planes, throws};

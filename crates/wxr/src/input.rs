@@ -14,7 +14,7 @@
 //! selection, and those are events on the session rather than fields on a source. WebXR draws the line there,
 //! and it is the right one - a frame tells you where the hands are, and a session tells you what they did.
 
-use crate::space::Pose;
+use crate::space::{Motion, Pose};
 
 /// Which hand a source is, if the runtime knows.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -249,6 +249,12 @@ pub struct InputSource {
     /// which is where this shape comes from.
     pub grip: Pose,
     pub aim: Pose,
+    /// How fast the source is moving, when the runtime tracks that - WebXR's `XRPose.linearVelocity` and
+    /// `angularVelocity` on the source's grip.
+    ///
+    /// `None` for a runtime that does not report it, and for a source whose grip was not located this frame: a
+    /// speed with no pose to attach it to is a speed nobody can use.
+    pub motion: Option<Motion>,
     /// Whether the runtime is tracking it. An untracked controller is still a controller, and a game that
     /// forgets that teleports the player's hand to the origin.
     pub tracked: bool,

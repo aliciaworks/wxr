@@ -126,6 +126,35 @@ impl Pose {
     }
 }
 
+/// How fast a tracked pose is moving, which is WebXR's `XRPose.linearVelocity` and `XRPose.angularVelocity`.
+///
+/// For a renderer that reprojects a frame, or a simulation that throws something with the speed the hand had
+/// when it let go: a pose says where a thing is, and the same pose's speed says where it will be next frame.
+///
+/// Two halves and not one, because a runtime reports them separately and either may be missing - OpenXR has a
+/// validity flag per half, and WebXR a nullable attribute per half. A runtime that knows the direction a hand
+/// is travelling and not how it is turning fills the one it knows, and a runtime with neither answers `None`
+/// where a pose is handed over rather than a speed of zero.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub struct Motion {
+    /// Metres per second, in the space the pose was measured in.
+    pub linear_velocity: Option<Vec3>,
+    /// Radians per second about the X, Y and Z axes, in the pose's own frame.
+    ///
+    /// Not a quaternion: an angular velocity composed with an orientation is a derivative, not a rotation, and
+    /// a runtime that reported it as one would be reporting an axis and an angle per second that no real hand
+    /// ever turns at. WebXR's `DOMPointReadOnly` and OpenXR's `XrVector3f` are both the three axes, which is
+    /// what this is.
+    pub angular_velocity: Option<Vec3>,
+}
+
+impl Motion {
+    /// Whether either half is known, which is what makes it worth carrying.
+    pub fn is_known(self) -> bool {
+        self.linear_velocity.is_some() || self.angular_velocity.is_some()
+    }
+}
+
 /// A reference space the session has given out.
 ///
 /// It is a handle with a kind on it rather than a transform, because a runtime is free to move the space
@@ -288,5 +317,17 @@ mod tests {
             Pose::from_matrix(&skewed).is_none(),
             "three unit axes that are not orthogonal are not a rotation"
         );
+    }
+
+    #[test]
+    fn half_a_motion_is_worth_carrying() {
+        // The two platforms report the halves separately, so one known half is the ordinary case and not a
+        // broken one: only a motion with neither is nothing.
+        let turning = Motion {
+            linear_velocity: None,
+            angular_velocity: Some(Vec3::Y),
+        };
+        assert!(turning.is_known());
+        assert!(!Motion::default().is_known());
     }
 }

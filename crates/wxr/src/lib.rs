@@ -56,5 +56,5 @@ pub use session::{
     Backend, Blend, Error, Event, InteractionMode, Presentation, Session, SessionMode, State,
     Visibility, should_render,
 };
-pub use space::{Pose, ReferenceSpace, SpaceKind};
+pub use space::{Motion, Pose, ReferenceSpace, SpaceKind};
 pub use target::{ColorFormat, Extent2d, ImageMeta};

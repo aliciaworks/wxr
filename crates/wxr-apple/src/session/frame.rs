@@ -149,6 +149,9 @@ impl AppleSession {
         // fails replaces them with nothing: a caller that logs a `NoSpace` and ends the frame must not have
         // the last call's eyes presented at a head pose from the space in that call.
         out.views_mut().clear();
+        // And the head's speed, which this backend has none of: `CompositorServices` reports a device
+        // transform per frame and no velocity, so `None` is the answer rather than a measured zero.
+        out.motion = None;
         if !self.has_space(space) {
             return Err(wxr::Error::NoSpace(space.kind));
         }

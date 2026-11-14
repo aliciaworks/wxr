@@ -75,8 +75,9 @@ pub use import::Images;
 pub use session::{DepthImage, OpenXrSession};
 pub(crate) use session::{HapticExtensions, InputExtensions, LayerExtensions, SpatialExtensions};
 
-/// The pose conversion `input` reaches by name, kept at the root so a module can say `crate::pose`.
-pub(crate) use convert::pose;
+/// The pose and velocity conversions `input` reaches by name, kept at the root so a module can say
+/// `crate::pose` and `crate::motion`.
+pub(crate) use convert::{motion, pose};
 
 use openxr as xr;
 

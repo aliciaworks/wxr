@@ -77,6 +77,9 @@ impl WebXrSession {
             // A source with no grip pose is an aim and nothing to hold - a gaze cursor - and it is not
             // untracked: it has a direction, and the direction is the whole of it.
             let tracked = grip.is_some() || aim.is_some();
+            // How fast it is moving, from the grip - which is the part with a place, and the pose WebXR
+            // reports a controller's speed on. A source with no grip pose has no speed to report either.
+            let motion = grip.as_ref().and_then(motion);
             out.push(wxr::InputSource {
                 // The same map the event handlers use, so a frame and an event name the same source the same
                 // way - which is the whole reason the core has an id where WebXR has an object.
@@ -93,6 +96,7 @@ impl WebXrSession {
                 // Whether the runtime draws this one itself, which a browser knows and the other two do not
                 // have a way to say.
                 skip_rendering: XrInputSource::skip_rendering(&source),
+                motion,
                 grip: grip
                     .map(|pose| transform(pose.transform()))
                     .unwrap_or(wxr::Pose::IDENTITY),
