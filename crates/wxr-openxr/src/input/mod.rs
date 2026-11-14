@@ -337,6 +337,8 @@ impl Hands {
                 // output path having been found. Both are per hand, and a session-wide `true` here would tell
                 // an app to buzz a controller whose `pulse` can only answer `Unsupported`.
                 haptics: hand.haptic.is_some(),
+                // OpenXR has no answer to "did you draw it", so the model is the app's.
+                skip_rendering: false,
                 grip: pose(&grip),
                 aim: pose(&aim),
                 tracked: tracked(&grip) || tracked(&aim),

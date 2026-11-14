@@ -148,6 +148,8 @@ impl GameControllers {
                 // No skeleton.
                 hand: false,
                 haptics: haptics.is_some(),
+                // GameController draws no pad, so a model of it is the app's.
+                skip_rendering: false,
                 // No place, because a gamepad has none - see the module comment.
                 grip: wxr::Pose::IDENTITY,
                 aim: wxr::Pose::IDENTITY,

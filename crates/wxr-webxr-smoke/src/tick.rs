@@ -347,6 +347,23 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
             }
         }
         say("both controllers' profiles came through as the stub gave them");
+        // Which of these the runtime has already drawn. The stub draws the right hand and not the left, so a
+        // run that lost the flag would report both the same way and this would catch it.
+        let drawn: Vec<(wxr::Handedness, bool)> = sources
+            .iter()
+            .map(|source| (source.handedness, source.skip_rendering))
+            .collect();
+        if drawn
+            != [
+                (wxr::Handedness::Left, false),
+                (wxr::Handedness::Right, true),
+            ]
+        {
+            return Err(format!(
+                "skipRendering was read as {drawn:?}, not left false and right true"
+            ));
+        }
+        say("the runtime's own model was reported for the right hand only");
     }
     // The skeletons, and one buzz each, both asked once. A joint is asked of a *hand* and a hand belongs to a
     // source, so the sources above are what a hand is found by - and a run that asked every frame would be a

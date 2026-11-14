@@ -232,6 +232,15 @@ pub struct InputSource {
     /// controller without an actuator is a controller, and a game that sends one anyway is a game that either
     /// loses the buzz or, on a platform that treats it as an error, loses the frame.
     pub haptics: bool,
+    /// Whether the runtime has already drawn this source's own model, which is WebXR's
+    /// `XRInputSource.skipRendering`.
+    ///
+    /// True is a runtime that puts the controller in the picture itself - a headset that draws the user's own
+    /// hands and controllers as part of what it shows - and an app that draws one too draws it twice. False is
+    /// every other case: the model is the app's to draw, or there is none, and both are answered the same way.
+    ///
+    /// A hint and not a rule: a runtime that says true and a game that wants its own model may still draw one.
+    pub skip_rendering: bool,
     /// In whichever reference space the sources were asked for.
     ///
     /// Two poses and not one, because a controller is one thing with two places on it: a grip is where it is

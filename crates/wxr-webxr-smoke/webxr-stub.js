@@ -483,6 +483,9 @@ function controller(handedness, x) {
     handedness,
     targetRayMode: 'tracked-pointer',
     profiles: ['wxr-stub', 'generic-trigger-squeeze'],
+    // The runtime draws the right controller and not the left, which is the shape the flag is for: one source
+    // whose model is already in the picture and one whose model is the app's. So both answers are exercised.
+    skipRendering: handedness === 'right',
     gamepad,
     // A hand and not a cursor, which is what makes this source one the skeleton can be asked about. `hand` is
     // read to answer the frame and `hand-tracking` is read to answer the feature, and they are separate

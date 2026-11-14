@@ -291,6 +291,8 @@ impl Session for MockSession {
                 // And it can buzz, because a mock with no actuator would be a mock that cannot exercise the
                 // two calls that send one - which is the whole reason the bit exists.
                 haptics: true,
+                // Nothing in a mock is drawn by the runtime, so every model is the app's.
+                skip_rendering: false,
                 grip: Pose {
                     position: Vec3::new(x, 1.0, 0.0),
                     orientation: Quat::IDENTITY,

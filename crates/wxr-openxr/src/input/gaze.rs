@@ -118,6 +118,8 @@ impl Gaze {
             target_ray_mode: wxr::TargetRayMode::Gaze,
             hand: false,
             haptics: false,
+            // Nothing here has a model for the runtime to draw: a gaze ray is not shown at all.
+            skip_rendering: false,
             // A gaze ray has no place the source is held - and the core's grip is a pose rather than an
             // option, so it is the identity, the same answer `read` gives a hand whose grip was not
             // located. What an app is meant to use is `aim`.

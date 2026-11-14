@@ -90,6 +90,9 @@ impl WebXrSession {
                 // the one thing about a source that WebXR answers through the gamepad rather than through the
                 // source itself.
                 haptics: haptics::actuator(&source).is_some(),
+                // Whether the runtime draws this one itself, which a browser knows and the other two do not
+                // have a way to say.
+                skip_rendering: XrInputSource::skip_rendering(&source),
                 grip: grip
                     .map(|pose| transform(pose.transform()))
                     .unwrap_or(wxr::Pose::IDENTITY),

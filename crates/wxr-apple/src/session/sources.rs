@@ -72,6 +72,8 @@ impl AppleSession {
                 // And nothing to buzz, because a hand does not: the controllers that can are reported beside
                 // it, from GameController rather than ARKit - see `crate::gamecontroller`.
                 haptics: false,
+                // ARKit draws no hand here, so a model of one is the app's.
+                skip_rendering: false,
                 // A hand is a place and an orientation, and the pose's own orientation is the palm's
                 // direction: a game that wants a ray takes its -Z, which is what every ray in this workspace
                 // is. The aim is the same pose as the grip - there is no second point on a palm for ARKit to
