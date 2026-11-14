@@ -142,9 +142,9 @@ impl OpenXrSession {
             (anchors.table.create_spatial_anchor)(self.session.as_raw(), &info, &mut request)
         };
         if result != openxr_sys::Result::SUCCESS {
-            return Err(wxr::Error::Unsupported(format!(
-                "anchors: the runtime would not take one: {result:?}"
-            )));
+            return Err(wxr::Error::Unsupported(
+                format!("anchors: the runtime would not take one: {result:?}").into(),
+            ));
         }
         let id = anchors.slots.len() as u32;
         anchors.slots.push(Some(Slot::Pending(request)));

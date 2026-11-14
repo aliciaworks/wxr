@@ -4,6 +4,8 @@
 //! on [`Event`] and asks for a [`SessionMode`] - and the traits are what a backend is written against. The
 //! two are read by different people, and this file is the one the first of them opens.
 
+use std::borrow::Cow;
+
 use crate::input::InputId;
 use crate::layer::Layer;
 use crate::space::{ReferenceSpace, SpaceKind};
@@ -195,18 +197,22 @@ pub enum Blend {
 ///
 /// Strings rather than platform error types, because the core would otherwise have to depend on every
 /// runtime's error enum to say what happened. A backend keeps its own error and hands the sentence on.
+///
+/// The strings are [`Cow`]s: almost every one of them is a literal a backend wrote in the call that failed -
+/// "this runtime does not do haptics" - and those are handed on without an allocation. A backend with a
+/// runtime's own message formats one, and pays for it in the arm that was going to fail anyway.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("no runtime is available: {0}")]
-    Unavailable(String),
+    Unavailable(Cow<'static, str>),
     #[error("the runtime refused the session: {0}")]
-    Rejected(String),
+    Rejected(Cow<'static, str>),
     #[error("the runtime offers no {0:?} space")]
     NoSpace(SpaceKind),
     #[error("this runtime does not do {0}")]
-    Unsupported(String),
+    Unsupported(Cow<'static, str>),
     #[error("the frame could not be presented: {0}")]
-    Present(String),
+    Present(Cow<'static, str>),
 }
 
 /// Whether a session is both able and expected to draw, which is the question a renderer really asks.

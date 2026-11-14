@@ -19,7 +19,7 @@ impl WebXrSession {
         }
         let slot = Rc::new(RefCell::new(crate::light::Slot::default()));
         crate::light::request(&session, slot.clone())
-            .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?;
+            .map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))?;
         self.light_probes.push(slot);
         Ok(wxr::LightProbe::new((self.light_probes.len() - 1) as u32))
     }

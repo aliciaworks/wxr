@@ -58,9 +58,9 @@ pub unsafe fn adopt(layer_renderer: *mut c_void) -> Result<Compositor, wxr::Erro
     let adapter =
         pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
             .map_err(|error| {
-                wxr::Error::Present(format!(
-                    "no adapter for the compositor's Metal device: {error}"
-                ))
+                wxr::Error::Present(
+                    format!("no adapter for the compositor's Metal device: {error}").into(),
+                )
             })?;
     // The adapter is the compositor's own device, so what it reports is the ceiling this device has to be
     // opened at. wgpu's default limits are the desktop Metal ones and can sit above it - the simulator reports a
@@ -72,9 +72,9 @@ pub unsafe fn adopt(layer_renderer: *mut c_void) -> Result<Compositor, wxr::Erro
         ..Default::default()
     }))
     .map_err(|error| {
-        wxr::Error::Present(format!(
-            "the compositor's Metal device could not be opened by wgpu: {error}"
-        ))
+        wxr::Error::Present(
+            format!("the compositor's Metal device could not be opened by wgpu: {error}").into(),
+        )
     })?;
 
     Ok(Compositor {

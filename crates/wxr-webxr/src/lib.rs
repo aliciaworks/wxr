@@ -238,6 +238,6 @@ pub enum Error {
 
 impl From<Error> for wxr::Error {
     fn from(error: Error) -> Self {
-        wxr::Error::Unavailable(error.to_string())
+        wxr::Error::Unavailable(error.to_string().into())
     }
 }

@@ -402,9 +402,9 @@ impl From<Error> for wxr::Error {
     fn from(error: Error) -> Self {
         match error {
             Error::Runtime { action, message } => {
-                wxr::Error::Unavailable(format!("{action}: {message}"))
+                wxr::Error::Unavailable(format!("{action}: {message}").into())
             }
-            Error::Unsupported(what) => wxr::Error::Rejected(what),
+            Error::Unsupported(what) => wxr::Error::Rejected(what.into()),
         }
     }
 }

@@ -84,7 +84,7 @@ impl WebXrSession {
         } else {
             throws::pause_depth_sensing(&session)
         };
-        result.map_err(|error| wxr::Error::Rejected(format!("{error:?}")))
+        result.map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))
     }
 
     /// Whether the browser says depth delivery is paused.

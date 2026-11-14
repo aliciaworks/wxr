@@ -53,10 +53,13 @@ pub fn run(
     // the format the layer was configured with, and the drawable only adds the size to it.
     let meta = session.images();
     let Some(format) = wxr_render::texture_format(meta.format) else {
-        return Err(wxr::Error::Present(format!(
-            "the compositor's {:?} images are not a format this renderer knows",
-            meta.format
-        )));
+        return Err(wxr::Error::Present(
+            format!(
+                "the compositor's {:?} images are not a format this renderer knows",
+                meta.format
+            )
+            .into(),
+        ));
     };
     let mut renderer = wxr_render::Renderer::with_scene(
         &device,

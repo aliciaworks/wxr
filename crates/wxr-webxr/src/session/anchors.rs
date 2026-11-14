@@ -32,7 +32,7 @@ impl WebXrSession {
         };
         let slot = Rc::new(RefCell::new(crate::anchors::Slot::default()));
         crate::anchors::create(&frame, &base, rigid(pose)?, slot.clone())
-            .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?;
+            .map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))?;
         self.anchors.push(slot);
         Ok(wxr::Anchor::new((self.anchors.len() - 1) as u32))
     }
@@ -107,7 +107,7 @@ impl WebXrSession {
         }
         let slot = Rc::new(RefCell::new(crate::anchors::Slot::named(id)));
         crate::anchors::restore(&session, id, slot.clone())
-            .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?;
+            .map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))?;
         self.anchors.push(slot);
         Ok(wxr::Anchor::new((self.anchors.len() - 1) as u32))
     }
@@ -126,7 +126,7 @@ impl WebXrSession {
             return Err(wxr::Error::Unsupported("anchors".into()));
         }
         crate::anchors::erase(&session, id)
-            .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))
+            .map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))
     }
 }
 

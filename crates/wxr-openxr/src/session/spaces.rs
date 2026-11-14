@@ -98,7 +98,7 @@ impl OpenXrSession {
         let Some(bounds) = self
             .session
             .reference_space_bounds_rect(xr::ReferenceSpaceType::STAGE)
-            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?
+            .map_err(|error| wxr::Error::Present(format!("{error:?}").into()))?
         else {
             return Ok(());
         };

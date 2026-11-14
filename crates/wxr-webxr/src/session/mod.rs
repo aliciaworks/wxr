@@ -166,7 +166,7 @@ impl WebXrSession {
         // Caught, because `updateRenderState` throws during an animation frame and a layer list is handed over
         // between frames: a caller that breaks that rule gets an error rather than a trap.
         throws::update_render_state(&session, &state)
-            .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))
+            .map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))
     }
 }
 

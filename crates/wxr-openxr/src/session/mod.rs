@@ -31,10 +31,9 @@ use crate::{Device, Error, OpenXr, hal, input};
 
 /// Whether a runtime stands behind the place it reported.
 ///
-/// Both halves of the pose have to be valid, and the `_TRACKED` bits are deliberately not asked for: they
-/// say whether tracking is *active*, and a valid pose that is momentarily untracked is still a place the
-/// runtime stands behind - which is the difference between a frame that lost sight of the wall and a
-/// runtime that cannot say where it is at all.
+/// Both halves of the pose have to be valid, and the `_TRACKED` bits are deliberately not asked for: they say
+/// whether tracking is *active*, and a valid pose that is momentarily untracked is still a place the runtime
+/// stands behind - the difference between a frame that lost sight of the wall and one that cannot say at all.
 fn is_located(flags: openxr_sys::SpaceLocationFlags) -> bool {
     use openxr_sys::SpaceLocationFlags as Bits;
     flags.contains(Bits::POSITION_VALID) && flags.contains(Bits::ORIENTATION_VALID)
@@ -161,10 +160,13 @@ impl wxr::Session for OpenXrSession {
             wxr::LayerShape::Cube => self.layers_enabled.cube,
         };
         if !enabled {
-            return Err(wxr::Error::Unsupported(format!(
-                "{} layers: this runtime does not have the extension",
-                shape.name()
-            )));
+            return Err(wxr::Error::Unsupported(
+                format!(
+                    "{} layers: this runtime does not have the extension",
+                    shape.name()
+                )
+                .into(),
+            ));
         }
         // The kind this session recorded for the id, not the public half of the handle: a layer keeps the
         // kind because a translated cube is placed by making a reference space of that kind. Both halves are
@@ -443,11 +445,11 @@ impl wxr::Session for OpenXrSession {
         self.hits_impl(source, space, out)
     }
 
-    /// Let a source of hits go, which on this backend is the slot the source's ray is measured from.
+    /// Let a source of hits go, which is the slot the source's ray is measured from.
     ///
-    /// There is nothing to destroy: `XR_META_environment_raycast` has one raycaster for the whole session and
-    /// takes the ray and its filters with every call, so a source here is only the space it was made from -
-    /// which clearing the entry drops. The entry itself stays, because the id is its position.
+    /// Nothing to destroy: `XR_META_environment_raycast` has one raycaster for the session and takes the ray
+    /// with every call, so a source is only the space it was made from. The entry stays, because the id is
+    /// its position.
     fn release_hit_test_source(&mut self, source: wxr::HitTestSource) {
         self.release_hit_test_source_impl(source)
     }
@@ -463,8 +465,7 @@ impl wxr::Session for OpenXrSession {
     /// What this session's depth sensing is, once it has a depth provider.
     ///
     /// `XR_META_environment_depth` is one measurement the app asked for, at a resolution the runtime picked and
-    /// in a buffer the runtime owns - WebXR's `cpu-optimized`, with the platform's resolution rather than one
-    /// an app negotiated.
+    /// in a buffer the runtime owns - WebXR's `cpu-optimized`, at the platform's own resolution.
     fn depth_sensing(&self) -> Option<wxr::DepthSensing> {
         self.depth_sensing_impl()
     }
@@ -478,7 +479,7 @@ impl wxr::Session for OpenXrSession {
     fn request_exit(&mut self) -> Result<(), wxr::Error> {
         self.session
             .request_exit()
-            .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))
+            .map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))
     }
 }
 

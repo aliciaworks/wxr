@@ -237,12 +237,12 @@ impl GameControllers {
             // SAFETY: the engine is this controller's and is live. Starting one that is already running is
             // the framework's own no-op, which is why this is not guarded by a flag of ours.
             unsafe { engine.startAndReturnError() }
-                .map_err(|error| wxr::Error::Rejected(format!("{error}")))?;
+                .map_err(|error| wxr::Error::Rejected(format!("{error}").into()))?;
             pattern(engine, intensity, duration)?
         };
         // SAFETY: the player is live, and `CHHapticTimeImmediate` is the framework's "as soon as possible".
         unsafe { player.startAtTime_error(CHHapticTimeImmediate) }
-            .map_err(|error| wxr::Error::Rejected(format!("{error}")))?;
+            .map_err(|error| wxr::Error::Rejected(format!("{error}").into()))?;
         // Kept for the duration of the pattern; without it the player is dropped after the call that starts
         // it, which stops the thing that was asked to buzz.
         known.player = Some(player);
@@ -273,7 +273,7 @@ impl GameControllers {
         // SAFETY: the player is live, and `CHHapticTimeImmediate` is the framework's "as soon as possible" -
         // the same time the buzz was started with, which is what ending it now means.
         unsafe { player.stopAtTime_error(CHHapticTimeImmediate) }
-            .map_err(|error| wxr::Error::Rejected(format!("{error}")))
+            .map_err(|error| wxr::Error::Rejected(format!("{error}").into()))
     }
 }
 
@@ -317,10 +317,10 @@ fn pattern(
             &NSArray::from_retained_slice(std::slice::from_ref(&event)),
             &NSArray::from_retained_slice(&[]),
         )
-        .map_err(|error| wxr::Error::Rejected(format!("{error}")))?;
+        .map_err(|error| wxr::Error::Rejected(format!("{error}").into()))?;
         engine
             .createPlayerWithPattern_error(&pattern)
-            .map_err(|error| wxr::Error::Rejected(format!("{error}")))
+            .map_err(|error| wxr::Error::Rejected(format!("{error}").into()))
     }
 }
 

@@ -97,7 +97,9 @@ impl Session for MockSession {
         // One shape, and the refusal is the interesting half: a mock that quietly made a cylinder would be a
         // mock that let a renderer ship code for a capability no session here has.
         if !self.quad_layers || !matches!(shape, LayerShape::Quad { .. }) {
-            return Err(Error::Unsupported(format!("{} layers", shape.name())));
+            return Err(Error::Unsupported(
+                format!("{} layers", shape.name()).into(),
+            ));
         }
         if !self.has_space(space) {
             return Err(Error::NoSpace(space.kind));

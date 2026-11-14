@@ -19,8 +19,8 @@ impl WebXrSession {
                 "the session has not started yet".into(),
             ));
         };
-        let promise =
-            throws::end(&session).map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?;
+        let promise = throws::end(&session)
+            .map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))?;
         wasm_bindgen_futures::spawn_local(async move {
             if let Err(error) = JsFuture::from(promise).await {
                 log::debug!("wxr-webxr: the browser would not end the session: {error:?}");

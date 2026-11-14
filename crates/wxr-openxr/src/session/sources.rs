@@ -55,7 +55,7 @@ impl OpenXrSession {
         let profile = self
             .session
             .current_interaction_profile(user)
-            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+            .map_err(|error| wxr::Error::Present(format!("{error:?}").into()))?;
         if profile != xr::Path::NULL
             && let Ok(name) = self.instance.path_to_string(profile)
         {

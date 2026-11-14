@@ -39,7 +39,9 @@ impl OpenXrSession {
             }
             self.session
                 .begin(xr::ViewConfigurationType::PRIMARY_STEREO)
-                .map_err(|error| wxr::Error::Present(format!("starting the session: {error:?}")))?;
+                .map_err(|error| {
+                    wxr::Error::Present(format!("starting the session: {error:?}").into())
+                })?;
             self.begun = true;
         }
 
@@ -49,7 +51,7 @@ impl OpenXrSession {
         let state = self
             .waiter
             .wait()
-            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+            .map_err(|error| wxr::Error::Present(format!("{error:?}").into()))?;
         self.predicted = state.predicted_display_time;
 
         out.state = if state.should_render {
@@ -72,10 +74,10 @@ impl OpenXrSession {
             // from waiting for a frame that is never coming.
             self.stream
                 .begin()
-                .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+                .map_err(|error| wxr::Error::Present(format!("{error:?}").into()))?;
             self.stream
                 .end(self.predicted, self.blend, &[])
-                .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+                .map_err(|error| wxr::Error::Present(format!("{error:?}").into()))?;
             return Ok(());
         }
 
@@ -89,13 +91,13 @@ impl OpenXrSession {
 
         self.stream
             .begin()
-            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+            .map_err(|error| wxr::Error::Present(format!("{error:?}").into()))?;
 
         let held = match self.swapchain.acquire_image() {
             Ok(held) => held,
             Err(error) => {
                 self.abandon_frame();
-                return Err(wxr::Error::Present(format!("{error:?}")));
+                return Err(wxr::Error::Present(format!("{error:?}").into()));
             }
         };
         // Unbounded: the runtime is the one that knows when the image is free, and a timeout here would be
@@ -104,7 +106,7 @@ impl OpenXrSession {
             // The image was acquired but never handed over, so there is nothing here that may be released.
             // The frame itself still has to close, or every later `xrBeginFrame` is a call-order error.
             self.abandon_frame();
-            return Err(wxr::Error::Present(format!("{error:?}")));
+            return Err(wxr::Error::Present(format!("{error:?}").into()));
         }
         self.held = Some(held);
 
@@ -131,11 +133,11 @@ impl OpenXrSession {
         let held = layer
             .swapchain
             .acquire_image()
-            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+            .map_err(|error| wxr::Error::Present(format!("{error:?}").into()))?;
         layer
             .swapchain
             .wait_image(xr::Duration::INFINITE)
-            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+            .map_err(|error| wxr::Error::Present(format!("{error:?}").into()))?;
         layer.held = Some(held);
         Ok(())
     }
@@ -184,7 +186,7 @@ impl OpenXrSession {
                 self.predicted,
                 reference,
             )
-            .map_err(|error| wxr::Error::Present(format!("{error:?}")))?;
+            .map_err(|error| wxr::Error::Present(format!("{error:?}").into()))?;
         // A view is a place and a direction, and `xrLocateViews` reports the two halves' validity
         // separately. The Rust binding zeroes an invalid half, so reading a view anyway would put an eye at
         // the origin with an identity orientation rather than leaving the frame without one. Both valid is a
@@ -277,14 +279,14 @@ impl OpenXrSession {
             .collect();
         let mut failed = None;
         if let Err(error) = self.swapchain.release_image() {
-            failed = Some(wxr::Error::Present(format!("{error:?}")));
+            failed = Some(wxr::Error::Present(format!("{error:?}").into()));
         }
         for layer in self.layers.iter_mut().flatten() {
             if layer.held.take().is_some()
                 && let Err(error) = layer.swapchain.release_image()
                 && failed.is_none()
             {
-                failed = Some(wxr::Error::Present(format!("{error:?}")));
+                failed = Some(wxr::Error::Present(format!("{error:?}").into()));
             }
         }
         if let Some(error) = failed {
@@ -444,7 +446,7 @@ impl OpenXrSession {
         let ended = self
             .stream
             .end(self.predicted, self.blend, &present)
-            .map_err(|error| wxr::Error::Present(format!("{error:?}")));
+            .map_err(|error| wxr::Error::Present(format!("{error:?}").into()));
         self.measured = None;
         self.depth_asked = false;
         ended

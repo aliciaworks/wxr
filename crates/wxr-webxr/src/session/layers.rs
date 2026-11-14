@@ -112,10 +112,13 @@ impl WebXrSession {
         // A cube's six faces are faces of a cube, so the one texture holds squares: the specification refuses
         // an extent that is not, and a non-square request is a picture the compositor would stretch.
         if matches!(shape, wxr::LayerShape::Cube) && pixels.width != pixels.height {
-            return Err(wxr::Error::Rejected(format!(
-                "a cube layer's faces are square, where {}x{} is not",
-                pixels.width, pixels.height
-            )));
+            return Err(wxr::Error::Rejected(
+                format!(
+                    "a cube layer's faces are square, where {}x{} is not",
+                    pixels.width, pixels.height
+                )
+                .into(),
+            ));
         }
         // A layer is made *in* a space, so a space that is still a promise is a layer to ask for again - the
         // same answer `hit_test_source` gives, for the same reason. A handle this session never handed out is
@@ -141,7 +144,7 @@ impl WebXrSession {
                 init.set_width(width);
                 init.set_height(height);
                 throws::create_quad_layer(&gpu.binding, &init)
-                    .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?
+                    .map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))?
                     .unchecked_into()
             }
             wxr::LayerShape::Cylinder {
@@ -162,7 +165,7 @@ impl WebXrSession {
                 init.set_central_angle(central_angle);
                 init.set_aspect_ratio(aspect);
                 throws::create_cylinder_layer(&gpu.binding, &init)
-                    .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?
+                    .map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))?
                     .unchecked_into()
             }
             wxr::LayerShape::Equirect {
@@ -185,7 +188,7 @@ impl WebXrSession {
                 init.set_upper_vertical_angle(upper_vertical);
                 init.set_lower_vertical_angle(lower_vertical);
                 throws::create_equirect_layer(&gpu.binding, &init)
-                    .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?
+                    .map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))?
                     .unchecked_into()
             }
             wxr::LayerShape::Cube => {
@@ -197,7 +200,7 @@ impl WebXrSession {
                 // two pictures, and this backend draws the same picture for both eyes everywhere else.
                 init.set_layout(XrLayerLayout::Mono);
                 throws::create_cube_layer(&gpu.binding, &init)
-                    .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))?
+                    .map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))?
                     .unchecked_into()
             }
         };

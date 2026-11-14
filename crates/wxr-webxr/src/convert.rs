@@ -70,7 +70,7 @@ pub(crate) fn rigid(pose: wxr::Pose) -> Result<XrRigidTransform, wxr::Error> {
     orientation.set_z(pose.orientation.z as f64);
     orientation.set_w(pose.orientation.w as f64);
     XrRigidTransform::new_with_position_and_orientation(&position, &orientation)
-        .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))
+        .map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))
 }
 
 /// Which browser joint a core one is.
