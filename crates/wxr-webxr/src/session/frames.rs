@@ -260,6 +260,9 @@ impl WebXrSession {
                 viewport,
                 image: 0,
                 layer,
+                // The AR module's spectator camera, which a headset session never has and a phone's AR one
+                // may: the browser is the only place this is answered.
+                is_first_person_observer: view.is_first_person_observer(),
                 recommended_viewport_scale: view
                     .recommended_viewport_scale()
                     .map(|scale| scale as f32),

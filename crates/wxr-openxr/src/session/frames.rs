@@ -237,6 +237,9 @@ impl OpenXrSession {
                 },
                 image: image as usize,
                 layer: index as u32,
+                // The two eyes of the headset, and no third camera: OpenXR locates the views the
+                // view configuration names, and a stereo session's are the wearer's.
+                is_first_person_observer: false,
                 recommended_viewport_scale: None,
             });
         }

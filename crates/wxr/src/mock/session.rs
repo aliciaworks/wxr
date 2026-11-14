@@ -234,6 +234,7 @@ impl Session for MockSession {
                 },
                 image: 0,
                 recommended_viewport_scale: None,
+                is_first_person_observer: false,
                 layer: 0,
             });
             views.push(View {
@@ -250,6 +251,7 @@ impl Session for MockSession {
                 },
                 image: 0,
                 recommended_viewport_scale: None,
+                is_first_person_observer: false,
                 layer: 1,
             });
         } else {
@@ -264,6 +266,7 @@ impl Session for MockSession {
                 },
                 image: 0,
                 recommended_viewport_scale: None,
+                is_first_person_observer: false,
                 layer: 0,
             });
         }

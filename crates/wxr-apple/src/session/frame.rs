@@ -223,6 +223,9 @@ impl AppleSession {
                 viewport: eye.viewport,
                 image: eye.image,
                 layer: eye.layer,
+                // Every eye here is the wearer's: a CompositorServices layer has no spectator camera in
+                // its view list, so there is nothing that could be one.
+                is_first_person_observer: false,
                 recommended_viewport_scale: None,
             });
         }

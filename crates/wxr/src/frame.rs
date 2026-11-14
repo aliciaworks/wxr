@@ -84,6 +84,17 @@ pub struct View {
     pub image: usize,
     /// Which array layer of that image.
     pub layer: u32,
+    /// Whether this is a camera watching the wearer rather than an eye of theirs - WebXR's
+    /// `XRView.isFirstPersonObserver`.
+    ///
+    /// An AR session may show more than the wearer's two eyes: a capture or a spectator view is a third
+    /// camera in the same picture, and the specification hides it among the views. What differs is what a
+    /// renderer draws into it - the hands a runtime suppresses on the wearer's own eyes, a cursor, a menu
+    /// pinned to one eye - so a view that is an observer is one a scene usually draws as a plain camera.
+    ///
+    /// False by default and false on every view of a headset: an observer view is a camera a phone's AR
+    /// session has and a compositor's two eyes are not.
+    pub is_first_person_observer: bool,
     /// What scale the runtime suggests rendering this view at, which is WebXR's `recommendedViewportScale`.
     ///
     /// `None` when the runtime has no opinion - and a runtime with no opinion is one where rendering at full
@@ -218,6 +229,7 @@ mod tests {
             viewport: Viewport::default(),
             image: 0,
             layer: 0,
+            is_first_person_observer: false,
             recommended_viewport_scale: None,
         });
         frame.reset();
