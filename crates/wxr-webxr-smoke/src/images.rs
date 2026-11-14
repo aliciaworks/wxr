@@ -147,5 +147,32 @@ pub(super) fn check_images(
         "depth: {:?} at {to_meters} m per raw unit, from {:?}",
         info.size, info.norm_depth_buffer_from_norm_view.position,
     ));
+
+    // Pausing is a request the browser defines as a transition, so the second ask is the one that matters:
+    // it must be a no-op rather than the `InvalidStateError` a second `pauseDepthSensing` would raise.
+    if let Err(error) = session.set_depth_active(false) {
+        return Err(format!("pausing depth failed: {error}"));
+    }
+    if let Err(error) = session.set_depth_active(false) {
+        return Err(format!("pausing depth twice failed: {error}"));
+    }
+    match session.depth_sensing().and_then(|sensing| sensing.active) {
+        Some(false) => {}
+        other => return Err(format!("paused depth reports active {other:?}")),
+    }
+    if session.depth(0).is_some() {
+        return Err("a paused session still measured the room".into());
+    }
+    if let Err(error) = session.set_depth_active(true) {
+        return Err(format!("resuming depth failed: {error}"));
+    }
+    match session.depth_sensing().and_then(|sensing| sensing.active) {
+        Some(true) => {}
+        other => return Err(format!("resumed depth reports active {other:?}")),
+    }
+    if session.depth(0).is_none() {
+        return Err("a resumed session stopped measuring the room".into());
+    }
+    say("depth was paused, asked twice, and resumed");
     Ok(())
 }

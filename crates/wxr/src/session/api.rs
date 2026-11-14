@@ -58,19 +58,15 @@ pub trait Session: Any {
 
     fn presentation(&self) -> Presentation;
 
-    /// What this session can do beyond what every session can, which is [`Features`].
-    ///
-    /// What a backend answers with is what it actually got and not what it asked for: a browser may refuse an
-    /// optional feature, and a runtime may be missing an extension.
+    /// What this session can do beyond what every session can, which is [`Features`] - what the backend
+    /// actually got and not what it asked for, since a browser may refuse a feature and a runtime lack one.
     fn features(&self) -> Features;
 
     /// The session's lifecycle: is it being asked for, is it here, is it over.
     fn state(&self) -> State;
 
-    /// Whether the session is being shown.
-    ///
-    /// Hidden by default, because a backend that does not say is one whose display nobody has looked at yet -
-    /// and because drawing into a session that is not shown is drawing into nothing.
+    /// Whether the session is being shown. Hidden by default: a backend that does not say is one whose
+    /// display nobody has looked at yet, and drawing into a session that is not shown is drawing into nothing.
     fn visibility(&self) -> Visibility {
         Visibility::Hidden
     }
@@ -98,26 +94,27 @@ pub trait Session: Any {
         None
     }
 
-    /// How this session reads its input - WebXR's `interactionMode`.
+    /// Start or stop the runtime measuring the room - WebXR's `resumeDepthSensing` and `pauseDepthSensing`.
     ///
-    /// `WorldSpace` by default, because that is what a session drawn into a display is: every compositor this
-    /// core has makes a session whose input is tracked in the scene, and none of them can make another kind.
-    /// A browser's session can also be `ScreenSpace` - the same page on a phone, with a finger on it - so that
-    /// backend asks the browser rather than assuming, and this default is the answer everywhere else.
+    /// A request: a runtime with no depth to pause, or no way to pause it, answers [`Error::Unsupported`].
+    /// Asking for the state the runtime already reports is a no-op, so a caller may say what it wants every
+    /// frame - and that is also the case the browser's own methods refuse, being transitions.
+    fn set_depth_active(&mut self, _active: bool) -> Result<(), Error> {
+        Err(Error::Unsupported("pausing depth sensing".into()))
+    }
+
+    /// How this session reads its input - WebXR's `interactionMode`, `WorldSpace` by default because that is
+    /// what a session drawn into a display is. A browser's can also be `ScreenSpace` - the same page on a
+    /// phone, with a finger on it - so that backend asks rather than assuming.
     fn interaction_mode(&self) -> InteractionMode {
         InteractionMode::WorldSpace
     }
 
-    /// The near and far planes the scene draws with, in metres.
-    ///
-    /// This is WebXR's `XRRenderState.depthNear` and `depthFar`, and it is in the core for the reason the core
-    /// is WebXR's vocabulary: a compositor that reprojects a frame with the depth buffer cannot read the planes
-    /// off the picture, so the app has to say what the values in it mean. `wgpu`'s depth is centred on the
-    /// same range on all three platforms, so this is the one number a renderer and a compositor have to agree
-    /// on.
-    ///
-    /// Nothing by default, and that is not a gap: a backend with no depth to submit has no planes to set. A
-    /// backend that does submit depth overrides this.
+    /// The near and far planes the scene draws with, in metres - WebXR's `XRRenderState.depthNear` and
+    /// `depthFar`. A compositor that reprojects a frame with the depth buffer cannot read the planes off the
+    /// picture, so the app has to say what the values mean; `wgpu`'s depth is the same range on all three
+    /// platforms, which makes this the one number a renderer and a compositor have to agree on. Nothing by
+    /// default, because a backend with no depth to submit has no planes to set.
     fn set_depth_range(&mut self, _near: f32, _far: f32) {}
 
     /// How much foveation the compositor should apply, from `0` (none) to `1` (the most it has) - WebXR's

@@ -55,6 +55,38 @@ impl WebXrSession {
 }
 
 impl WebXrSession {
+    /// Start or stop the browser measuring the room.
+    ///
+    /// The browser's two methods are transitions and not assignments: a `pauseDepthSensing` on a session
+    /// that is already paused throws `InvalidStateError`, and so does a resume that has nothing to resume.
+    /// That is why the state the browser reports is read first and a request that matches it is answered
+    /// without calling anything - a frame loop saying "paused" every frame must not be a frame loop that
+    /// fails on the second one.
+    ///
+    /// A runtime that did not say which state it is in is asked anyway: `depthActive` may be absent, and an
+    /// absent answer is not the same as the state asked for.
+    pub(super) fn set_depth_active_impl(&mut self, active: bool) -> Result<(), wxr::Error> {
+        let Some(session) = self.inner.borrow().session.clone() else {
+            return Err(wxr::Error::Unavailable(
+                "the session has not started yet".into(),
+            ));
+        };
+        // Granted and not merely present: every session has the two methods, and one that was not made for
+        // an AR session calls them into `NotSupportedError`.
+        if !has_feature(&session, "depth-sensing") {
+            return Err(wxr::Error::Unsupported("depth-sensing".into()));
+        }
+        if session.depth_active() == Some(active) {
+            return Ok(());
+        }
+        let result = if active {
+            throws::resume_depth_sensing(&session)
+        } else {
+            throws::pause_depth_sensing(&session)
+        };
+        result.map_err(|error| wxr::Error::Rejected(format!("{error:?}")))
+    }
+
     /// Whether the browser says depth delivery is paused.
     ///
     /// An absent `depthActive` is a runtime that did not say, not one that said no - so a measurement it

@@ -205,6 +205,12 @@ impl wxr::Session for WebXrSession {
         self.depth_sensing_impl()
     }
 
+    /// Start or stop the browser measuring the room, which is the one backend with a depth sensor an app
+    /// can switch off.
+    fn set_depth_active(&mut self, active: bool) -> Result<(), wxr::Error> {
+        self.set_depth_active_impl(active)
+    }
+
     /// What the browser says, which is the one place this can be `ScreenSpace`.
     fn interaction_mode(&self) -> wxr::InteractionMode {
         self.interaction_mode_impl()

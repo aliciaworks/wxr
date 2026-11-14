@@ -538,6 +538,29 @@ class XRSession {
     }
   }
 
+  pauseDepthSensing() {
+    // Transitions, as the specification defines them: a session with no depth has nothing to pause, and one
+    // that is already paused is not paused again. `wxr-webxr` reads `depthActive` before calling, so a
+    // second pause from the smoke test proves the backend did not lean on this throw.
+    if (this.depthActive === undefined) {
+      throw new DOMException('this session has no depth', 'NotSupportedError');
+    }
+    if (this.depthActive === false) {
+      throw new DOMException('depth is already paused', 'InvalidStateError');
+    }
+    this.depthActive = false;
+  }
+
+  resumeDepthSensing() {
+    if (this.depthActive === undefined) {
+      throw new DOMException('this session has no depth', 'NotSupportedError');
+    }
+    if (this.depthActive === true) {
+      throw new DOMException('depth is already running', 'InvalidStateError');
+    }
+    this.depthActive = true;
+  }
+
   requestReferenceSpace(type) {
     if (type === 'viewer') {
       return Promise.resolve(new XRReferenceSpace(type, null));

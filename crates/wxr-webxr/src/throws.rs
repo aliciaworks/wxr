@@ -36,6 +36,16 @@ extern "C" {
         space: &XrReferenceSpace,
     ) -> Result<js_sys::Promise, JsValue>;
 
+    /// `XRSession.pauseDepthSensing`, which throws `NotSupportedError` when depth sensing was not granted
+    /// and `InvalidStateError` once the session has ended or the depth is already paused.
+    #[wasm_bindgen(method, catch, js_name = "pauseDepthSensing")]
+    fn pause_depth_sensing_caught(this: &XrSession) -> Result<(), JsValue>;
+
+    /// `XRSession.resumeDepthSensing`, with the same two exceptions and the transition already resumed in
+    /// place of already paused.
+    #[wasm_bindgen(method, catch, js_name = "resumeDepthSensing")]
+    fn resume_depth_sensing_caught(this: &XrSession) -> Result<(), JsValue>;
+
     /// `XRSession.requestLightProbe`, which throws `NotSupportedError` when light estimation was not granted
     /// and `InvalidStateError` once the session has ended - a refused request rather than a rejected promise.
     #[wasm_bindgen(method, catch, js_name = "requestLightProbe")]
@@ -278,6 +288,16 @@ pub fn get_sub_image(
     eye: XrEye,
 ) -> Result<XrgpuSubImage, JsValue> {
     binding.get_sub_image_caught(layer, frame, eye)
+}
+
+/// `XRSession.pauseDepthSensing`, caught.
+pub fn pause_depth_sensing(session: &XrSession) -> Result<(), JsValue> {
+    session.pause_depth_sensing_caught()
+}
+
+/// `XRSession.resumeDepthSensing`, caught.
+pub fn resume_depth_sensing(session: &XrSession) -> Result<(), JsValue> {
+    session.resume_depth_sensing_caught()
 }
 
 /// `XRGPUBinding.getDepthInformation`, caught.
