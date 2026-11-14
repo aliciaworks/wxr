@@ -405,7 +405,7 @@ are in it. A native item with no counterpart in the core is one no backend will 
 can reach 100% by design.
 
 The second is the direction that says whether the *unification* is done, and it has two factors. The core
-speaks 69% of WebXR's vocabulary - 312 of the 452 members across every specification - it is the vocabulary all
+speaks 68% of WebXR's vocabulary - 308 of the 452 members across every specification - it is the vocabulary all
 three backends share rather than a mirror of the spec - and of its own `Session` methods the backends define
 **93%**, **76%** and **51%**. So a backend cannot reach the whole of WebXR by implementing
 methods: the word has to exist in the core first. Widening the core and filling the methods are the two things

@@ -126,8 +126,14 @@ impl LayerImage {
 /// How a layer's picture is arranged for the eyes, which is WebXR's `XRLayerLayout`.
 ///
 /// `Mono` is one picture for both eyes, `Stereo` has the two and lets the runtime find them, and the two named
-/// ones are the packings - side by side and over and under. `Default` is the runtime choosing, which is what a
-/// session answers when the app did not ask.
+/// ones are the packings - side by side and over and under. `Default` is the runtime choosing.
+///
+/// Nothing takes one yet: [`crate::Session::layer`] makes a single-image, mono layer, so a stereo layout is a
+/// request no backend here can honour. The type is here because it is one of the names this core shares with
+/// another reading of the same specification - `wxr-conformance` compares the spellings - and the day a
+/// projection layer arrives it is the argument that arrives with it. `XRLayerQuality` and `XRTextureType` are
+/// not here at all: one is a hint about where sampling should go and the other says how many slices an image
+/// has, and neither means anything to a call that takes one picture.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum LayerLayout {
     #[default]
@@ -136,29 +142,6 @@ pub enum LayerLayout {
     Stereo,
     StereoLeftRight,
     StereoTopBottom,
-}
-
-/// What a layer's picture is optimized for, which is WebXR's `XRLayerQuality`.
-///
-/// Neither is a promise and both are hints about where the sampling should go: a text layer wants sharpness
-/// where the eye is, a graphics layer wants the whole field even. `Default` is the runtime choosing.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum LayerQuality {
-    #[default]
-    Default,
-    TextOptimized,
-    GraphicsOptimized,
-}
-
-/// What a layer's image is, which is WebXR's `XRTextureType`.
-///
-/// `Texture` is a single image and `TextureArray` is an array with one slice per eye - which is how a stereo
-/// layer carries two pictures without packing them side by side.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum TextureType {
-    #[default]
-    Texture,
-    TextureArray,
 }
 
 /// A way for an app to lend a layer its own GPU resource, which is WebXR's three bindings in one word.
@@ -203,7 +186,7 @@ pub struct SubImage {
     pub depth_size: Option<glam::UVec2>,
     /// The part of the texture this eye draws into.
     pub viewport: Viewport,
-    /// Which slice of a texture array this eye is, for a [`TextureType::TextureArray`] layer.
+    /// Which slice of a texture array this eye is, for a layer whose image is one array with a slice per eye.
     pub array_index: Option<u32>,
 }
 
