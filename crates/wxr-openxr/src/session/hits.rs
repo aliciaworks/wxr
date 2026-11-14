@@ -4,10 +4,10 @@
 //! being exact about. WebXR's hit-test source *is* the ray: an app requests one with an origin and a
 //! direction and the runtime keeps it. OpenXR's raycaster has no ray at all - `XrEnvironmentRaycasterCreate
 //! InfoMETA` is a type and a chain and nothing else - and the ray is an input to every cast. So a source
-//! here is the space the ray is measured out of, and the ray is the space's own `-Z`, which is exactly the
-//! ray `wxr::Session::hit_test_source` says it asks for. One raycaster serves every source, which is why it
-//! is made once and lazily: making it is asynchronous, and an app that never asks for a hit never pays for
-//! one.
+//! here is the space the ray is measured out of and the ray the app gave with it, or the space's own `-Z`
+//! when it gave none - which is the same pair `wxr::Session::hit_test_source` takes. One raycaster serves
+//! every source, which is why it is made once and lazily: making it is asynchronous, and an app that never
+//! asks for a hit never pays for one.
 //!
 //! Making it is also why this needs `XR_EXT_future` and why a runtime without that extension has no
 //! raycaster even if it lists this one - `xrCreateInstance` refuses the pair, which is the one place the
@@ -16,8 +16,16 @@
 use super::*;
 
 /// What one slot of the source table is: the space a source's ray is measured out of, by its index into the
-/// session's spaces, or nothing once it was released or never made.
-type Source = Option<usize>;
+/// session's spaces, and the ray itself - or nothing once it was released or never made.
+type Source = Option<Measure>;
+
+/// How one source asks its question: the space the ray is in, and the ray, if the app named one rather than
+/// leaving it as the space's own `-Z`.
+struct Measure {
+    space: usize,
+    /// In the space's own coordinates, which is where the cast puts it. `None` is the space's aim.
+    ray: Option<wxr::Ray>,
+}
 
 /// The raycaster, and the sources measured out of it.
 pub(super) struct Raycaster {
@@ -204,9 +212,8 @@ impl Raycaster {
             time,
             origin,
             direction,
-            // No filter, which is what the core's ray is: an unbounded one out of the space's own `-Z`. A
-            // distance filter is the one thing this extension defines, and the core has nowhere to carry a
-            // limit from.
+            // No filter: the core's ray is an origin and a direction and has no length, and a distance
+            // filter is the one thing this extension defines.
             filter_count: 0,
             filters: std::ptr::null(),
         };
@@ -242,10 +249,11 @@ impl Raycaster {
 }
 
 impl OpenXrSession {
-    /// Ask for a source of hits along a space's own aim.
+    /// Ask for a source of hits along a ray: the app's, or the space's own aim when it gave none.
     pub(super) fn hit_test_source_impl(
         &mut self,
         space: wxr::ReferenceSpace,
+        ray: Option<wxr::Ray>,
     ) -> Result<wxr::HitTestSource, wxr::Error> {
         // The space first, for the reason `hits` gives: a handle this session never made is refused whether
         // or not the runtime can raycast at all, rather than one error turning into the other depending on
@@ -253,16 +261,27 @@ impl OpenXrSession {
         let Some(index) = self.space_index(space) else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
+        // Then the raycaster, before the ray: a runtime that cannot cast at all has nothing to ask along a
+        // ray, and "this runtime has no raycast" is the truer answer than "your ray is broken".
         let Some(raycast) = self.raycast.as_mut() else {
             return Err(wxr::Error::Unsupported(
                 "hit testing: this runtime has no XR_META_environment_raycast".into(),
             ));
         };
+        // Then the ray: a direction that is zero or not finite is not a place to look, and this runtime
+        // would take it and answer with a cast made out of NaN.
+        let ray =
+            match ray {
+                Some(ray) => Some(ray.unit().ok_or_else(|| {
+                    wxr::Error::Rejected("a hit-test ray with no direction".into())
+                })?),
+                None => None,
+            };
         // The first source is what makes the raycaster, and then it is a frame or two before any of them
         // answer - which is the core's "a frame or two with no source" rather than a silent failure.
         raycast.start();
         let id = raycast.sources.len() as u32;
-        raycast.sources.push(Some(index));
+        raycast.sources.push(Some(Measure { space: index, ray }));
         Ok(wxr::HitTestSource::new(id))
     }
 
@@ -302,10 +321,10 @@ impl OpenXrSession {
         };
         // A source whose space was released, or the raycaster still being made: an empty list, which is
         // what "the ray has not been cast yet" looks like to a caller.
-        let Some(Some(from)) = raycast.sources.get(source.id() as usize).copied() else {
+        let Some(Some(measure)) = raycast.sources.get(source.id() as usize) else {
             return Ok(());
         };
-        let Some(aim) = self.spaces.get(from) else {
+        let Some(aim) = self.spaces.get(measure.space) else {
             return Ok(());
         };
         let Ok(location) = aim.locate(base, self.predicted) else {
@@ -320,15 +339,24 @@ impl OpenXrSession {
         {
             return Ok(());
         }
-        // The ray is out of the source space's own `-Z`, which is the aim every space in OpenXR has and the
-        // ray the core says it asks for. The pose is in `base`, which is what the hit has to come back in
-        // too - so the ray is built in `base` rather than cast in one frame and moved into another.
+        // The ray is the app's, in the source space's coordinates, or the space's own `-Z` - which is the
+        // aim every space in OpenXR has. The pose is in `base`, which is what the hit has to come back in
+        // too, so the ray is moved into `base` rather than cast in one frame and moved into another.
         let aim = crate::convert::pose(location.pose);
-        let direction = (aim.orientation * wxr::glam::Vec3::NEG_Z).normalize();
+        let (origin, direction) = match measure.ray {
+            Some(ray) => (
+                aim.position + aim.orientation * ray.origin,
+                aim.orientation * ray.direction,
+            ),
+            None => (
+                aim.position,
+                (aim.orientation * wxr::glam::Vec3::NEG_Z).normalize(),
+            ),
+        };
         let Some(found) = raycast.cast(
             base.as_raw(),
             self.predicted,
-            vector(aim.position),
+            vector(origin),
             vector(direction),
         ) else {
             return Ok(());

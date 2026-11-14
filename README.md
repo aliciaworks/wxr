@@ -26,9 +26,9 @@ column only on a Mac, since that one counts the SDK's own headers rather than an
 
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
-| **Native API reached** - of each backend's own spec | 218/290 | 77/551 | 103/618 |
-| *as a percentage* | 75% | 14% | 17% |
-| **WebXR API reached** - of the whole API | 356/452 | 238/452 | 229/452 |
+| **Native API reached** - of each backend's own spec | 219/290 | 77/551 | 103/618 |
+| *as a percentage* | 76% | 14% | 17% |
+| **WebXR API reached** - of the whole API | 358/452 | 238/452 | 229/452 |
 | *as a percentage* | 79% | 53% | 51% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
@@ -62,7 +62,7 @@ compositor have to agree on, because a compositor that reprojects a frame with d
 of the picture.
 
 AR is the other half of what WebXR has: `Plane` and `Session::planes` are the surfaces a runtime has detected,
-`HitTestSource` and `Session::hits` are where a ray out of a space lands on them, and `LightProbe` and
+`Ray`, `HitTestSource` and `Session::hits` are a ray and where it lands on them, and `LightProbe` and
 `LightEstimate` are the room's light - nine spherical-harmonic coefficients and a primary light, so a virtual
 object is lit by the room rather than by a guess. Both are asked for by
 `SessionMode::ImmersiveAr` - a runtime told the session is drawn over the world is the one that offers them -
@@ -405,7 +405,7 @@ are in it. A native item with no counterpart in the core is one no backend will 
 can reach 100% by design.
 
 The second is the direction that says whether the *unification* is done, and it has two factors. The core
-speaks 68% of WebXR's vocabulary - 308 of the 452 members across every specification - it is the vocabulary all
+speaks 69% of WebXR's vocabulary - 310 of the 452 members across every specification - it is the vocabulary all
 three backends share rather than a mirror of the spec - and of its own `Session` methods the backends define
 **93%**, **76%** and **51%**. So a backend cannot reach the whole of WebXR by implementing
 methods: the word has to exist in the core first. Widening the core and filling the methods are the two things

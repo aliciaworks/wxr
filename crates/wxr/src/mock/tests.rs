@@ -210,7 +210,7 @@ fn a_backend_without_hit_testing_says_so() {
     let mut session = running();
     let space = session.space(SpaceKind::LocalFloor).expect("a floor");
     assert!(matches!(
-        session.hit_test_source(space),
+        session.hit_test_source(space, None),
         Err(Error::Unsupported(_))
     ));
     // And a hit test that never happened is no hits, not a failure.

@@ -243,6 +243,12 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
             }
         }
     }
+    // The ray the app named, and the place it lands: a hit test is the one call whose numbers the frame
+    // cannot supply, so the stub records the ray it was given and puts the hit one metre along it. Only after
+    // the floor has resolved, and only in a session granted hit testing - the AR run.
+    if board.space_resolved && session.features().contains(wxr::Features::HIT_TEST) {
+        hits::step(board, session, space)?;
+    }
     // The image path, asserted once rather than per frame. Only once there are eyes: the floor space is a
     // promise, and the frame that asked for it has none yet.
     if !board.checked && board.frame.is_render() && !board.frame.views().is_empty() {

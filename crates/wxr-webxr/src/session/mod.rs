@@ -97,9 +97,8 @@ impl WebXrSession {
     /// Ask for the binding and the layer, and keep them if the browser gives them.
     ///
     /// Three things have to be true and only one is this crate's to arrange: the session needs the `webgpu`
-    /// feature, the device must come from an XR-compatible adapter, and the browser needs the binding at all.
-    /// Any missing leaves a head, two eyes and a clock and no picture - which this backend could already say
-    /// for itself, so it is a warning rather than a failure.
+    /// feature, the device must come from an XR-compatible adapter, and the browser needs the binding. Any
+    /// missing leaves a head and no picture, which is a warning rather than a failure.
     fn start_gpu(&mut self, session: &XrSession) {
         if self.gpu.is_some() || !has_feature(session, "webgpu") {
             return;
@@ -344,8 +343,9 @@ impl wxr::Session for WebXrSession {
     fn hit_test_source(
         &mut self,
         space: wxr::ReferenceSpace,
+        ray: Option<wxr::Ray>,
     ) -> Result<wxr::HitTestSource, wxr::Error> {
-        self.hit_test_source_impl(space)
+        self.hit_test_source_impl(space, ray)
     }
 
     fn hits(

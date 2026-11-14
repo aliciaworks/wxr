@@ -44,7 +44,7 @@ pub use anchor::{Anchor, AnchorId};
 pub use depth::{DepthEncoding, DepthFormat, DepthInfo, DepthSensing, DepthType, DepthUsage};
 pub use feature::Features;
 pub use frame::{DepthRange, Eye, FieldOfView, Frame, FrameState, View, Viewport};
-pub use hit::{Hit, HitTestSource};
+pub use hit::{Hit, HitTestSource, Ray};
 pub use input::{
     Axes, Buttons, Hand, HandJoint, Handedness, InputId, InputSource, Joint, TargetRayMode,
 };

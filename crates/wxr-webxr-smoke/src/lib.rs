@@ -33,6 +33,7 @@ use wxr::{Backend as _, Session as _};
 mod anchors;
 mod hands;
 mod haptics;
+mod hits;
 mod images;
 mod layers;
 mod tick;
@@ -203,6 +204,10 @@ struct Board {
     /// Whether the floor space has resolved. A space is a promise, so the tick that asks for one has no pose
     /// to make an anchor at - and an anchor asked for in an unresolved space is a different refusal.
     space_resolved: bool,
+    /// The hit-test source this run made, if it has, and whether the ray it was asked along has been read
+    /// back with the place it landed - a hit test is the one call whose numbers the frame cannot supply.
+    hit_source: Option<wxr::HitTestSource>,
+    hit_checked: bool,
 }
 
 /// Record the events that are checked later rather than as they arrive.
@@ -395,6 +400,8 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         anchor_step: 0,
         anchor_unframed_checked: false,
         space_resolved: false,
+        hit_source: None,
+        hit_checked: false,
         stopped: false,
     }));
 

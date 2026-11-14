@@ -424,16 +424,18 @@ impl wxr::Session for OpenXrSession {
         self.anchor_id_impl(anchor)
     }
 
-    /// Ask for a source of hits along a space's own aim, which is `XR_META_environment_raycast`.
+    /// Ask for a source of hits along a ray - the app's, or the space's own aim - which is
+    /// `XR_META_environment_raycast`.
     ///
-    /// The ray is not part of the source here: OpenXR's raycaster takes the ray per call, so a source is the
-    /// space the ray is measured out of and `hits` is where it lands. The raycaster behind it is made on the
-    /// first call, asynchronously, so a source made a frame ago may still have nothing behind it.
+    /// The ray is not part of the runtime's source: a cast takes the ray, so a source is the space and the
+    /// ray, and `hits` is where it lands. The raycaster is made on the first call, asynchronously, so a
+    /// source made a frame ago may still have nothing behind it.
     fn hit_test_source(
         &mut self,
         space: wxr::ReferenceSpace,
+        ray: Option<wxr::Ray>,
     ) -> Result<wxr::HitTestSource, wxr::Error> {
-        self.hit_test_source_impl(space)
+        self.hit_test_source_impl(space, ray)
     }
 
     fn hits(
@@ -447,9 +449,8 @@ impl wxr::Session for OpenXrSession {
 
     /// Let a source of hits go, which is the slot the source's ray is measured from.
     ///
-    /// Nothing to destroy: `XR_META_environment_raycast` has one raycaster for the session and takes the ray
-    /// with every call, so a source is only the space it was made from. The entry stays, because the id is
-    /// its position.
+    /// Nothing to destroy: one raycaster serves the session and takes the ray with every call, so a source is
+    /// only the space and ray it was made from. The entry stays, because the id is its position.
     fn release_hit_test_source(&mut self, source: wxr::HitTestSource) {
         self.release_hit_test_source_impl(source)
     }
@@ -484,10 +485,9 @@ impl wxr::Session for OpenXrSession {
 }
 
 impl OpenXrSession {
-    /// OpenXR's own session state, which says more than the core's two axes do.
-    ///
-    /// It is the same thing [`wxr::Session::as_backend`] reaches, kept as a method because reaching it here is
-    /// common enough that a program with an `OpenXrSession` should not have to go through `Any` to ask.
+    /// OpenXR's own session state, which says more than the core's two axes do - the same thing
+    /// [`wxr::Session::as_backend`] reaches, kept as a method because a program with an `OpenXrSession` should
+    /// not have to go through `Any` to ask.
     pub fn openxr_state(&self) -> xr::SessionState {
         self.openxr_state
     }

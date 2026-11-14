@@ -51,6 +51,7 @@ impl WebXrSession {
     pub(super) fn hit_test_source_impl(
         &mut self,
         space: wxr::ReferenceSpace,
+        ray: Option<wxr::Ray>,
     ) -> Result<wxr::HitTestSource, wxr::Error> {
         // The space first, for the reason `hits` gives: a handle this session never handed out is refused
         // as such, whether or not the session was granted hit testing at all.
@@ -64,23 +65,35 @@ impl WebXrSession {
         };
         // Asked of the session before the browser is: `requestHitTestSource` throws `NotSupportedError` when the
         // feature was not granted, and a session that says it does not have hit testing is a better answer than
-        // an exception from inside a frame.
+        // an exception from inside a frame. Before the ray, too: a browser with no hit test has nothing to ask
+        // along one, and "this session cannot raycast" is the truer answer than "your ray is broken".
         if !has_feature(&session, "hit-test") {
             return Err(wxr::Error::Unsupported("hit-test".into()));
         }
+        // Then the ray, because a ray is only a ray in some space - and one that describes nothing is
+        // refused here rather than by `new XRRay`, whose `TypeError` would arrive through the wasm frame.
+        let ray = match ray {
+            Some(ray) => {
+                let ray = ray.unit().ok_or_else(|| {
+                    wxr::Error::Rejected("a hit-test ray with no direction".into())
+                })?;
+                Some(hit::offset(ray)?)
+            }
+            None => None,
+        };
         let slot = Rc::new(RefCell::new(hit::Slot::default()));
         // The space may still be a promise, and a ray out of a space that is not here is not here either - so
         // the request waits on the same promise the space does.
         let resolved = base.borrow().space.clone();
         if let Some(base) = resolved {
-            hit::request(&session, &base, slot.clone());
+            hit::request(&session, &base, ray, slot.clone());
         } else if let Some(promise) = base.borrow().promise.clone() {
             let fill = slot.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 if let Ok(value) = JsFuture::from(promise).await
                     && let Ok(base) = value.dyn_into::<XrReferenceSpace>()
                 {
-                    hit::request(&session, &base, fill);
+                    hit::request(&session, &base, ray, fill);
                 }
             });
         } else {

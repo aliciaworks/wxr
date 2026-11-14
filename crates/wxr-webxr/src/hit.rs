@@ -10,7 +10,8 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 
 use crate::sys::{
-    XrFrame, XrHitTestOptionsInit, XrHitTestResult, XrHitTestSource, XrReferenceSpace, XrSession,
+    DomPointInit, XrFrame, XrHitTestOptionsInit, XrHitTestResult, XrHitTestSource, XrRay,
+    XrRayDirectionInit, XrReferenceSpace, XrSession,
 };
 
 /// A source that has been asked for, and the browser's answer once it arrives.
@@ -52,11 +53,21 @@ impl Slot {
     }
 }
 
-/// Ask the browser for a source aiming out of `space`, and fill the slot when it answers.
+/// Ask the browser for a source aiming out of `space`, along `ray` when the app gave one, and fill the slot
+/// when it answers.
 ///
-/// The only option is the space: everything else about a hit test source has a default, and a ray is a ray.
-pub fn request(session: &XrSession, space: &XrReferenceSpace, slot: Rc<RefCell<Slot>>) {
+/// Everything else about the options has a default, so there are two: the space, and WebXR's `offsetRay` - a
+/// ray in that space's own coordinates, which is the one the app described and [`offset`] already made.
+pub fn request(
+    session: &XrSession,
+    space: &XrReferenceSpace,
+    ray: Option<XrRay>,
+    slot: Rc<RefCell<Slot>>,
+) {
     let options = XrHitTestOptionsInit::new(space);
+    if let Some(ray) = &ray {
+        options.set_offset_ray(ray);
+    }
     let promise: js_sys::Promise = session.request_hit_test_source(&options);
     wasm_bindgen_futures::spawn_local(async move {
         if let Ok(source) = JsFuture::from(promise).await
@@ -65,6 +76,25 @@ pub fn request(session: &XrSession, space: &XrReferenceSpace, slot: Rc<RefCell<S
             slot.borrow_mut().fill(source);
         }
     });
+}
+
+/// The core's ray as the browser's `XRRay`.
+///
+/// The two halves are a `DOMPointInit` and an `XRRayDirectionInit`, which is exactly the constructor for an
+/// origin and a direction. `XRRay` belongs to the hit test module along with the source, so a browser with one
+/// has the other; one that somehow does not is `Unsupported` rather than a source asked for along the space's
+/// aim, because the app named a ray and a hit test along a different one is not an answer to it.
+pub fn offset(ray: wxr::Ray) -> Result<XrRay, wxr::Error> {
+    let origin = DomPointInit::new();
+    origin.set_x(f64::from(ray.origin.x));
+    origin.set_y(f64::from(ray.origin.y));
+    origin.set_z(f64::from(ray.origin.z));
+    let direction = XrRayDirectionInit::new();
+    direction.set_x(f64::from(ray.direction.x));
+    direction.set_y(f64::from(ray.direction.y));
+    direction.set_z(f64::from(ray.direction.z));
+    XrRay::new_with_dom_point_init_and_direction(&origin, &direction)
+        .map_err(|_| wxr::Error::Unsupported("a hit-test ray: this browser has no XRRay".into()))
 }
 
 /// Read this frame's hits along `source`, expressed in `base`, into the core's shape.

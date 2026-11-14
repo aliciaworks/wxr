@@ -271,6 +271,64 @@ function anchorUUID(count) {
   return `00000000-0000-4000-8000-${count.toString(16).padStart(12, '0')}`;
 }
 
+/**
+ * The ray a hit test is asked along, which is `XRRay` - a class this browser does not have, since it has no
+ * WebXR of its own.
+ *
+ * What the real constructor does that matters here is normalise the direction: the core sends whatever an app
+ * wrote, and a ray that was not normalised would land twice as far for a direction twice as long. The fields
+ * are plain objects rather than `DOMPointReadOnly`s, which is all `wxr-webxr` reads.
+ */
+class XRRay {
+  constructor(origin = {}, direction = {}) {
+    const x = origin.x ?? 0;
+    const y = origin.y ?? 0;
+    const z = origin.z ?? 0;
+    const dx = direction.x ?? 0;
+    const dy = direction.y ?? 0;
+    const dz = direction.z ?? -1;
+    const length = Math.hypot(dx, dy, dz);
+    if (!Number.isFinite(length) || length === 0) {
+      throw new TypeError('an XRRay needs a direction');
+    }
+    this.origin = { x, y, z, w: 1 };
+    this.direction = { x: dx / length, y: dy / length, z: dz / length, w: 0 };
+  }
+}
+
+/**
+ * A source of hits along one ray, which is `XRHitTestSource`.
+ *
+ * A class rather than a plain object because `wxr-webxr` reaches it through `dyn_into`, whose check is
+ * `instanceof` against this name - an object without the prototype is a source that never arrives, and the
+ * frames after the ask would look exactly like frames before a promise landed.
+ */
+class XRHitTestSource {
+  constructor(space, ray) {
+    this.space = space;
+    this.ray = ray;
+    this.cancelled = false;
+  }
+
+  cancel() {
+    this.cancelled = true;
+  }
+}
+
+/** One place a ray met the room, which is `XRHitTestResult` and holds where that was in the world. */
+class XRHitTestResult {
+  constructor(where, time) {
+    this._where = where;
+    this._time = time;
+  }
+
+  getPose(baseSpace) {
+    return baseSpace
+      ? new XRPose(relative(this._where, baseSpace.at(this._time)))
+      : null;
+  }
+}
+
 /** The dictionary `updateRenderState` is handed, and the only shape it has to have. */
 class XRRenderStateInit {
   constructor() {
@@ -585,6 +643,24 @@ class XRSession {
     this.depthActive = true;
   }
 
+  /**
+   * A ray to ask where the world is along, or the space's own aim when the app named none.
+   *
+   * The ray is copied out because a frame reads it: `getHitTestResults` below turns it into one hit, and the
+   * page reads the copy off the global to check that the numbers it asked with are the ones that arrived -
+   * the half of a hit test that no hit pose can show.
+   */
+  requestHitTestSource(options) {
+    const ray = options.offsetRay ?? null;
+    // One metre along the normalised direction, so the landing is arithmetic the page can repeat.
+    const source = new XRHitTestSource(options.space, ray);
+    globalThis.__wxrHitTestRay = ray && {
+      origin: { x: ray.origin.x, y: ray.origin.y, z: ray.origin.z },
+      direction: { x: ray.direction.x, y: ray.direction.y, z: ray.direction.z },
+    };
+    return Promise.resolve(source);
+  }
+
   requestReferenceSpace(type) {
     if (type === 'viewer') {
       return Promise.resolve(new XRReferenceSpace(type, null));
@@ -791,6 +867,29 @@ class XRFrame {
     return Promise.resolve(anchor);
   }
 
+  /**
+   * Where the source's ray met the room, which in an empty room is a metre along the ray.
+   *
+   * One result rather than none, so that a page can tell a source that answered from one whose promise has
+   * not landed: the ray's numbers decide the place, which is what the page has to check them against. A
+   * cancelled source reports nothing, which is what `XRHitTestSource.cancel` means.
+   */
+  getHitTestResults(source) {
+    requireActive(this);
+    if (!source || source.cancelled || !source.ray) {
+      return [];
+    }
+    const ray = source.ray;
+    const local = [
+      ray.origin.x + ray.direction.x,
+      ray.origin.y + ray.direction.y,
+      ray.origin.z + ray.direction.z,
+      0, 0, 0, 1,
+    ];
+    const where = compose(source.space.at(this.time), local);
+    return [new XRHitTestResult(where, this.time)];
+  }
+
   /** Anything else: an input source's space, or a hand's joint, measured from the space it was asked in. */
   getPose(space, baseSpace) {
     requireActive(this);
@@ -911,6 +1010,7 @@ const STUB_FEATURES = [
   'hand-tracking',
   'layers',
   'anchors',
+  'hit-test',
   ...(GPU ? ['webgpu', 'depth-sensing'] : []),
 ];
 
@@ -1347,6 +1447,16 @@ if (GPU) {
   // left alone, so a page that did not ask keeps whatever the browser really has.
   Object.defineProperty(globalThis, 'XRGPUBinding', {
     value: XRGPUBinding,
+    configurable: true,
+    writable: true,
+  });
+}
+
+// The ray type belongs to the hit-test module, which this browser does not have at all - so a stub that
+// grants `hit-test` has to provide it, and only where it is missing.
+if (!globalThis.XRRay) {
+  Object.defineProperty(globalThis, 'XRRay', {
+    value: XRRay,
     configurable: true,
     writable: true,
   });

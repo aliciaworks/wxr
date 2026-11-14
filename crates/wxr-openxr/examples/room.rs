@@ -86,7 +86,7 @@ mod native {
         // The two that are made once and then asked about every frame. A refusal either way is the answer to
         // "can this runtime do it", which the bits above have already given - so it is reported and the run
         // carries on rather than stopping.
-        let source = match session.hit_test_source(space) {
+        let source = match session.hit_test_source(space, None) {
             Ok(source) => Some(source),
             Err(error) => {
                 println!("hit-test source: {error}");
