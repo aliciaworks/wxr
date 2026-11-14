@@ -867,6 +867,15 @@ class XRSystem {
     if (missing.length) {
       return Promise.reject(new DOMException(`the runtime does not grant ${missing.join(', ')}`, 'NotSupportedError'));
     }
+    // The room's depth here is raw, so a page that asked for it smoothed asked for a thing this stub does not
+    // have. Rejecting says the request was heard and misses, which is a different failure from a page that
+    // never asked at all and gets `depthType` reported anyway.
+    if (mode === 'immersive-ar') {
+      const asked = options.depthSensing && options.depthSensing.depthTypeRequest;
+      if (!asked || !asked.includes('raw')) {
+        return Promise.reject(new DOMException('this stub measures raw depth and the page did not ask for it', 'NotSupportedError'));
+      }
+    }
     return Promise.resolve(new XRSession(mode, granted));
   }
 }
@@ -997,6 +1006,13 @@ class XRProjectionLayer {
     this.measured = [0, 1].map(() =>
       frameTexture(binding.device, MEASURED_FORMAT, 1, USAGE.TEXTURE_BINDING));
     this.fixedFoveation = 0;
+  }
+
+  // This compositor does read the depth the app draws into the layer - the answer a runtime that lets a
+  // renderer occlude with its own picture gives. A `true` here would be a runtime reprojecting with depth it
+  // measured itself, and the backend says so in the log rather than in a frame.
+  get ignoreDepthValues() {
+    return false;
   }
 }
 

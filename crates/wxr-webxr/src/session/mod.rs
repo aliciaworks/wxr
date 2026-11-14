@@ -133,6 +133,7 @@ impl WebXrSession {
                 return;
             }
         };
+        sensing::note_ignored_depth(&layer);
         self.gpu = Some(Gpu { binding, layer });
         // The render state is handed the projection layer before anything else, because a WebGPU-compatible
         // session with no layer set is a session whose animation frames never arrive at all.

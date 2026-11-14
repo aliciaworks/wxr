@@ -236,3 +236,16 @@ impl WebXrSession {
         });
     }
 }
+
+/// Say whether the compositor will ignore the depth this layer is drawn into.
+///
+/// `XRProjectionLayer.ignoreDepthValues` is not the app's choice: a runtime that composites with its own
+/// depth - a headset whose cameras measure the room and whose reprojection uses that measurement - takes the
+/// layer without reading the buffer the renderer wrote. That is the runtime's business and not a failure.
+/// It is worth a line in the log all the same, because a renderer that spent a pass on depth, and built an
+/// occlusion test on it, would otherwise believe the picture used it.
+pub(super) fn note_ignored_depth(layer: &XrProjectionLayer) {
+    if layer.ignore_depth_values() {
+        log::warn!("wxr-webxr: the compositor ignores the depth this layer is drawn into");
+    }
+}

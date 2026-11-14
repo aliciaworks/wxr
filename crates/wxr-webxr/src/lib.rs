@@ -200,10 +200,13 @@ impl wxr::Backend for WebXr {
         // `depth-sensing` as a feature is not enough: the specification wants this key beside it whenever the
         // feature is granted.
         if mode == wxr::SessionMode::ImmersiveAr {
-            init.set_depth_sensing(&XrDepthStateInit::new(
-                &features(&["float32"]),
-                &features(&["gpu-optimized"]),
-            ));
+            let depth =
+                XrDepthStateInit::new(&features(&["float32"]), &features(&["gpu-optimized"]));
+            // Raw rather than smoothed: a renderer that reprojects or occludes with this depth wants the
+            // measurement, and a smoothed surface is the runtime's guess at the room, which moves under a
+            // second opinion. A browser that can only smooth ignores the request and reports what it has.
+            depth.set_depth_type_request(&features(&["raw"]));
+            init.set_depth_sensing(&depth);
         }
         let requested: js_sys::Promise = self
             .system
