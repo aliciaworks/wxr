@@ -124,8 +124,11 @@ impl AppleSession {
 
             // Far first: a `CompositorServices` drawable wants reverse-Z, and its pair is read that way round
             // - see `sys::cp_drawable_set_depth_range`.
-            if let Some((near, far)) = self.depth_range {
-                sys::cp_drawable_set_depth_range(self.drawable, sys::Float2([far, near]));
+            if let Some(range) = self.depth_range {
+                sys::cp_drawable_set_depth_range(
+                    self.drawable,
+                    sys::Float2([range.far, range.near]),
+                );
             }
             for index in 0..cp_drawable::texture_count(self.drawable) {
                 self.textures.push(FrameImage {

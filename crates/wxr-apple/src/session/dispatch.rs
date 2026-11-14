@@ -104,8 +104,8 @@ impl wxr::Session for AppleSession {
     /// reproject the frame: when the prediction was off it moves the pixels to where the head turned out to
     /// be, and depth is what tells it how far each of them is. This is the platform the core's depth range was
     /// written for, and the one where it is already put to work.
-    fn set_depth_range(&mut self, near: f32, far: f32) {
-        self.depth_range = Some((near, far));
+    fn set_depth_range(&mut self, range: wxr::DepthRange) {
+        self.depth_range = Some(range);
     }
 
     fn images(&self) -> wxr::ImageMeta {

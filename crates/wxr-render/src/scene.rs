@@ -335,8 +335,8 @@ impl Scene {
             layout,
             // A hand's width to a room: an eye's field of view says nothing about either, because it is
             // about the lens. This is the renderer's guess and the day a scene has a floor, it is the scene's.
-            near: planes().0,
-            far: planes().1,
+            near: planes().near,
+            far: planes().far,
             depth,
         }
     }
@@ -450,10 +450,13 @@ impl crate::Draw for Scene {
 }
 
 /// A field of view is what a runtime reports; a projection also needs the two planes, which it does not.
-pub fn planes() -> (f32, f32) {
+pub fn planes() -> wxr::DepthRange {
     // 0.1 is the closest near plane a CompositorServices drawable accepts, so it is the shared floor
     // rather than a scene choice: a projection built with anything nearer is refused by the compositor.
-    (0.1, 100.0)
+    wxr::DepthRange {
+        near: 0.1,
+        far: 100.0,
+    }
 }
 
 /// The triangles and the matrices as bytes.

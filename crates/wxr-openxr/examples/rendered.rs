@@ -57,8 +57,7 @@ mod native {
         // The near and far planes the scene is built with. OpenXR does not submit depth through this binding
         // yet, so on this backend this only reaches the session - but it is the same call the other two get,
         // and the one the renderer's own depth buffer is built from.
-        let (near, far) = wxr_render::scene::planes();
-        session.set_depth_range(near, far);
+        session.set_depth_range(wxr_render::scene::planes());
 
         // Made before the first frame, which is the point of `images` being answerable without one.
         let meta = session.images();

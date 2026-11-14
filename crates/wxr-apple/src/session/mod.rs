@@ -123,7 +123,7 @@ pub struct AppleSession {
     eyes: Vec<frame::EyeView>,
     /// The near and far planes the app draws with, which the compositor is told each frame so that it can
     /// reproject with the depth buffer. `None` until an app says - see `set_depth_range`.
-    depth_range: Option<(f32, f32)>,
+    depth_range: Option<wxr::DepthRange>,
     /// What the display shows behind the picture, told by the app rather than by the compositor - see
     /// `set_blend`.
     blend: wxr::Blend,

@@ -43,7 +43,7 @@ pub mod target;
 pub use anchor::{Anchor, AnchorId};
 pub use depth::{DepthEncoding, DepthFormat, DepthInfo, DepthSensing, DepthType, DepthUsage};
 pub use feature::Features;
-pub use frame::{Eye, FieldOfView, Frame, FrameState, View, Viewport};
+pub use frame::{DepthRange, Eye, FieldOfView, Frame, FrameState, View, Viewport};
 pub use hit::{Hit, HitTestSource};
 pub use input::{
     Axes, Buttons, Hand, HandJoint, Handedness, InputId, InputSource, Joint, TargetRayMode,

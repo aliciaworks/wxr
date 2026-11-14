@@ -18,10 +18,10 @@ fn the_default_field_of_view_survives_the_round_trip() {
 #[test]
 fn a_triangle_at_the_far_plane_is_behind_a_triangle_at_the_near_one() {
     // The two depths the projection has to order, which is the one thing a depth range is for.
-    let (near, far) = planes();
-    let matrix = perspective(DEFAULT_FOV, near, far, Depth::ZeroToOne);
+    let range = planes();
+    let matrix = perspective(DEFAULT_FOV, range.near, range.far, Depth::ZeroToOne);
     let at = |z: f32| (matrix * wxr::glam::Vec4::new(0.0, 0.0, z, 1.0)).z;
-    assert!(at(-near) < at(-far), "nearer is smaller");
+    assert!(at(-range.near) < at(-range.far), "nearer is smaller");
 }
 
 #[test]

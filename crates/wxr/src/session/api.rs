@@ -12,7 +12,7 @@ use glam::Vec2;
 use crate::anchor::{Anchor, AnchorId};
 use crate::depth::{DepthInfo, DepthSensing};
 use crate::feature::Features;
-use crate::frame::Frame;
+use crate::frame::{DepthRange, Frame};
 use crate::hit::{Hit, HitTestSource};
 use crate::input::{Hand, InputId, InputSource};
 use crate::layer::{Binding, Layer, LayerImage, LayerShape, SubImage};
@@ -101,10 +101,10 @@ pub trait Session: Any {
         InteractionMode::WorldSpace
     }
 
-    /// The near and far planes the scene draws with, in metres - WebXR's `XRRenderState.depthNear` and
-    /// `depthFar`. A compositor that reprojects with the depth buffer cannot read the planes off the picture,
-    /// so the app says what the values mean - the one number a renderer and a compositor must agree on.
-    fn set_depth_range(&mut self, _near: f32, _far: f32) {}
+    /// The near and far planes the scene draws with, in metres - see [`DepthRange`] for why a compositor needs
+    /// them and why they are one value rather than two. A pair that does not describe a projection is passed on
+    /// rather than clamped: the app is the only one that knows which end it meant.
+    fn set_depth_range(&mut self, _range: DepthRange) {}
 
     /// How much foveation the compositor should apply, from `0` (none) to `1` (the most it has) - WebXR's
     /// `fixedFoveation`.

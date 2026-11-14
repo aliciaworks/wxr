@@ -117,7 +117,7 @@ pub struct WebXrSession {
     pub(super) meta: wxr::ImageMeta,
     /// The near and far planes the app asked for, kept because a session that has not arrived has no render
     /// state to put them on yet.
-    pub(super) depth_range: Option<(f32, f32)>,
+    pub(super) depth_range: Option<wxr::DepthRange>,
     /// The layers the app has made, each `None` once released. The index *is* the handle's id, which is why a
     /// release leaves a hole rather than shifting the ones after it.
     pub(super) layers: Vec<Option<crate::layers::Slot>>,

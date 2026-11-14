@@ -33,6 +33,28 @@ pub struct FieldOfView {
     pub right: f32,
 }
 
+/// The two planes a projection is clipped by, which are also what a depth buffer is measured between.
+///
+/// Nearer than `near` and further than `far` is not drawn, and the pair is the other half of the projection
+/// [`FieldOfView`] describes. A compositor needs it for a reason a picture cannot answer: a frame is drawn at
+/// a predicted pose and shown at the real one, and reprojecting it means turning the depth buffer back into
+/// distance - which takes these two numbers and nothing else in the frame. WebXR calls them
+/// `XRRenderState.depthNear` and `depthFar`, OpenXR `XrCompositionLayerDepthInfoKHR`'s `nearZ` and `farZ`, and
+/// CompositorServices takes the pair with the **far** one first - which is the reason this is a struct with
+/// two names rather than two `f32` arguments in a row.
+///
+/// One pair for the session rather than one per view, because that is what the three platforms have: WebXR's
+/// is on the render state, Apple's on the drawable, and OpenXR's on a layer - which is a view's picture here.
+/// A caller that has nothing to say about depth leaves it unset, and a runtime that reprojects without it
+/// does what it did before.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct DepthRange {
+    /// Metres to the near plane, which has to be more than zero for a projection to exist.
+    pub near: f32,
+    /// Metres to the far plane, past `near`.
+    pub far: f32,
+}
+
 impl FieldOfView {
     /// A field that opens the same amount in every direction.
     pub fn symmetric(vertical: f32, horizontal: f32) -> Self {

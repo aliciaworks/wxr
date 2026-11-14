@@ -234,8 +234,8 @@ impl wxr::Session for WebXrSession {
 
     /// The near and far planes, through the browser's own render state. Remembered as well as applied, because an
     /// app may set them while the session is still `Connecting` - the planes are the renderer's choice.
-    fn set_depth_range(&mut self, near: f32, far: f32) {
-        self.depth_range = Some((near, far));
+    fn set_depth_range(&mut self, range: wxr::DepthRange) {
+        self.depth_range = Some(range);
         self.apply_depth_range();
     }
 

@@ -40,8 +40,7 @@ pub fn run(
     // The planes the scene draws with, told to the compositor so that it can reproject with the depth the
     // renderer submits. One place and not two: the scene uses these numbers to build its projection, and the
     // compositor uses them to read what came out of it.
-    let (near, far) = wxr_render::scene::planes();
-    session.set_depth_range(near, far);
+    session.set_depth_range(wxr_render::scene::planes());
 
     // ARKit's origin when there is one, and the wearer's head otherwise. A space that was refused has to be
     // asked for as the one that exists rather than assumed.
