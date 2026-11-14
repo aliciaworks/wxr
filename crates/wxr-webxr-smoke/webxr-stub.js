@@ -487,6 +487,13 @@ function controller(handedness, x) {
     vibrationActuator: undefined,
   }, 'Gamepad');
   const where = [x, EYE_HEIGHT - 0.15, -0.25, 0, 0, 0, 1];
+  const gripSpace = new XRSpace(where);
+  const targetRaySpace = new XRSpace(where);
+  // The left hand is a three-degree-of-freedom wand whose place the runtime guessed and whose direction it
+  // measured, which is the shape `emulatedPosition` is for. The right is tracked in both. The flag is on the
+  // space because that is where `XRFrame.getPose` reads it when it makes the pose.
+  gripSpace.emulated = handedness === 'left';
+  targetRaySpace.emulated = handedness === 'left';
   return {
     handedness,
     targetRayMode: 'tracked-pointer',
@@ -499,8 +506,8 @@ function controller(handedness, x) {
     // read to answer the frame and `hand-tracking` is read to answer the feature, and they are separate
     // questions with the same object behind them.
     hand: new XRHand([x, EYE_HEIGHT - 0.15, -0.3, 0, 0, 0, 1]),
-    gripSpace: new XRSpace(where),
-    targetRaySpace: new XRSpace(where),
+    gripSpace,
+    targetRaySpace,
   };
 }
 
@@ -775,7 +782,9 @@ class XRFrame {
       return null;
     }
     const where = space.at(this.time);
-    return where === null ? null : new XRPose(relative(where, baseSpace.at(this.time)));
+    return where === null
+      ? null
+      : new XRPose(relative(where, baseSpace.at(this.time)), space.emulated === true);
   }
 
   getJointPose(space, baseSpace) {

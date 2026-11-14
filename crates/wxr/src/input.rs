@@ -241,6 +241,17 @@ pub struct InputSource {
     ///
     /// A hint and not a rule: a runtime that says true and a game that wants its own model may still draw one.
     pub skip_rendering: bool,
+    /// Whether the runtime estimated where this source is rather than measuring it, which is WebXR's
+    /// `XRPose.emulatedPosition` on the source's pose.
+    ///
+    /// True is a three-degree-of-freedom controller whose orientation is measured and whose place is a guess,
+    /// which is worth knowing before a scene draws a hand where a sword would be held. False is a source the
+    /// runtime tracks, and a source it has no pose for either - an untracked source is [`InputSource::tracked`]'s
+    /// answer, not this one's.
+    ///
+    /// Taken from the grip, or from the aim for a source that has no grip - a gaze ray - because a source has
+    /// one trustworthiness on the device behind both poses, and the aim is the pose every source has.
+    pub emulated_position: bool,
     /// In whichever reference space the sources were asked for.
     ///
     /// Two poses and not one, because a controller is one thing with two places on it: a grip is where it is

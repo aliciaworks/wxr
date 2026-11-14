@@ -373,23 +373,23 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
             }
         }
         say("both controllers' profiles came through as the stub gave them");
-        // Which of these the runtime has already drawn. The stub draws the right hand and not the left, so a
-        // run that lost the flag would report both the same way and this would catch it.
-        let drawn: Vec<(wxr::Handedness, bool)> = sources
+        // Two answers the stub gives differently by hand: it draws the right model, and the left hand's
+        // place is a guess. A run that lost either bit would report both hands the same.
+        let said: Vec<(wxr::Handedness, bool, bool)> = sources
             .iter()
-            .map(|source| (source.handedness, source.skip_rendering))
+            .map(|s| (s.handedness, s.skip_rendering, s.emulated_position))
             .collect();
-        if drawn
+        if said
             != [
-                (wxr::Handedness::Left, false),
-                (wxr::Handedness::Right, true),
+                (wxr::Handedness::Left, false, true),
+                (wxr::Handedness::Right, true, false),
             ]
         {
             return Err(format!(
-                "skipRendering was read as {drawn:?}, not left false and right true"
+                "the two flags were read as {said:?}, not left (false, true) and right (true, false)"
             ));
         }
-        say("the runtime's own model was reported for the right hand only");
+        say("the runtime drew the right model and called the left hand's place a guess");
         // And how fast each source is moving, which the stub reports on the grip pose: both halves here, so the
         // check that the head lost nothing is not the only shape the conversion is tried against.
         for source in &sources {

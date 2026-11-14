@@ -158,12 +158,14 @@ impl Frame {
         &mut self.views
     }
 
-    /// Forget the last frame: its eyes, and where its head was.
+    /// Forget the last frame: its eyes, where its head was, and how fast it was going.
     ///
     /// A frame is the caller's and is reused, so a runtime that begins a new one has to say that the old
     /// one's views are gone. `viewer` is part of the same fact - it is filled by `views`, and a frame
     /// whose views have not been asked for yet is a frame with no head either; reading last frame's
-    /// would stand a scene at last frame's eye height for a frame that never located one.
+    /// would stand a scene at last frame's eye height for a frame that never located one. The head's
+    /// [`motion`](Frame::motion) and whether its place was a guess are that pose's other halves, so they go
+    /// with it.
     pub fn reset(&mut self) {
         self.viewer = Pose::IDENTITY;
         self.emulated_position = false;

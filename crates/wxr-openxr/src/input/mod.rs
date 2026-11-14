@@ -24,6 +24,9 @@ use crate::Error;
 mod gaze;
 mod haptics;
 mod profiles;
+mod util;
+
+pub(crate) use util::{estimated, pressed, thumbstick, tracked, tracked_one};
 
 pub(crate) use gaze::supported as eye_gaze_supported;
 
@@ -280,6 +283,7 @@ impl Hands {
             let grip_motion = grip
                 .as_ref()
                 .and_then(|(_, velocity)| crate::motion(velocity));
+            let emulated_position = estimated(&grip);
             let pose = |location: &Option<xr::SpaceLocation>| {
                 location
                     .as_ref()
@@ -348,6 +352,8 @@ impl Hands {
                 haptics: hand.haptic.is_some(),
                 // OpenXR has no answer to "did you draw it", so the model is the app's.
                 skip_rendering: false,
+                // Nor does it say which pose is a guess in words: the location flags do, one half at a time.
+                emulated_position,
                 grip: grip_pose,
                 aim: pose(&aim),
                 // The grip's speed, or nothing when the runtime did not report a valid half.
@@ -442,59 +448,5 @@ impl Hands {
     /// channels even when one platform's state is the source of both.
     pub fn poll(&mut self) -> Option<wxr::Event> {
         self.pending.pop_front()
-    }
-}
-
-/// Whether a located space is being tracked.
-///
-/// Tracked is a question about the position *and* the orientation: a hand behind the user's back has a
-/// direction and no place, and a gaze ray the runtime has stopped following is neither.
-fn tracked(location: &Option<xr::SpaceLocation>) -> bool {
-    location.as_ref().is_some_and(tracked_one)
-}
-
-/// Whether one located space is tracked rather than estimated.
-fn tracked_one(location: &xr::SpaceLocation) -> bool {
-    let flags = location.location_flags;
-    flags.contains(xr::SpaceLocationFlags::POSITION_TRACKED)
-        && flags.contains(xr::SpaceLocationFlags::ORIENTATION_TRACKED)
-}
-
-/// A thumbstick in the core's terms, which is the one axis the two specifications disagree about.
-///
-/// OpenXR's `y` is positive *down* and the core's [`wxr::Axes`] is positive *up* - the Gamepad API's
-/// convention, which is what WebXR reports directly and what the other backend flips. Leaving the sign alone
-/// makes every stick drive a camera backwards.
-fn thumbstick(value: xr::Vector2f) -> wxr::glam::Vec2 {
-    wxr::glam::Vec2::new(value.x, -value.y)
-}
-
-/// Whether an analogue button has been pushed far enough to be down.
-///
-/// A trigger or a grip is a float from 0 to 1 and the core's buttons are digital, so the two need a
-/// threshold. Halfway is where every runtime's own input mapping puts it and where a user would say the
-/// button was pressed; anything lower makes a resting finger click.
-fn pressed(value: f32) -> bool {
-    value > 0.5
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Down on the hardware is down on the screen: OpenXR's positive Y becomes the core's negative one.
-    #[test]
-    fn a_thumbstick_y_axis_points_up() {
-        let stick = thumbstick(xr::Vector2f { x: 0.5, y: 0.25 });
-        assert_eq!(stick, wxr::glam::Vec2::new(0.5, -0.25));
-    }
-
-    /// An analogue button is down once it is past half, and a resting trigger is not.
-    #[test]
-    fn an_analogue_button_is_down_past_half() {
-        assert!(!pressed(0.0), "a trigger nobody touched is not pressed");
-        assert!(!pressed(0.5), "halfway is not yet a press");
-        assert!(pressed(0.6));
-        assert!(pressed(1.0));
     }
 }

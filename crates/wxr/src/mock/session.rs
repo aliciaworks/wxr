@@ -299,6 +299,9 @@ impl Session for MockSession {
                 haptics: true,
                 // Nothing in a mock is drawn by the runtime, so every model is the app's.
                 skip_rendering: false,
+                // And nothing in a mock is a guess either: there is no tracking to estimate, so a mock that
+                // claimed to be emulated would teach a game to distrust a pose it made itself.
+                emulated_position: false,
                 // And nothing in a mock moves at a speed: a pose with a made-up velocity would be a mock that
                 // taught a game to believe one.
                 motion: None,

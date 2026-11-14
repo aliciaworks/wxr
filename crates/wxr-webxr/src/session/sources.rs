@@ -44,6 +44,13 @@ impl WebXrSession {
                 .grip_space()
                 .and_then(|space| frame.get_pose(&space, &reference));
             let aim = frame.get_pose(&source.target_ray_space(), &reference);
+            // Whether that aim was measured or guessed, which is the one trust question a pose has that
+            // `emulated_position` answers - and the target ray is the pose every source has, where a gaze
+            // cursor has no grip at all.
+            let emulated_position = grip
+                .as_ref()
+                .or(aim.as_ref())
+                .is_some_and(|pose| pose.emulated_position());
 
             // The generated attribute names the DOM type and this backend leaves it to `web-sys`: a gamepad
             // is not WebXR's object, and mirroring it would be a second Rust type for one thing.
@@ -96,6 +103,7 @@ impl WebXrSession {
                 // Whether the runtime draws this one itself, which a browser knows and the other two do not
                 // have a way to say.
                 skip_rendering: XrInputSource::skip_rendering(&source),
+                emulated_position,
                 motion,
                 grip: grip
                     .map(|pose| transform(pose.transform()))

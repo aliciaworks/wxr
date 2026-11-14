@@ -74,6 +74,9 @@ impl AppleSession {
                 haptics: false,
                 // ARKit draws no hand here, so a model of one is the app's.
                 skip_rendering: false,
+                // Nor is a hand's place a guess: ARKit reports a hand anchor when it has tracked one, and an
+                // anchor that is not tracked is `tracked`'s answer rather than an emulated place.
+                emulated_position: false,
                 // And no speed: an `ARHandAnchor` is a transform and not a velocity, so a hand here is
                 // sampled per frame and never reported as moving.
                 motion: None,
