@@ -103,6 +103,8 @@ pub struct WebXrSession {
     /// Reference-space `reset` events, which arrive on a space rather than on the session and are passed on
     /// from here.
     pub(super) reset: Rc<RefCell<VecDeque<wxr::Event>>>,
+    /// Layer `redraw` events, which arrive on a layer and are passed on the same way - and for the same reason.
+    pub(super) redraw: Rc<RefCell<VecDeque<wxr::Event>>>,
     /// The device the app made, kept because a WebXR/WebGPU session needs it: the binding that hands out the
     /// textures is built from it, once, when the session arrives.
     pub(super) device: Option<wgpu::Device>,

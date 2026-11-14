@@ -308,6 +308,11 @@ DEFAULT_IS_ENOUGH = {
     "whole-room scans. Picking one is picking which headsets this backend can mesh, and it has not been "
     "picked (the same choice, said at length, in `crates/wxr-openxr/src/lib.rs`)",
     ("wxr-apple", "interaction_mode"): "only a browser is ever `ScreenSpace`",
+    ("wxr-openxr", "layer_needs_redraw"): "OpenXR is handed the whole layer list at `xrEndFrame`, so a layer "
+    "that is not submitted is simply not composited - there is no request for a redraw to answer, and `false` "
+    "is the answer rather than a call this backend has not made",
+    ("wxr-apple", "layer_needs_redraw"): "the compositor draws each frame the app hands it, and owns the "
+    "timing of every drawable; nothing in that model asks an app to redraw one layer",
     ("wxr-apple", "request_exit"): "there is no runtime session to leave: a CompositorServices session is "
     "the app's own window, and the app ends it by ending the window - so the default is the whole of the "
     "answer rather than a call this backend has not made",

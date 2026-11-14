@@ -9,6 +9,8 @@
 //! handed over in some other space would be a number with a different meaning rather than an error. That is the
 //! layer's own business and not this slot's, which is why nothing here remembers the space it was made in.
 
+use wasm_bindgen::prelude::*;
+
 use crate::sys::XrCompositionLayer;
 
 /// A layer the browser is holding.
@@ -24,4 +26,35 @@ pub(crate) struct Slot {
     /// Where in its space it is, as the app last placed it. Kept because the core's handle deliberately has no
     /// shape or pose - a caller that asked remembers - and this is what makes the two agree.
     pub(crate) pose: wxr::Pose,
+    /// The `redraw` handler, kept because a closure the page no longer holds is one it stops calling. The
+    /// handler is per layer and not per session, because the event is the layer's and names which one.
+    pub(crate) on_redraw: Option<Closure<dyn FnMut(crate::sys::Event)>>,
+}
+
+impl Slot {
+    /// Point the browser's `redraw` handler at `handler`.
+    ///
+    /// The attribute is the shape's rather than the base class's, so this is the one place that has to say
+    /// which kind of layer it is holding - the same match `set_layer_pose` makes, for the same reason.
+    pub(crate) fn listen_for_redraw(&self, handler: &Closure<dyn FnMut(crate::sys::Event)>) {
+        let callback = Some(handler.as_ref().unchecked_ref());
+        match self.shape {
+            wxr::LayerShape::Quad { .. } => {
+                let layer: &crate::sys::XrQuadLayer = self.layer.unchecked_ref();
+                layer.set_onredraw(callback);
+            }
+            wxr::LayerShape::Cylinder { .. } => {
+                let layer: &crate::sys::XrCylinderLayer = self.layer.unchecked_ref();
+                layer.set_onredraw(callback);
+            }
+            wxr::LayerShape::Equirect { .. } => {
+                let layer: &crate::sys::XrEquirectLayer = self.layer.unchecked_ref();
+                layer.set_onredraw(callback);
+            }
+            wxr::LayerShape::Cube => {
+                let layer: &crate::sys::XrCubeLayer = self.layer.unchecked_ref();
+                layer.set_onredraw(callback);
+            }
+        }
+    }
 }

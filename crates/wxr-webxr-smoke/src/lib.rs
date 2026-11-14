@@ -186,6 +186,9 @@ struct Board {
     layers_prepared: bool,
     /// Whether the layers have been read back in a frame, which is once and after they were made.
     layers_checked: bool,
+    /// The layer the compositor asked to have drawn again, if it has asked, and whether that was checked.
+    redraw_event: Option<wxr::Layer>,
+    redraw_checked: bool,
     /// The layers the compositor was given, in the order they were made.
     layers: Vec<wxr::Layer>,
     /// The anchor this run made, if it has, and how far through the checks it is: zero until it asks, and
@@ -209,6 +212,9 @@ fn note_event(board: &mut Board, event: wxr::Event) {
     if let wxr::Event::RefreshRateChanged(rate) = event {
         board.refresh_rate_event = Some(rate);
         board.refresh_rate_events += 1;
+    }
+    if let wxr::Event::Redraw(layer) = event {
+        board.redraw_event = Some(layer);
     }
 }
 
@@ -380,6 +386,8 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         // A run without a binding has no picture to place, so it has nothing to prepare and nothing to check.
         layers_prepared: !gpu,
         layers_checked: !gpu,
+        redraw_event: None,
+        redraw_checked: !gpu,
         layers: Vec::new(),
         anchor: None,
         anchor_name: None,
@@ -410,6 +418,7 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
             Ok(())
                 if board.drawn >= FRAMES
                     && board.layers_checked
+                    && board.redraw_checked
                     && (!session.features().contains(wxr::Features::ANCHORS)
                         || board.anchor_step == 8) =>
             {

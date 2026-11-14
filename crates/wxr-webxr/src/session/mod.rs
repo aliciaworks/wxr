@@ -78,6 +78,7 @@ impl WebXrSession {
             anchors: Vec::new(),
             frame_views: Vec::new(),
             reset: Rc::new(RefCell::new(VecDeque::new())),
+            redraw: Rc::new(RefCell::new(VecDeque::new())),
             device: Some(device),
             gpu: None,
             image: None,
@@ -218,8 +219,7 @@ impl wxr::Session for WebXrSession {
     }
 
     /// What the display shows behind the picture, which WebXR calls `environmentBlendMode`. Opaque until there
-    /// is a session to ask: what a display does with the world behind it is a fact about the display, and there
-    /// is none.
+    /// is a session to ask: what a display does with the world behind it is a fact about the display.
     fn blend(&self) -> wxr::Blend {
         let Some(session) = self.inner.borrow().session.clone() else {
             return wxr::Blend::Opaque;
@@ -244,14 +244,12 @@ impl wxr::Session for WebXrSession {
 
     fn images(&self) -> wxr::ImageMeta {
         // Read off the texture the browser handed over, so a session with no binding reports an unknown format
-        // and a zero extent rather than a plausible size: a renderer that reads this and draws anyway has been
-        // told the truth.
+        // and a zero extent rather than a size it made up: a renderer reading this draws with what it was told.
         self.meta
     }
 
     fn image_count(&self) -> usize {
-        // One: both eyes draw into the same texture. Which part of it is a view's business, and a view says so
-        // with its viewport and its layer.
+        // One: both eyes draw into the same texture, and which part is a view's business.
         usize::from(self.image.is_some())
     }
 
@@ -376,11 +374,9 @@ impl wxr::Session for WebXrSession {
 
     fn set_foveation(&mut self, amount: f32) {
         // `fixedFoveation` is a WebIDL `float`, and a `float` conversion rejects NaN and the infinities with a
-        // `TypeError` rather than clamping them - an exception through the wasm frame, which is not a knob
-        // refusing a value. `clamp` is no guard against either: it passes NaN through, and it turns an infinity
-        // into the bound it is past. So NaN, which is not a request at all, is refused here and leaves the
-        // layer's own value alone, while an infinity needs no refusal - the clamp below is the specification's
-        // answer to a value out of range, and it makes the number finite before the conversion sees it.
+        // `TypeError` - an exception through the wasm frame, which is not a knob refusing a value. `clamp` passes
+        // NaN through and turns an infinity into the bound it is past, so NaN, which is not a request at all, is
+        // refused here and an infinity is made finite by the clamp below before the conversion sees it.
         if amount.is_nan() {
             log::debug!("wxr-webxr: no foveation for {amount}, which is not a number");
             return;
@@ -469,6 +465,10 @@ impl wxr::Session for WebXrSession {
 
     fn layer_image(&mut self, layer: wxr::Layer) -> Option<(&Self::Image, wxr::LayerImage)> {
         self.layer_image_impl(layer)
+    }
+
+    fn layer_needs_redraw(&self, layer: wxr::Layer) -> bool {
+        self.layer_needs_redraw_impl(layer)
     }
 
     fn set_layer_pose(&mut self, layer: wxr::Layer, pose: wxr::Pose) -> Result<(), wxr::Error> {

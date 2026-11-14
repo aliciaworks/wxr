@@ -12,6 +12,12 @@
 //! and its siblings, one bit per shape, because that is exactly how the platforms say it: OpenXR's quad is the
 //! core specification and its cylinder, equirect and cube are extensions, and WebXR's are shapes an app asks a
 //! session for by name.
+//!
+//! A picture is drawn once, and that is the other half of what makes a layer worth one: a compositor may keep
+//! showing the picture it already has while the app is busy with something else, and it is the compositor that
+//! decides when the picture is stale. [`crate::Session::layer_needs_redraw`] is that question, and
+//! [`crate::Event::Redraw`] is the same news for an app that would rather be told - which is WebXR's
+//! `needsRedraw` and `redraw`, and no small thing: a layer whose picture was lost and never redrawn is black.
 
 use crate::frame::Viewport;
 use crate::target::ImageMeta;

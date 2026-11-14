@@ -206,11 +206,24 @@ impl WebXrSession {
         // Opaque content says the same thing with every alpha at one.
         layer.set_blend_texture_source_alpha(true);
         let id = self.layers.len() as u32;
-        self.layers.push(Some(crate::layers::Slot {
+        // The compositor can lose a layer's picture - it says so by setting `needsRedraw` and firing `redraw` -
+        // and the event arrives on the layer. The handler hands it on through a queue the poll drains, the same
+        // way a reference-space reset is passed on, because a poll is where the app hears everything else.
+        let redraw = self.redraw.clone();
+        let handler = Closure::<dyn FnMut(Event)>::new(move |_| {
+            redraw
+                .borrow_mut()
+                .push_back(wxr::Event::Redraw(wxr::Layer::new(id)));
+        });
+        let mut slot = crate::layers::Slot {
             layer,
             shape,
             pose: wxr::Pose::IDENTITY,
-        }));
+            on_redraw: None,
+        };
+        slot.listen_for_redraw(&handler);
+        slot.on_redraw = Some(handler);
+        self.layers.push(Some(slot));
         // The browser composites what the render state names, so a layer it has not been told about is a
         // texture nothing reads - which is not a layer the core hands back. The one way to get here is to make
         // one from inside a frame, where `updateRenderState` throws; it is taken back out rather than left as a
@@ -270,6 +283,20 @@ impl WebXrSession {
         self.layer_images[index] = Some(image);
         let image = self.layer_images[index].as_ref()?;
         Some((image, wxr::LayerImage { meta, viewport }))
+    }
+}
+
+impl WebXrSession {
+    /// Whether the compositor wants this layer drawn again, which is `XRCompositionLayer.needsRedraw`.
+    ///
+    /// Read from the browser each time rather than remembered: the compositor is the one that sets it, when it
+    /// loses the picture it had, and the drawing that answers it is the app taking the layer's image. A handle
+    /// this session never handed out is not a layer that needs drawing.
+    pub(super) fn layer_needs_redraw_impl(&self, layer: wxr::Layer) -> bool {
+        self.layers
+            .get(layer.id() as usize)
+            .and_then(Option::as_ref)
+            .is_some_and(|slot| slot.layer.needs_redraw())
     }
 }
 

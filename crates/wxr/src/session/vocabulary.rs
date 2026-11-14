@@ -5,6 +5,7 @@
 //! two are read by different people, and this file is the one the first of them opens.
 
 use crate::input::InputId;
+use crate::layer::Layer;
 use crate::space::{ReferenceSpace, SpaceKind};
 
 use super::Session;
@@ -116,6 +117,13 @@ pub enum Event {
     /// A reference space's origin was recentered, which is WebXR's `reset`. Every pose measured in it is stale
     /// afterwards - a scene that was placed in the room before the recenter is somewhere else after it.
     Reset(ReferenceSpace),
+    /// The compositor lost a layer's picture and wants it drawn again - WebXR's `redraw`, delivered through the
+    /// layer's `onredraw` handler because the event is the layer's and not the session's.
+    ///
+    /// A projection layer is always redrawn, so this is only ever one of the shapes [`Session::layer`] makes.
+    /// The same news is [`Session::layer_needs_redraw`] for an app that would rather ask every frame; a layer
+    /// nothing has been drawn into yet needs a picture too, and says so there without an event.
+    Redraw(Layer),
     /// The primary action started on a source. WebXR's `selectstart`.
     SelectStart(InputId),
     /// It finished. WebXR's `selectend`.

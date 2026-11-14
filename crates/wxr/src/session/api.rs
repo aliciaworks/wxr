@@ -80,16 +80,14 @@ pub trait Session: Any {
     }
 
     /// What this session's depth sensing is, when it asked for any - WebXR's `depthUsage`, `depthDataFormat`,
-    /// `depthType` and `depthActive`, four attributes of one thing and one value here.
-    ///
-    /// `None` for a session with no depth sensing and for a platform whose depth is its compositor's rather
-    /// than a measurement the app asked for: both are "there is nothing to read here", which is what this says.
+    /// `depthType` and `depthActive`, four attributes of one thing and one value here. `None` for a session
+    /// with no depth sensing and for a platform whose depth is its compositor's rather than a measurement:
+    /// both mean there is nothing to read here.
     fn depth_sensing(&self) -> Option<DepthSensing> {
         None
     }
 
     /// Start or stop the runtime measuring the room - WebXR's `resumeDepthSensing` and `pauseDepthSensing`.
-    ///
     /// A request: a runtime with no depth to pause, or no way to pause it, answers [`Error::Unsupported`].
     /// Asking for the state the runtime already reports is a no-op, so a caller may say what it wants every
     /// frame - and that is also the case the browser's own methods refuse, being transitions.
@@ -165,20 +163,15 @@ pub trait Session: Any {
     /// Make a picture the compositor places itself, which is WebXR's `XRCompositionLayer`s and OpenXR's
     /// `XrCompositionLayer`s other than the projection one.
     ///
-    /// It is the one part of a frame that is not drawn per eye: the runtime takes the image, puts it where the
-    /// shape and the space say, and warps it for the optics. So what an app draws into it is drawn once - a
-    /// menu, a video, a 360° photograph - and what it gives up is the compositor's own idea of where that
-    /// picture is and how it meets the others, which is not an app's to decide on any platform that has layers.
+    /// The one part of a frame not drawn per eye: the runtime takes the image, puts it where the shape and the
+    /// space say, and warps it for the optics. What an app draws into it is drawn once - a menu, a video, a
+    /// 360° photograph - and the compositor decides where that picture is and how it meets the others.
     ///
     /// Which shapes a session has is [`Features::LAYER_QUAD`] and its siblings, one bit per shape, because that
-    /// is how the platforms say it too. A session with none of them answers [`Error::Unsupported`] rather than
-    /// handing back a layer that nothing will ever place.
-    ///
-    /// `pixels` is the resolution to draw it at, which is the app's choice on every platform - a menu rendered
-    /// at 512 square and one rendered at the display's own density are different pictures and only the app knows
-    /// which it wants. The runtime may adjust the request, and what it settled on comes back from
-    /// [`Session::layer_image`]; the *shape*'s aspect is the geometry's, so an aspect that disagrees with
-    /// `pixels` is the picture stretched, which is a choice and not an error.
+    /// is how the platforms say it too; a session with none answers [`Error::Unsupported`] rather than handing
+    /// back a layer nothing will place. `pixels` is the resolution to draw at, which is the app's choice - the
+    /// runtime may adjust it, and what it settled on comes back from [`Session::layer_image`]. The *shape*'s
+    /// aspect is the geometry's, so an aspect that disagrees with `pixels` is the picture stretched.
     fn layer(
         &mut self,
         _space: ReferenceSpace,
@@ -198,11 +191,19 @@ pub trait Session: Any {
         None
     }
 
+    /// Whether the compositor wants this layer drawn again, which is WebXR's `needsRedraw`.
+    ///
+    /// True for a layer nothing has been drawn into yet, and after a [`Redraw`](Event::Redraw) that says the
+    /// picture the compositor had was lost; false once the app has taken the layer's image. A compositor that
+    /// never asks - every other platform here, which takes a complete layer list each frame - answers false.
+    fn layer_needs_redraw(&self, _layer: Layer) -> bool {
+        false
+    }
+
     /// A binding for a layer whose picture the app supplies, which is WebXR's `XRWebGLBinding` and its
     /// WebGPU and media siblings collapsed into one - see [`Binding`]. Not a [`Features`] bit: a binding is
     /// a layer the app draws into itself rather than one the compositor makes, and a backend that cannot
-    /// take an app's resource answers [`Error::Unsupported`], which is the same answer every optional
-    /// method gives.
+    /// take an app's resource answers [`Error::Unsupported`].
     fn binding(&mut self, _layer: Layer) -> Result<Binding, Error> {
         Err(Error::Unsupported("bindings".into()))
     }

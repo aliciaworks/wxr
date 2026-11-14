@@ -87,6 +87,11 @@ impl WebXrSession {
             return Some(event);
         }
 
+        // And a layer the compositor lost is the same shape of news, from a handler on the layer.
+        if let Some(event) = self.redraw.borrow_mut().pop_front() {
+            return Some(event);
+        }
+
         // The display saying its rate moved, read back from the session rather than from the event: WebXR's
         // event has no field for the rate, and `frameRate` is the answer. A rate that is not a number of
         // hertz, or a session that cannot say, is news with nothing to report.

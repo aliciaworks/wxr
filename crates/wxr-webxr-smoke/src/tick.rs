@@ -318,8 +318,10 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
         say("a NaN viewport scale was dropped, an infinite one clamped to one, and a half arrived");
     }
     // The layers the timer handed over, read back in a frame: an image per layer, and the shapes' own numbers
-    // as the setters landed them. Read once, because a working layer is the same picture every frame.
+    // as the setters landed them. Read once, because a working layer is the same picture every frame - and the
+    // redraw the compositor asks for afterwards is read every frame, because that is when it can happen.
     layers::check_frame(board, session)?;
+    layers::check_redraw(board, session)?;
     // The anchor, which is made in a frame and read back in the ones after it: a promise on the way in, and a
     // pose the runtime re-tracks on the way out. After the no-frame check above, so that the two refusals are
     // in the order a caller would meet them, and only in a frame whose space resolved - which is what `views`

@@ -156,8 +156,38 @@ pub(super) fn prepare(board: &mut Board, session: &mut WebXrSession) -> Result<b
 
     board.layers = vec![quad, cylinder, equirect, cube];
     board.layers_prepared = true;
+    // A layer with nothing drawn into it needs its first picture, and no `redraw` event says so: the query is
+    // the only way an app hears it. The stub starts `needsRedraw` true, which is what the specification says.
+    if !session.layer_needs_redraw(quad) {
+        return Err("a layer nothing has been drawn into says it needs no picture".into());
+    }
     say("a quad, a cylinder, an equirect and a cube were handed to the compositor");
     Ok(true)
+}
+
+/// The compositor losing a layer's picture, which it says twice: by setting `needsRedraw` again, and through the
+/// `redraw` event on the layer. Both are checked, because polling and listening are the two ways to hear it.
+pub(super) fn check_redraw(board: &mut Board, session: &mut WebXrSession) -> Result<(), String> {
+    if board.redraw_checked {
+        return Ok(());
+    }
+    let Some(layer) = board.redraw_event else {
+        return Ok(());
+    };
+    board.redraw_checked = true;
+    let Some(quad) = board.layers.first().copied() else {
+        return Err("a redraw event arrived for a run that has no layers".into());
+    };
+    if layer != quad {
+        return Err(format!(
+            "the redraw event named {layer:?}, where the compositor lost the quad {quad:?}"
+        ));
+    }
+    if !session.layer_needs_redraw(layer) {
+        return Err("a layer the compositor lost says it needs no picture".into());
+    }
+    say("the compositor lost the quad's picture, said so, and asked for it again");
+    Ok(())
 }
 
 /// What every layer gave back in the first frame that has one, and that a released one gives back nothing.
@@ -199,6 +229,13 @@ pub(super) fn check_frame(board: &mut Board, session: &mut WebXrSession) -> Resu
         if session.binding(layer).is_err() {
             return Err(format!(
                 "layer {index} is one this session made and has no binding"
+            ));
+        }
+        // The picture is in the layer now, so it no longer needs one: `needsRedraw` is how a compositor says a
+        // layer is out of date, and a backend that never passed the false on would ask an app to draw forever.
+        if session.layer_needs_redraw(layer) {
+            return Err(format!(
+                "layer {index} still wants a picture after the frame drew it"
             ));
         }
         if !said_flag(index, "blendTextureSourceAlpha") {

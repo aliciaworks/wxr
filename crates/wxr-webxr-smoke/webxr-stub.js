@@ -624,6 +624,16 @@ class XRSession {
       } finally {
         this._frame = null;
       }
+      // A compositor can lose a layer's picture, and this one does once the app has drawn into it - outside the
+      // frame, the way a compositor that failed to reproject reports it, so the event is queued for the poll
+      // that follows rather than delivered in the middle of the frame it was about.
+      if (this._drewLayer && !this._lostPicture) {
+        this._lostPicture = true;
+        const layer = [...this._layers].find((l) => l instanceof XRCompositionLayer);
+        if (layer) {
+          layer.losePicture();
+        }
+      }
     });
   }
 
@@ -1077,6 +1087,19 @@ class XRCompositionLayer {
     this.destroyed = true;
     this.session._layers.delete(this);
   }
+
+  /**
+   * The compositor losing the picture it had, which it reports by asking for the layer again.
+   *
+   * Both halves are the specification's: `needsRedraw` says it, and the `redraw` event is how an app that is
+   * not polling hears it. Only a non-projection layer has one, which is why this lives here.
+   */
+  losePicture() {
+    this.needsRedraw = true;
+    if (typeof this.onredraw === 'function') {
+      this.onredraw(new Event('redraw'));
+    }
+  }
 }
 
 class XRQuadLayer extends XRCompositionLayer {}
@@ -1271,6 +1294,10 @@ class XRGPUBinding {
     if (layer.layout !== 'mono' && eye === 'none') {
       throw new TypeError(`a ${layer.layout} layer has no single sub-image`);
     }
+    // The app has a picture to draw into, so the layer no longer needs one: this is the moment the compositor
+    // starts showing what is drawn, and `needsRedraw` going back to true is the only way it can complain.
+    layer.needsRedraw = false;
+    this.session._drewLayer = true;
     return new XRLayerSubImage(layer);
   }
 
