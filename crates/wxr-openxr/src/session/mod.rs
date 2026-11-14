@@ -470,6 +470,14 @@ impl wxr::Session for OpenXrSession {
     fn end(&mut self, _frame: &mut wxr::Frame) -> Result<(), wxr::Error> {
         self.end_impl(_frame)
     }
+
+    /// Ask the runtime to end the session, which is `xrRequestExitSession`. The `EXITING` state that follows
+    /// arrives as [`wxr::Event::ExitRequested`] from `poll` - the same event a system menu produces.
+    fn request_exit(&mut self) -> Result<(), wxr::Error> {
+        self.session
+            .request_exit()
+            .map_err(|error| wxr::Error::Rejected(format!("{error:?}")))
+    }
 }
 
 impl OpenXrSession {

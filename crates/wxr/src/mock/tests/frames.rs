@@ -24,6 +24,22 @@ fn a_frame_has_an_eye_a_side_an_interpupillary_distance_apart() {
 }
 
 #[test]
+fn asking_to_exit_ends_the_session_with_an_event() {
+    let mut session = running();
+    // Everything the mock had to say on its own is read first, so what the next poll reports is this request
+    // and nothing else.
+    while session.poll().is_some() {}
+    session.request_exit().expect("a mock can be asked to end");
+    // The state does not move on the spot: a lifecycle change is reported, not assigned, and the caller reads
+    // it from the poll that follows - the same shape a runtime that ends the session itself has.
+    assert_eq!(session.state(), State::Ready);
+    assert_eq!(session.poll(), Some(Event::StateChanged(State::Ended)));
+    assert_eq!(session.state(), State::Ended);
+    assert!(!session.state().is_alive());
+    assert_eq!(session.poll(), None, "and an ended mock says nothing more");
+}
+
+#[test]
 fn asking_for_views_twice_replaces_the_eyes() {
     // A caller may ask for the same frame's views more than once - a retry, or a second space - and the
     // frame holds what the backend last said rather than every answer it has ever given. Four eyes are not

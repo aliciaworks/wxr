@@ -1,13 +1,8 @@
 //! What a session says, which is the whole of the core.
 //!
-//! In a file of its own because it is the side of the seam that grows: a runtime with something new to say
-//! adds a method here, while how a session is made has been the same question since there were two backends.
-//!
-//! The images are an associated type and not a handle, because the three platforms do not agree on what one
-//! is: a `VkImage` on one, an object that only exists once it is bound to a device on another, and nothing at
-//! all on the third. The renderer's importer is the code that knows which, and it is written per backend -
-//! which is what keeps the trait free of any graphics API's name. It is [`Any`] for the same kind of reason:
-//! the core is a subset, and a subset has to be able to hand back what it left out.
+//! In a file of its own because it is the side of the seam that grows. The images are an associated type and
+//! not a handle, because the three platforms do not agree on what one is, and [`Any`] is there for the same
+//! kind of reason: the core is a subset, and a subset has to be able to hand back what it left out.
 
 use std::any::Any;
 use std::time::Duration;
@@ -309,9 +304,8 @@ pub trait Session: Any {
     /// refused, a source with no actuator is a source that does not move, and a platform that cannot reach
     /// its hardware answers [`Error::Unsupported`] rather than pretending. Which is why
     /// [`InputSource::haptics`] is worth reading first: it is the difference between a game that checks and
-    /// one that asks a question whose answer it could have known.
-    ///
-    /// Whether there is anything to ask at all is [`Features::HAPTICS`].
+    /// one that asks a question whose answer it could have known. Whether there is anything to ask at all is
+    /// [`Features::HAPTICS`].
     fn pulse(
         &mut self,
         _source: InputId,
@@ -351,19 +345,16 @@ pub trait Session: Any {
         Ok(())
     }
 
-    /// Fill in the room the runtime has traced, as triangles, in the space given - WebXR's meshing draft,
-    /// where a session has a set of `XRMesh`es and each has vertices, indices and a label.
+    /// Fill in the room the runtime has traced, as triangles, in the space given - WebXR's meshing draft.
     ///
-    /// The same shape a frame's planes have, and for the same reason: what is traced *this* frame rather than
-    /// a list to keep, because a runtime re-traces a room as it learns more about it and a copy a caller keeps
-    /// is the copy that goes wrong in the one place it matters - a wall that moved. Empty for a session that
-    /// has traced nothing and for a backend that was never taught this, which are the same answer to a caller
-    /// asking whether there is a wall here.
+    /// The same shape a frame's planes have, and for the same reason: what is traced *this* frame, because a
+    /// runtime re-traces a room as it learns more about it and a copy a caller keeps goes wrong where it
+    /// matters - a wall that moved. Empty for a session that has traced nothing and for a backend never taught
+    /// this, which are the same answer to a caller asking whether there is a wall here.
     ///
-    /// A mesh is per *geometry* and not per anchor: one anchor can carry a table and the wall behind it, and
-    /// what a caller does with triangles is per-patch. Whether a session has this at all is
-    /// [`Features::MESH`], which is not [`Features::PLANES`] - a runtime can trace meshes and have no planes
-    /// at all, and ARKit's are two providers.
+    /// A mesh is per *geometry* and not per anchor: one anchor can carry a table and the wall behind it.
+    /// Whether a session has this at all is [`Features::MESH`], which is not [`Features::PLANES`] - a runtime
+    /// can trace meshes and have no planes at all, and ARKit's are two providers.
     fn meshes(&mut self, _space: ReferenceSpace, out: &mut Vec<Mesh>) -> Result<(), Error> {
         out.clear();
         Ok(())
@@ -404,11 +395,9 @@ pub trait Session: Any {
     /// Let a source of hits go, which is WebXR's `XRHitTestSource.cancel`.
     ///
     /// A source is a handle this session holds until the session ends, so one nothing will be asked about
-    /// again has nothing left to give, and the answer is the one a released anchor gives: `hits` is an
-    /// empty list rather than an error, because the handle is still the handle this session handed out.
-    /// What is behind it differs - WebXR has a `cancel()` to call and a promise still in flight to keep
-    /// cancelled when it lands; OpenXR's raycaster has no per-source object at all, the ray and its
-    /// filters going with each call, so there is only this backend's own slot to clear.
+    /// again has nothing left to give, and `hits` on it is an empty list rather than an error. What is behind
+    /// it differs: WebXR has a `cancel()` to call and a promise in flight to keep cancelled when it lands,
+    /// while OpenXR's raycaster has no per-source object, so there is only this backend's slot to clear.
     fn release_hit_test_source(&mut self, _source: HitTestSource) {}
 
     /// Ask for a probe of the room's light, which is WebXR's `requestLightProbe`.
@@ -496,4 +485,14 @@ pub trait Session: Any {
 
     /// Hand the frame back for the compositor to present.
     fn end(&mut self, frame: &mut Frame) -> Result<(), Error>;
+
+    /// Ask the runtime to end this session, which is WebXR's `XRSession.end` and OpenXR's
+    /// `xrRequestExitSession` - the app saying it is finished rather than the handle being dropped.
+    ///
+    /// Not [`end`](Session::end), which hands back one frame: this is what a system menu does, and the
+    /// runtime answers with an ending of its own - a [`StateChanged`](Event::StateChanged) event on the next
+    /// `poll`. A backend with no request to make keeps the runtime's lifecycle and says so.
+    fn request_exit(&mut self) -> Result<(), Error> {
+        Err(Error::Unsupported("ending the session".into()))
+    }
 }

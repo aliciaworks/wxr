@@ -61,6 +61,13 @@ impl Session for MockSession {
         Some(event)
     }
 
+    fn request_exit(&mut self) -> Result<(), Error> {
+        // The ending is an event and not a state assigned here, because that is how every lifecycle change
+        // reaches a caller: the session says it moved and the next `poll` reads the rung it moved to.
+        self.pending.push_back(Event::StateChanged(State::Ended));
+        Ok(())
+    }
+
     fn images(&self) -> ImageMeta {
         ImageMeta {
             format: ColorFormat::Rgba8Srgb,

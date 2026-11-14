@@ -308,6 +308,9 @@ DEFAULT_IS_ENOUGH = {
     "whole-room scans. Picking one is picking which headsets this backend can mesh, and it has not been "
     "picked (the same choice, said at length, in `crates/wxr-openxr/src/lib.rs`)",
     ("wxr-apple", "interaction_mode"): "only a browser is ever `ScreenSpace`",
+    ("wxr-apple", "request_exit"): "there is no runtime session to leave: a CompositorServices session is "
+    "the app's own window, and the app ends it by ending the window - so the default is the whole of the "
+    "answer rather than a call this backend has not made",
     ("wxr-apple", "restore_anchor"): "persistence on ARKit is an `ARWorldMap`, saved and loaded through "
     "`ar_session_get_world_map` and the session's `run_with_world_map` - and `objc2-ar-kit` binds neither, "
     "nor `ar_world_map_t` at all. There is nothing here to save a name into",
@@ -509,6 +512,7 @@ OPENXR_RENAMES = {
     "xrAttachSessionActionSets": "attach_action_sets",
     "xrGetVulkanGraphicsRequirementsKHR": "requirements",
     "xrGetVulkanGraphicsDeviceKHR": "vulkan_graphics_device",
+    "xrRequestExitSession": "request_exit",
 }
 
 

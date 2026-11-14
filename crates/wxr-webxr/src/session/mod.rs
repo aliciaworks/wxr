@@ -217,10 +217,9 @@ impl wxr::Session for WebXrSession {
         self.interaction_mode_impl()
     }
 
-    /// What the display shows behind the picture, which WebXR calls `environmentBlendMode`.
-    ///
-    /// Opaque until there is a session to ask, which is the honest answer for a session that is not here: what a
-    /// display does with the world behind it is a fact about the display, and there is none.
+    /// What the display shows behind the picture, which WebXR calls `environmentBlendMode`. Opaque until there
+    /// is a session to ask: what a display does with the world behind it is a fact about the display, and there
+    /// is none.
     fn blend(&self) -> wxr::Blend {
         let Some(session) = self.inner.borrow().session.clone() else {
             return wxr::Blend::Opaque;
@@ -235,11 +234,9 @@ impl wxr::Session for WebXrSession {
         }
     }
 
-    /// The near and far planes, through the browser's own render state.
-    ///
-    /// Remembered as well as applied, because an app is free to set them while the session is still
-    /// `Connecting` - which is the honest order when the planes are the renderer's choice and not the
-    /// runtime's.
+    /// The near and far planes, through the browser's own render state. Remembered as well as applied, because an
+    /// app is free to set them while the session is still `Connecting` - the honest order when the planes are the
+    /// renderer's choice and not the runtime's.
     fn set_depth_range(&mut self, near: f32, far: f32) {
         self.depth_range = Some((near, far));
         self.apply_depth_range();
@@ -485,9 +482,14 @@ impl wxr::Session for WebXrSession {
     fn end(&mut self, _frame: &mut wxr::Frame) -> Result<(), wxr::Error> {
         self.end_impl(_frame)
     }
+
+    fn request_exit(&mut self) -> Result<(), wxr::Error> {
+        self.request_exit_impl()
+    }
 }
 mod anchors;
 mod events;
+mod exit;
 mod frames;
 mod haptics;
 mod layers;
