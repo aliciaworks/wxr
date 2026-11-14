@@ -26,17 +26,17 @@ column only on a Mac, since that one counts the SDK's own headers rather than an
 
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
-| **Native API reached** - of each backend's own spec | 207/290 | 72/551 | 103/618 |
-| *as a percentage* | 71% | 13% | 17% |
-| **WebXR API reached** - of the whole API | 341/452 | 234/452 | 226/452 |
-| *as a percentage* | 75% | 52% | 50% |
+| **Native API reached** - of each backend's own spec | 209/290 | 72/551 | 103/618 |
+| *as a percentage* | 72% | 13% | 17% |
+| **WebXR API reached** - of the whole API | 343/452 | 234/452 | 226/452 |
+| *as a percentage* | 76% | 52% | 50% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
 Input, Depth Sensing, Hit Test, Lighting Estimation, Anchors, Plane Detection, the AR Module, DOM Overlays
 and the Gamepads module - counted member by member, with the community-group drafts left out. It is a
 *floor*: the core gives a concept its own name (`requestReferenceSpace` is `space`) and both native backends
 go through the core, so a member a backend serves can still share no name with anything in its source. The
-core itself names 300 of the 452.
+core itself names 302 of the 452.
 
 ## The core is small on purpose
 
