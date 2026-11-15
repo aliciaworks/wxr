@@ -37,6 +37,12 @@ pub trait Session: Any {
 
     /// The backend's own session, when a program needs the platform the core deliberately does not speak -
     /// the core's `as_hal`, explained in the module docs.
+    ///
+    /// `Self: Sized` is the vtable's rule and not this method's: a generic method is not in a trait object's
+    /// table. A session a caller holds concretely can be asked; one held as a trait object cannot, and does not
+    /// need to - an erased session's associated types already name one platform's images, so a program that has
+    /// one knows which backend it has. [`should_render`](crate::should_render) is the other half of the shape:
+    /// a question any session can answer, and it takes one unsized.
     fn as_backend<T: 'static>(&self) -> Option<&T>
     where
         Self: Sized,
@@ -72,18 +78,15 @@ pub trait Session: Any {
     /// and stopped.
     fn poll(&mut self) -> Option<Event>;
 
-    /// What the display shows behind the picture.
-    ///
-    /// `Opaque` by default, because a session that does not say is a session that fills the display - which is
-    /// what both ways of presenting into one do.
+    /// What the display shows behind the picture. `Opaque` by default, because a session that does not say is
+    /// a session that fills the display - which is what both ways of presenting into one do.
     fn blend(&self) -> Blend {
         Blend::Opaque
     }
 
     /// What this session's depth sensing is, when it asked for any - WebXR's `depthUsage`, `depthDataFormat`,
-    /// `depthType` and `depthActive`, four attributes of one thing and one value here. `None` for a session
-    /// with no depth sensing and for a platform whose depth is its compositor's rather than a measurement:
-    /// both mean there is nothing to read here.
+    /// `depthType` and `depthActive`, four attributes of one thing and one value here. `None` for a session with
+    /// no depth sensing, and for one whose depth is its compositor's rather than a measurement: nothing to read.
     fn depth_sensing(&self) -> Option<DepthSensing> {
         None
     }
@@ -113,14 +116,12 @@ pub trait Session: Any {
     fn set_foveation(&mut self, _amount: f32) {}
 
     /// The refresh rates the display offers, in hertz, appended to `out` - `XR_FB_display_refresh_rate`'s
-    /// list and the like. Empty by default, and that is a fact rather than a placeholder: a session on a
-    /// platform that does not let an app choose draws at whatever its display does, and there is no list.
+    /// list. Empty by default: a session whose platform does not let an app choose has no list to offer.
     fn refresh_rates(&mut self, _out: &mut Vec<f32>) {}
 
     /// The rate the display is running at, in hertz - WebXR's `XRSession.frameRate`, OpenXR's
-    /// `xrGetDisplayRefreshRateFB`; [`refresh_rates`](Session::refresh_rates) is the list it offers. A
-    /// request through [`set_refresh_rate`](Session::set_refresh_rate) lands on the runtime's own schedule,
-    /// so this is how a caller finds out whether it took. `None` when the runtime cannot say.
+    /// `xrGetDisplayRefreshRateFB`. A request through [`set_refresh_rate`](Session::set_refresh_rate) lands on
+    /// the runtime's own schedule, so this is how a caller learns whether it took. `None` when it cannot say.
     fn refresh_rate(&mut self) -> Option<f32> {
         None
     }
@@ -130,10 +131,9 @@ pub trait Session: Any {
     /// will not take this one, keeps the rate it has - and that default is the display's own choice.
     fn set_refresh_rate(&mut self, _rate: f32) {}
 
-    /// Ask for a view to be rendered at `scale` of its full resolution - WebXR's `requestViewportScale`.
-    ///
-    /// The app's half of the foveation trade above: fewer pixels where the eye is not looking. `None` is
-    /// ignored, so passing a [`crate::View::recommended_viewport_scale`] unchecked is safe.
+    /// Ask for a view to be rendered at `scale` of its full resolution - WebXR's `requestViewportScale`. The
+    /// app's half of the foveation trade above: fewer pixels where the eye is not looking. `None` is ignored,
+    /// so passing a [`crate::View::recommended_viewport_scale`] unchecked is safe.
     fn request_viewport_scale(&mut self, _view: usize, _scale: Option<f32>) {}
 
     /// The shape of every image this session presents.

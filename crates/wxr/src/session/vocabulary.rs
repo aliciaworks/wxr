@@ -219,7 +219,8 @@ pub enum Error {
 ///
 /// Being on a display is not enough: a session that is still being asked for has no images to draw into,
 /// and one that has ended will not hand out another - even when the last visibility it reported is still
-/// one a display shows.
+/// one a display shows. It takes the session unsized, which is the half of the core that a trait object can
+/// still answer - see [`Session::as_backend`] for the other half and why it cannot.
 pub fn should_render<S: Session + ?Sized>(session: &S) -> bool {
     session.state() == State::Ready
         && session.presentation() == Presentation::Composited

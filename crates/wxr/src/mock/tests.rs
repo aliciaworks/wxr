@@ -1,6 +1,7 @@
 //! What a session is, exercised on the mock one - which is the point of having it.
 
 use super::*;
+use crate::should_render;
 
 mod frames;
 mod haptics;
@@ -92,6 +93,20 @@ fn the_escape_hatch_hands_back_the_backends_own_type() {
         .expect("the mock is this backend");
     mutable.poll();
     assert_eq!(session.state(), State::Ready);
+}
+
+#[test]
+fn the_core_can_be_erased_and_the_hatch_is_what_cannot() {
+    // `Session` is object-safe: every question a caller asks without knowing the backend is in a trait object's
+    // table, which is what lets `should_render` take one unsized. `as_backend` is not, because a generic method
+    // cannot be - and a program that holds an erased session has not lost the hatch, it knows which platform it
+    // has from the associated types. This test is the compile-time half of that rule, run.
+    let session = running();
+    let erased: &dyn Session<Image = u32, EnvironmentDepth = ()> = &session;
+    assert!(should_render(erased));
+    assert_eq!(erased.state(), State::Ready);
+    // And the concrete type still reaches the platform, because it is the same session.
+    assert!(session.as_backend::<MockSession>().is_some());
 }
 
 #[test]
