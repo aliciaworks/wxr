@@ -115,6 +115,14 @@ impl OpenXrSession {
             .enumerate_images()
             .map_err(|error| Error::runtime("enumerate the swapchain's images", error))?;
 
+        // The app's depth, when the runtime takes it and offers a format the renderer draws into - see
+        // [`depth_submission`]. A session without one keeps its depth private, which loses the reprojection
+        // and not the frame, so none of the ways this can fail is a reason to fail the session.
+        let target_depth = backend
+            .depth_layer
+            .then(|| depth_submission::DepthSwapchain::make(&session, &formats, extent))
+            .flatten();
+
         // Inputs are declared here and not in the constructor: they need a session, and a runtime that will
         // not take them is a session without hands rather than a session that failed.
         let hands =
@@ -178,6 +186,9 @@ impl OpenXrSession {
             depth,
             measured: None,
             depth_asked: false,
+            target_depth,
+            depth_range: None,
+            frame_image: None,
             // Cloned, and the last field - see its documentation for why it is both.
             device: device.clone(),
         })

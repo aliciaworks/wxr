@@ -109,6 +109,14 @@ impl OpenXrSession {
             return Err(wxr::Error::Present(format!("{error:?}").into()));
         }
         self.held = Some(held);
+        // The depth image is taken in the same frame and the same order: a colour image the app may draw into
+        // beside a depth image it may not is no frame at all, and the two are one pass.
+        if let Err(error) = self.acquire_target_depth() {
+            self.abandon_frame();
+            return Err(error);
+        }
+        // Both images are now this frame's, which is the pair `image` hands the renderer.
+        self.record_frame_images();
 
         // Each layer has a swapchain of its own, and each is taken in the same frame the eyes are: an image the
         // runtime has not handed over is not one an app may draw into, and waiting is unbounded for the reason
@@ -152,6 +160,7 @@ impl OpenXrSession {
         if self.held.take().is_some() {
             let _ = self.swapchain.release_image();
         }
+        let _ = self.release_target_depth();
         for layer in self.layers.iter_mut().flatten() {
             if layer.held.take().is_some() {
                 let _ = layer.swapchain.release_image();
@@ -277,9 +286,21 @@ impl OpenXrSession {
             .iter()
             .map(|layer| layer.as_ref().is_some_and(|layer| layer.held.is_some()))
             .collect();
+        // Whether a depth image was taken this frame, read at the same moment and for the same reason: a
+        // frame that took none has nothing to submit, and one whose image is already back is a chain that
+        // would name an image the compositor has not been handed.
+        let depth_held = self
+            .target_depth
+            .as_ref()
+            .is_some_and(|depth| depth.held.is_some());
         let mut failed = None;
         if let Err(error) = self.swapchain.release_image() {
             failed = Some(wxr::Error::Present(format!("{error:?}").into()));
+        }
+        if let Err(error) = self.release_target_depth()
+            && failed.is_none()
+        {
+            failed = Some(error);
         }
         for layer in self.layers.iter_mut().flatten() {
             if layer.held.take().is_some()
@@ -299,30 +320,21 @@ impl OpenXrSession {
         }
 
         // The layer borrows this frame's views, so it is built here and lives only until it is submitted.
-        // Each eye is a rectangle of the one image, in its own array layer.
+        // Each eye is a rectangle of the one image, in its own array layer - and carries the app's depth when
+        // there is any to carry: see `depth_submission`.
         let extent = xr::Extent2Di {
             width: self.extent.width as i32,
             height: self.extent.height as i32,
         };
-        let views: Vec<_> = self
-            .located
-            .iter()
-            .enumerate()
-            .map(|(index, view)| {
-                xr::CompositionLayerProjectionView::new()
-                    .pose(view.pose)
-                    .fov(view.fov)
-                    .sub_image(
-                        xr::SwapchainSubImage::new()
-                            .swapchain(&self.swapchain)
-                            .image_array_index(index as u32)
-                            .image_rect(xr::Rect2Di {
-                                offset: xr::Offset2Di { x: 0, y: 0 },
-                                extent,
-                            }),
-                    )
-            })
-            .collect();
+        // Both or neither, because either alone submits nothing: the image is where the values are and the
+        // range is what they mean, and a compositor given one without the other would move the picture by an
+        // unknown amount.
+        let submitted = match (depth_held, self.depth_range) {
+            (true, Some(range)) => self.target_depth.as_ref().map(|depth| (depth, range)),
+            _ => None,
+        };
+        let (views, chain) =
+            depth_submission::projection_views(&self.swapchain, &self.located, extent, submitted);
         // The same space the eyes were located in. The first space an app made was not necessarily the one
         // it asked for its views in, and a projection layer whose space disagrees with its view poses is a
         // scene at the wrong place - which is invisible until someone offsets a space and then very visible.
@@ -447,6 +459,8 @@ impl OpenXrSession {
             .stream
             .end(self.predicted, self.blend, &present)
             .map_err(|error| wxr::Error::Present(format!("{error:?}").into()));
+        // The depth chain is what the projection layer's views point at, so it goes after the frame does.
+        drop(chain);
         self.measured = None;
         self.depth_asked = false;
         ended

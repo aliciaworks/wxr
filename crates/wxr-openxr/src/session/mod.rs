@@ -7,6 +7,7 @@ use openxr as xr;
 
 mod anchors;
 mod depth;
+mod depth_submission;
 mod hits;
 mod layers;
 mod planes;
@@ -42,7 +43,8 @@ fn is_located(flags: openxr_sys::SpaceLocationFlags) -> bool {
 mod making;
 
 impl wxr::Session for OpenXrSession {
-    type Image = u64;
+    /// The colour image this frame drew into and the depth image it drew with, when the runtime took one.
+    type Image = crate::import::SwapchainImage;
     /// The runtime's own depth map for this frame, a texture the *scene* samples rather than a layer to
     /// submit - `XR_META_environment_depth` measures the room for the app to draw against.
     type EnvironmentDepth = EnvironmentDepthImage;
@@ -88,6 +90,14 @@ impl wxr::Session for OpenXrSession {
         self.set_foveation_impl(amount)
     }
 
+    /// The near and far planes the scene draws with, which is `XrCompositionLayerDepthInfoKHR`'s
+    /// `nearZ`/`farZ`. Stored, because there is nothing to send it with until a frame is submitted - and saying
+    /// it at all is what turns depth submission on: a runtime never told the planes is never given a depth
+    /// chain, because a buffer nobody explained is one the compositor cannot reproject with.
+    fn set_depth_range(&mut self, range: wxr::DepthRange) {
+        self.depth_range = Some(range);
+    }
+
     fn poll(&mut self) -> Option<wxr::Event> {
         self.poll_impl()
     }
@@ -115,11 +125,10 @@ impl wxr::Session for OpenXrSession {
     }
 
     fn image(&self, index: usize) -> Option<&Self::Image> {
-        // The image this frame acquired, which is the one the compositor will present - not the first of the
-        // swapchain's, which is a different image on most frames and is not this frame's at all.
-        (index == 0)
-            .then(|| self.images.get(self.held? as usize))
-            .flatten()
+        // The pair this frame acquired, which the compositor will present - not the first of either
+        // swapchain's, which are different images on most frames. `held` is what says a frame is open.
+        self.held?;
+        (index == 0).then_some(self.frame_image.as_ref()).flatten()
     }
 
     fn space(&mut self, kind: wxr::SpaceKind) -> Result<wxr::ReferenceSpace, wxr::Error> {
@@ -197,9 +206,14 @@ impl wxr::Session for OpenXrSession {
                 mip_count: 1,
             })
             .map_err(|error| Error::runtime("create a layer's swapchain", error))?;
-        let images = swapchain
+        let images: Vec<_> = swapchain
             .enumerate_images()
-            .map_err(|error| Error::runtime("enumerate a layer's images", error))?;
+            .map_err(|error| Error::runtime("enumerate a layer's images", error))?
+            .into_iter()
+            // A layer has no depth of its own: the app's depth is the projection layer's, because that is the
+            // picture the compositor reprojects - the panels over it are already where they are.
+            .map(|color| crate::import::SwapchainImage { color, depth: None })
+            .collect();
         let id = self.layers.len() as u32;
         self.layers.push(Some(Layer {
             swapchain,
@@ -341,9 +355,9 @@ impl wxr::Session for OpenXrSession {
         self.profiles_impl(source, out)
     }
 
-    /// A vibration on one source, which is `xrApplyHapticFeedback` with a `XrHapticVibration`. A source with
-    /// no output path - and every source on a runtime without the extension - is `Unsupported` rather than a
-    /// silent nothing: this is a call the app chose to make, so an answer it can act on is worth more.
+    /// A vibration on one source, which is `xrApplyHapticFeedback` with a `XrHapticVibration`. A source with no
+    /// output path - and every source without the extension - is `Unsupported` rather than a silent nothing:
+    /// this is a call the app chose to make, so an answer it can act on is worth more.
     fn pulse(
         &mut self,
         source: wxr::InputId,
@@ -381,11 +395,9 @@ impl wxr::Session for OpenXrSession {
             .map_err(wxr::Error::from)
     }
 
-    /// The surfaces the runtime has found this frame, which is `XR_EXT_plane_detection`'s state machine.
-    ///
-    /// Looking for planes is asynchronous on OpenXR: a pass is begun, polled until it is done, read, and begun
-    /// again - so one call here is one *step* of that loop, and an empty list is a pass that has not finished.
-    /// That is the shape the frame's views have, and for the same reason: this frame's, not a list to keep.
+    /// The surfaces the runtime has found this frame, which is `XR_EXT_plane_detection`'s state machine:
+    /// looking for planes is asynchronous, so one call here is one *step* of begin, poll and read - an empty
+    /// list is a pass that has not finished, and this frame's list rather than one to keep.
     fn planes(
         &mut self,
         space: wxr::ReferenceSpace,
@@ -445,17 +457,15 @@ impl wxr::Session for OpenXrSession {
         self.hits_impl(source, space, out)
     }
 
-    /// Let a source of hits go, which is the slot the source's ray is measured from.
-    ///
-    /// Nothing to destroy: one raycaster serves the session and takes the ray with every call, so a source is
-    /// only the space and ray it was made from. The entry stays, because the id is its position.
+    /// Let a source of hits go, which is the slot the source's ray is measured from. Nothing to destroy: one
+    /// raycaster serves the session and takes the ray with every call, so a source is only the space and ray it
+    /// was made from. The entry stays, because the id is its position.
     fn release_hit_test_source(&mut self, source: wxr::HitTestSource) {
         self.release_hit_test_source_impl(source)
     }
 
     /// What the runtime measured of the room, which is `XR_META_environment_depth`'s depth map: a buffer the
-    /// *runtime* fills and the app reads, acquired once a frame between the frame being begun and ended. What
-    /// comes back is the image and what its values mean.
+    /// *runtime* fills and the app reads, acquired once a frame between the frame being begun and ended.
     fn environment_depth(
         &mut self,
         view: usize,
@@ -480,15 +490,6 @@ impl wxr::Session for OpenXrSession {
         self.session
             .request_exit()
             .map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))
-    }
-}
-
-impl OpenXrSession {
-    /// OpenXR's own session state, which says more than the core's two axes do - the same thing
-    /// [`wxr::Session::as_backend`] reaches, kept as a method because a program with an `OpenXrSession` should
-    /// not have to go through `Any` to ask.
-    pub fn openxr_state(&self) -> xr::SessionState {
-        self.openxr_state
     }
 }
 

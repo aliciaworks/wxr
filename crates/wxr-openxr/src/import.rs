@@ -12,18 +12,37 @@
 //! the caller's contract, and the reason an OpenXR session is not something a renderer can outlive.
 //!
 //! [`Images`] carries nothing, and that is what the renderer's signature leaves room for: see
-//! [`wxr_render::Import`].
+//! [`wxr_render::Import`]. What it wraps comes in [`SwapchainImage`] pairs, because a frame here is two
+//! images - the colour the compositor presents and, when it takes one, the depth it reprojects with.
 
 use ash::vk::Handle as _;
 
 use crate::session::EnvironmentDepthImage;
+
+/// What one frame of the compositor's is, as this backend names it.
+///
+/// Two images and one frame: the colour the app draws and the compositor presents, and - when the runtime takes
+/// the app's depth, which is `XR_KHR_composition_layer_depth` - the depth buffer it reprojects with. Both are
+/// `VkImage`s, which on this platform are integers, and both are the *acquired* images rather than the
+/// swapchains' first: which one that is changes every frame, and only the acquired one may be drawn into.
+///
+/// The depth half is `None` on a runtime without the extension, on one that offers no depth format this
+/// renderer's pipeline was built for, and on a frame whose depth image could not be taken - and then the
+/// renderer makes a private buffer, which loses the reprojection and not the frame.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SwapchainImage {
+    /// The colour image the app draws into, one array layer per eye.
+    pub color: u64,
+    /// The depth image the app draws into, one array layer per eye, when there is one to draw into.
+    pub depth: Option<u64>,
+}
 
 /// The compositor's images, as the renderer's importer.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Images;
 
 impl wxr_render::Import for Images {
-    type Image = u64;
+    type Image = SwapchainImage;
     /// The runtime's own depth map, which is a texture the scene samples rather than a layer to submit.
     type EnvironmentDepth = EnvironmentDepthImage;
 
@@ -46,7 +65,37 @@ impl wxr_render::Import for Images {
             // A layer the runtime composits, and so something the scene draws *into*.
             wgpu::TextureUses::COLOR_TARGET,
             wgpu::TextureUsages::RENDER_ATTACHMENT,
-            *image,
+            image.color,
+        )
+    }
+
+    /// The depth the app drew, which the compositor reads to reproject the frame - so a buffer the app
+    /// *writes*, the other direction from [`wxr_render::Import::environment_depth`] below.
+    ///
+    /// The format is the one [`wxr_render::DEPTH_FORMAT`] names, because the depth swapchain is made only
+    /// where the runtime offers exactly that: a frame drawn into a buffer of another format is a frame drawn
+    /// into a private one, which the compositor never gets to read.
+    fn target_depth(
+        &self,
+        device: &wgpu::Device,
+        meta: wxr::ImageMeta,
+        image: &Self::Image,
+    ) -> Option<wgpu::Texture> {
+        let size = wgpu::Extent3d {
+            width: meta.extent.width,
+            height: meta.extent.height,
+            depth_or_array_layers: meta.layers,
+        };
+        wrap(
+            device,
+            "openxr depth image",
+            size,
+            wxr_render::DEPTH_FORMAT,
+            // Read-write, because a pass both tests against it and writes the nearer fragment: this is the
+            // buffer the app *draws* its depth into, not one the runtime filled.
+            wgpu::TextureUses::DEPTH_STENCIL_WRITE,
+            wgpu::TextureUsages::RENDER_ATTACHMENT,
+            image.depth?,
         )
     }
 
@@ -99,8 +148,8 @@ fn depth_format(format: u32) -> Option<wgpu::TextureFormat> {
 
 /// Tell wgpu an image that already exists is this texture, in either of its two roles.
 ///
-/// Both of the importer's methods are this one function, because the two halves are the same two halves and
-/// the only difference is what the texture is *for*: `texture_from_raw` is wgpu-hal being told "this image
+/// Every one of the importer's images is this one function, because the two halves are the same two halves
+/// and the only difference is what the texture is *for*: `texture_from_raw` is wgpu-hal being told "this image
 /// already exists, do not destroy it", `create_texture_from_hal` is wgpu being told the same thing in its
 /// own terms. Neither makes an image, neither frees one, and the session has to outlive both - which is the
 /// caller's contract, and the reason an OpenXR session is not something a renderer can outlive.

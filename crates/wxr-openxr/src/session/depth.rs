@@ -312,13 +312,13 @@ impl EnvironmentDepth {
     /// infinite frustum rather than a reversed one, which the extension says and which nothing in this file
     /// has to decide.
     ///
-    /// **What is still missing, and this is now the only gap:** `XR_KHR_composition_layer_depth` states the
-    /// whole thing as a projection **matrix** - its own words are "the homogeneous transform from view space
-    /// `z` to window space depth" - over four numbers, `minDepth`/`maxDepth`/`nearZ`/`farZ`, and this
-    /// extension reports only the last two. The first two are "the window space depths that correspond to the
-    /// near and far frustum planes, respectively" - so they are 0 and 1 for any buffer whose near plane sits
-    /// at zero, which is what a depth attachment is unless something clamped it, and this extension gives no
-    /// way to say otherwise.
+    /// **What is still missing from the description:** `XR_KHR_composition_layer_depth` states the whole thing
+    /// as a projection **matrix** - its own words are "the homogeneous transform from view space `z` to window
+    /// space depth" - over four numbers, `minDepth`/`maxDepth`/`nearZ`/`farZ`, and this extension reports only
+    /// the last two. The first two are "the window space depths that correspond to the near and far frustum
+    /// planes, respectively" - so they are 0 and 1 for any buffer whose near plane sits at zero, which is what a
+    /// depth attachment is unless something clamped it, and this extension gives no way to say otherwise. That
+    /// is the same pair `depth_submission` states for the app's own buffer, with the same reason behind it.
     /// [`wxr::DepthEncoding::Window`] is therefore written with 0 and 1 taken as given, and that assumption is
     /// the one thing here that no machine in this workspace can check: nothing that runs on it has this
     /// extension. It is documented at the type so that a reader meets it before believing a distance.

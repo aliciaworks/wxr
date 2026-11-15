@@ -7,6 +7,13 @@
 use super::*;
 
 impl OpenXrSession {
+    /// OpenXR's own session state, which says more than the core's two axes do - the same thing
+    /// [`wxr::Session::as_backend`] reaches, kept as a method because a program with an `OpenXrSession` should
+    /// not have to go through `Any` to ask. It is written here, one rung at a time, as the runtime climbs.
+    pub fn openxr_state(&self) -> xr::SessionState {
+        self.openxr_state
+    }
+
     pub(super) fn poll_impl(&mut self) -> Option<wxr::Event> {
         // The press edges the last frame produced come first: they are this crate's own, and waiting for the
         // runtime to get round to an instance event to report them would be a delay with no cause.

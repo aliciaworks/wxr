@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::import::SwapchainImage;
+
 pub struct OpenXrSession {
     /// Which composition-layer extensions this instance was made with, and so which shapes it will take.
     pub(super) layers_enabled: LayerExtensions,
@@ -100,6 +102,23 @@ pub struct OpenXrSession {
     /// Whether this frame has already asked the runtime for its depth, which it permits once per frame -
     /// including the ask that answered that no depth was ready yet.
     pub(super) depth_asked: bool,
+    /// The app's own depth, as the swapchain it goes out through, when the runtime takes one.
+    ///
+    /// The opposite direction from [`Self::depth`] above: that one is the runtime measuring the room, and
+    /// this one is the app's picture on its way to the compositor. `None` is a runtime without
+    /// `XR_KHR_composition_layer_depth`, or one that offers no swapchain format the renderer draws into - see
+    /// [`super::depth_submission`].
+    pub(super) target_depth: Option<super::depth_submission::DepthSwapchain>,
+    /// What the app's depth values mean, which is `XrCompositionLayerDepthInfoKHR`'s `nearZ`/`farZ`. `None`
+    /// until the app says, and a frame with no planes submits no depth: the numbers are unbounded otherwise,
+    /// so a compositor given them would move the picture by an unknown amount.
+    pub(super) depth_range: Option<wxr::DepthRange>,
+    /// The pair this frame is holding, colour and depth, for [`wxr::Session::image`] to hand out.
+    ///
+    /// `None` on a frame whose colour image the runtime named but never enumerated - an image zero would be
+    /// drawing into a picture nobody presents - and it is written in one place, [`super::depth_submission`],
+    /// so there is no stale pair to clear when a frame ends.
+    pub(super) frame_image: Option<SwapchainImage>,
     /// The wgpu objects every swapchain above was allocated through, kept so that they outlive the handles
     /// that name their images.
     ///
@@ -124,9 +143,10 @@ pub struct OpenXrSession {
 /// session has it whether an app asked for one or not.
 pub(super) struct Layer {
     pub(super) swapchain: xr::Swapchain<xr::Vulkan>,
-    /// Its images, as the runtime names them - a `VkImage`, which on this platform is an integer - for the
-    /// renderer to wrap, the same shape the eyes' images arrive in.
-    pub(super) images: Vec<u64>,
+    /// Its images, as the runtime names them - one `VkImage`, which on this platform is an integer, for the
+    /// renderer to wrap - in the same pair the eyes' images arrive in, with no depth half: a layer has no
+    /// depth chain of its own.
+    pub(super) images: Vec<SwapchainImage>,
     /// The space it was made in, by the session's own index, and what kind of space that was. A cube has no
     /// pose in its composition struct, so placing one off the origin means making a space of the same kind at
     /// that point, which needs the kind.

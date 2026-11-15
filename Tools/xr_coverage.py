@@ -293,8 +293,6 @@ DEFAULT_IS_ENOUGH = {
     ("wxr-openxr", "light_probe"): "as `light`: the ambient direction and colour a probe carries is the "
     "same measurement under another name, and it has the same extension behind it that this backend cannot ask "
     "for",
-    ("wxr-openxr", "set_depth_range"): "deliberate, and said so where it was decided: a field nothing reads "
-    "is a field that lies, and this compositor cannot be told",
     ("wxr-openxr", "set_depth_active"): "the provider behind `Session::environment_depth` is started on the first "
     "ask and never stopped, for the reason `depth.rs` gives: a depth map that stopped between two frames is "
     "that went missing where a renderer is looking - so there is no pause to send",

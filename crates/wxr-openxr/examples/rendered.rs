@@ -5,11 +5,13 @@
 //! eye's own projection and place, and hands the frame back. It is the same loop `wxr-apple`'s entry point
 //! runs, on the platform whose compositor takes the picture as a Vulkan image the renderer makes a texture of.
 //!
-//! What it does *not* submit is depth: there is no second swapchain to draw a depth image into and no word in
-//! the core for saying what should be submitted with the colour, so the renderer makes its own depth buffer
-//! and the compositor gets colour alone - see the crate's module documentation. Everything else about the
-//! frame is the real path, which is what makes this the example that says whether the core's shape is
-//! workable rather than merely consistent.
+//! Depth goes with it when the runtime takes it: the backend makes a depth swapchain beside the colour one,
+//! the renderer draws the scene's depth into that image rather than a private buffer of its own, and each
+//! eye's view carries it to the compositor, which can then reproject instead of guessing. A runtime without
+//! `XR_KHR_composition_layer_depth`, or one offering no depth format the renderer is built for, gets colour
+//! alone and the frame is still whole - see the crate's module documentation. Everything else about the frame
+//! is the real path, which is what makes this the example that says whether the core's shape is workable
+//! rather than merely consistent.
 
 #[cfg(not(target_family = "wasm"))]
 mod native {
@@ -54,9 +56,10 @@ mod native {
             Err(_) => session.space(wxr::SpaceKind::Viewer)?,
         };
 
-        // The near and far planes the scene is built with. OpenXR does not submit depth through this binding
-        // yet, so on this backend this only reaches the session - but it is the same call the other two get,
-        // and the one the renderer's own depth buffer is built from.
+        // The near and far planes the scene is built with - and on this backend the thing that turns depth
+        // submission on, since the chain carrying the depth image states them, and a compositor handed a
+        // buffer whose values were never explained could not reproject with it. It is the same call the other
+        // two get, and the one the renderer's own depth buffer is built from.
         session.set_depth_range(wxr_render::scene::planes());
 
         // Made before the first frame, which is the point of `images` being answerable without one.

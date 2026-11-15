@@ -28,8 +28,8 @@ column only on a Mac, since that one counts the SDK's own headers rather than an
 | --- | ---: | ---: | ---: |
 | **Native API reached** - of each backend's own spec | 219/290 | 77/551 | 103/618 |
 | *as a percentage* | 76% | 14% | 17% |
-| **WebXR API reached** - of the whole API | 358/452 | 238/452 | 226/452 |
-| *as a percentage* | 79% | 53% | 50% |
+| **WebXR API reached** - of the whole API | 358/452 | 243/452 | 226/452 |
+| *as a percentage* | 79% | 54% | 50% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
 Input, Depth Sensing, Hit Test, Lighting Estimation, Anchors, Plane Detection, the AR Module, DOM Overlays
@@ -408,7 +408,7 @@ can reach 100% by design.
 The second is the direction that says whether the *unification* is done, and it has two factors. The core
 speaks 69% of WebXR's vocabulary - 310 of the 452 members across every specification - it is the vocabulary all
 three backends share rather than a mirror of the spec - and of its own `Session` methods the backends define
-**93%**, **76%** and **51%**. So a backend cannot reach the whole of WebXR by implementing
+**93%**, **78%** and **51%**. So a backend cannot reach the whole of WebXR by implementing
 methods: the word has to exist in the core first. Widening the core and filling the methods are the two things
 that move this, and both are work.
 
@@ -424,8 +424,11 @@ that move this, and both are work.
   buffer can carry a distance: a scale, and the two planes OpenXR's window depth is a projection between. No
   machine here has `XR_META_environment_depth`, so those planes are synthetic and the one assumption they rest
   on is stated where the encoding is defined. Lighting, textures, instancing and a tone map are a renderer's
-  business and this one is a seam. What is missing in the same tier is *submitting* the depth to the
-  compositor: all three runtimes can take it and none of this does.
+  business and this one is a seam. Submitting depth to the compositor happens on all three now: WebXR and
+  visionOS because the image the compositor hands over already has a depth attachment, and OpenXR through a
+  depth swapchain made beside the colour one, with an `XrCompositionLayerDepthInfoKHR` chained onto each eye's
+  view. On OpenXR it is `set_depth_range` that switches it on, because the chain has to state what the values
+  mean and the specification gives no default - an app that never says gets colour alone.
 - **The `Scene` arm.** `Presentation::Scene` is the other half of what a session can be - the platform draws
   the scene and the app says what is in it - and no backend takes it. RealityKit is the platform that would,
   and taking it would mean an app that describes a scene rather than one that draws into an image.

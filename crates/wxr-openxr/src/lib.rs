@@ -14,26 +14,20 @@
 //! session hands out images the compositor will present and nothing else. The renderer wraps them as `wgpu`
 //! textures; the core carries them and never looks inside.
 //!
-//! **Depth is not submitted.** A runtime takes an app's depth through `XR_KHR_composition_layer_depth`, whose
-//! `CompositionLayerDepthInfoKHR` is chained onto each projection view - and `openxr` 0.22 binds neither that
-//! structure nor any builder that can put it there, so the chain has to be made through the `sys` layer: take
-//! the projection view this backend already builds with the safe builder, `into_raw` it, point its `next` at
-//! an `openxr-sys::CompositionLayerDepthInfoKHR` on the stack, and `from_raw` it back. That is the *small* half
-//! of the work, and it is the shape `display.rs` already has a precedent for with `XR_FB_swapchain_update_state`.
+//! **Depth is submitted, when the app says what it means.** `XR_KHR_composition_layer_depth` is how an app's
+//! own depth reaches the compositor: the app draws into a depth swapchain of its own, and each projection view
+//! carries an `XrCompositionLayerDepthInfoKHR` naming that image and the planes it was projected between, so
+//! the compositor reprojects the frame instead of guessing where the head will be when it is shown. The
+//! renderer draws into whatever depth the image carries - [`wxr_render::Import::target_depth`] is how this
+//! backend hands it over - and that is why [`wxr::Session::set_depth_range`] is real here: the chain has to say
+//! what the values mean, and a session that was never told holds its depth back rather than sending numbers a
+//! compositor cannot use.
 //!
-//! The large half is elsewhere. A depth layer needs a depth image, and the swapchain this backend makes is a
-//! colour one: `COLOR_ATTACHMENT | SAMPLED`, a colour format picked off the runtime's list. Depth wants a depth
-//! format off that same list, `DEPTH_STENCIL_ATTACHMENT`, a second swapchain acquired and released in step with
-//! the first, and a `wgpu` texture of its own for the renderer to draw into. And the core has nowhere for an app
-//! to say *what* it wants submitted: [`wxr::Session::environment_depth`] is the runtime measuring the room,
-//! which is the
-//! other direction, and [`wxr::Session::set_depth_range`] is only the two planes. So it is a question the core's
-//! vocabulary does not have an answer to yet, which is a design change across three crates rather than a patch
-//! to this one.
-//!
-//! What it would buy is what it buys on the other two backends: a compositor that reprojects with depth instead
-//! of guessing. It is also why `set_depth_range` is the core's default no-op here rather than an override that
-//! stores the planes: there is nothing to submit them with, and a field nothing reads is a field that lies.
+//! A session has a depth swapchain only where two things hold, and both are decided before it exists: the
+//! instance was made with the extension, and the runtime offers `D32_SFLOAT`, the one format the renderer's
+//! pipeline is built for. Anything else would be a buffer the app drew into privately, and submitting that is
+//! worse than submitting nothing. The chain itself is raw - `openxr` 0.22 binds no `CompositionLayerDepthInfoKHR`
+//! - and both halves are in `session/depth_submission.rs`.
 //!
 //! **Reading the room is a different extension, and it is driven by hand.** `XR_EXT_plane_detection`,
 //! `XR_FB_spatial_entity`, `XR_META_environment_raycast` and `XR_META_environment_depth` are the four that
@@ -73,7 +67,7 @@ mod import;
 mod input;
 mod session;
 
-pub use import::Images;
+pub use import::{Images, SwapchainImage};
 pub use session::{EnvironmentDepthImage, OpenXrSession};
 pub(crate) use session::{HapticExtensions, InputExtensions, LayerExtensions, SpatialExtensions};
 
@@ -105,6 +99,10 @@ pub struct OpenXr {
     /// so what a session can hand over was decided before the session existed - and both the capability bits
     /// and the per-shape refusal read from here rather than from the runtime.
     layers: LayerExtensions,
+    /// Whether the instance was made with `XR_KHR_composition_layer_depth`, which is how the app's own depth
+    /// reaches the compositor - the direction [`SpatialExtensions::depth`] is not. Fixed at the same moment,
+    /// so a session that will submit no depth says so before it exists.
+    depth_layer: bool,
     /// Which haptic extensions it was made with, fixed at the same moment and read by the capability bit and
     /// by the two output calls.
     haptics: HapticExtensions,
@@ -175,6 +173,10 @@ impl OpenXr {
         extensions.khr_composition_layer_cylinder = supported.khr_composition_layer_cylinder;
         extensions.khr_composition_layer_equirect2 = supported.khr_composition_layer_equirect2;
         extensions.khr_composition_layer_cube = supported.khr_composition_layer_cube;
+        // And the one that is not a shape: the app's own depth, which a compositor reprojects with. The same
+        // rule again, and whether the session has a swapchain to give it is decided in
+        // `session/depth_submission.rs`.
+        extensions.khr_composition_layer_depth = supported.khr_composition_layer_depth;
         // The display's rate: Meta's extension, and asked for the same way - only from a runtime that lists
         // it. A runtime without it is a runtime whose display runs at one rate, which is a fact and not a
         // failure.
@@ -320,6 +322,7 @@ impl OpenXr {
             blend,
             prefer_hdr: false,
             layers,
+            depth_layer: extensions.khr_composition_layer_depth,
             refresh_rate: extensions.fb_display_refresh_rate,
             haptics,
             spatial,
