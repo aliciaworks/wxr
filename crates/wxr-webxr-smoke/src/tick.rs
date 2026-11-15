@@ -486,7 +486,7 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
     if session.image(0).is_some() {
         return Err("the frame was ended and its image is still there".into());
     }
-    if session.depth(0).is_some() {
+    if session.environment_depth(0).is_some() {
         return Err("the frame was ended and its depth is still there".into());
     }
     board.drawn += 1;

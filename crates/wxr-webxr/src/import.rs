@@ -24,7 +24,7 @@ impl wxr_render::Import for Images {
     type Image = super::FrameImage;
 
     /// The same, for the depth the runtime measured rather than the colour it is drawn into.
-    type Depth = wasm_bindgen::JsValue;
+    type EnvironmentDepth = wasm_bindgen::JsValue;
 
     fn texture(
         &self,
@@ -37,11 +37,11 @@ impl wxr_render::Import for Images {
     }
 
     /// The room's depth, which the runtime made for this frame and takes back at the end of it.
-    fn session_depth(
+    fn environment_depth(
         &self,
         device: &wgpu::Device,
         info: wxr::DepthInfo,
-        depth: &Self::Depth,
+        depth: &Self::EnvironmentDepth,
     ) -> Option<wgpu::Texture> {
         Some(wrap_depth(device, info, depth.clone()))
     }
@@ -51,7 +51,7 @@ impl wxr_render::Import for Images {
     /// It is there because this session asked for it: a projection layer made without a `depthStencilFormat`
     /// has no depth texture, and then this answers `None` and the renderer keeps its own. Asking for the format
     /// the renderer's pipeline was built for is what makes the browser's depth usable rather than a fallback.
-    fn depth(
+    fn target_depth(
         &self,
         device: &wgpu::Device,
         meta: wxr::ImageMeta,

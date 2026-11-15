@@ -91,11 +91,11 @@ pub struct OpenXrSession {
     /// Made at connect time and *started* at the first query: a provider begins producing depth the moment
     /// it is started, and one kept running for an app that never asks would be holding a camera for nothing.
     /// So `Some` here is "this runtime can measure the room", which is what `Features::DEPTH` means, and
-    /// whether it has begun is [`wxr::Session::depth`]'s business.
+    /// whether it has begun is [`wxr::Session::environment_depth`]'s business.
     pub(super) depth: Option<super::EnvironmentDepth>,
     /// What the frame in progress measured of the room, and what its values are worth - read by
-    /// [`Self::depth_impl`] and cleared at the end of the frame, because the runtime takes the image back
-    /// then. See [`super::MeasuredDepth`] for why the two are carried apart.
+    /// [`Self::environment_depth_impl`] and cleared at the end of the frame, because the runtime takes the image
+    /// back then. See [`super::MeasuredDepth`] for why the two are carried apart.
     pub(super) measured: Option<super::MeasuredDepth>,
     /// Whether this frame has already asked the runtime for its depth, which it permits once per frame -
     /// including the ask that answered that no depth was ready yet.

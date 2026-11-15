@@ -160,7 +160,7 @@ mod native {
 
             // The first ask of a frame takes the image and both views read it; a second would be
             // `XR_ERROR_LIMIT_REACHED`, which is why this is here and not in a loop over the eyes.
-            if let Some((image, info)) = session.depth(0) {
+            if let Some((image, info)) = session.environment_depth(0) {
                 if seen.depth == 0 {
                     println!(
                         "depth: {}x{} px, {:?}, image {image:?}",

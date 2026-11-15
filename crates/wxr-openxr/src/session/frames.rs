@@ -439,7 +439,7 @@ impl OpenXrSession {
         }
 
         // The runtime takes its depth image back with the frame, so the next one has to take it again - which
-        // is why [`super::OpenXrSession::depth`] takes the image on the first ask of a frame and then reads
+        // is why [`super::OpenXrSession::environment_depth`] takes the image on the first ask of a frame and then reads
         // it. Cleared before the result is handed on rather than after a successful end, because a failed
         // `xrEndFrame` ends the frame just the same: `depth_asked` left true would make the next frame's first
         // ask read the buffer of the frame before instead of taking a new one.

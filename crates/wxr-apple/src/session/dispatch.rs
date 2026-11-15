@@ -10,7 +10,7 @@ impl wxr::Session for AppleSession {
     type Image = FrameImage;
     /// No depth to hand over: a `CompositorServices` drawable has a depth buffer, but it is the one being
     /// *drawn into* rather than a measurement of the room.
-    type Depth = ();
+    type EnvironmentDepth = ();
 
     fn presentation(&self) -> wxr::Presentation {
         wxr::Presentation::Composited

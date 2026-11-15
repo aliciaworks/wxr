@@ -295,8 +295,8 @@ DEFAULT_IS_ENOUGH = {
     "for",
     ("wxr-openxr", "set_depth_range"): "deliberate, and said so where it was decided: a field nothing reads "
     "is a field that lies, and this compositor cannot be told",
-    ("wxr-openxr", "set_depth_active"): "the provider behind `Session::depth` is started on the first ask "
-    "and never stopped, for the reason `depth.rs` gives: a depth map that stopped between two frames is one "
+    ("wxr-openxr", "set_depth_active"): "the provider behind `Session::environment_depth` is started on the first "
+    "ask and never stopped, for the reason `depth.rs` gives: a depth map that stopped between two frames is "
     "that went missing where a renderer is looking - so there is no pause to send",
     ("wxr-openxr", "max_render_layers"): "OpenXR names no limit: a frame is one `xrEndFrame` with however "
     "many layers the app puts in it, and a runtime that cannot take them says so by failing the call rather "
@@ -322,10 +322,12 @@ DEFAULT_IS_ENOUGH = {
     ("wxr-apple", "delete_persistent_anchor"): "as `restore_anchor`: a name only exists as a harness of the "
     "world map, and no world-map binding is here to erase it from",
     ("wxr-apple", "bounds"): "visionOS has no bounds geometry; the room is not a polygon the runtime drew",
-    ("wxr-apple", "depth"): "`objc2-ar-kit` has no `ar_scene_depth` - the depth a drawable holds is the one "
-    "being drawn into, which is not a measurement of the room (see `Session::Depth`)",
-    ("wxr-apple", "depth_sensing"): "as `depth`: no scene-depth binding to sense with",
-    ("wxr-apple", "set_depth_active"): "as `depth`: there is no depth sensing here to pause",
+    ("wxr-apple", "environment_depth"): "`objc2-ar-kit` has no `ar_scene_depth` - the depth a drawable "
+    "holds is the one being drawn into, which is not a measurement of the room (see "
+    "`Session::EnvironmentDepth`)",
+    ("wxr-apple", "depth_sensing"): "as `environment_depth`: no scene-depth binding to sense with",
+    ("wxr-apple", "set_depth_active"): "as `environment_depth`: there is no depth sensing here to "
+    "pause",
     ("wxr-apple", "hit_test_source"): "`objc2-ar-kit` has no raycast; ARKit's mesh could be intersected by "
     "hand, and a hit test the runtime does not itself support is a hit test that answers late",
     ("wxr-apple", "hits"): "as `hit_test_source`",
@@ -766,7 +768,7 @@ ALIASES = {
     "cancel": "fn release_hit_test_source",
     "detectedPlanes": "fn planes",
     "planeSpace": "fn planes",
-    "getDepthInformation": "fn depth",
+    "getDepthInformation": "fn environment_depth",
     "createQuadLayer": "fn layer",
     "createCylinderLayer": "fn layer",
     "createEquirectLayer": "fn layer",

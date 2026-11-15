@@ -29,10 +29,11 @@ pub trait Session: Any {
     /// The compositor's own name for an image. Opaque here, on purpose.
     type Image;
 
-    /// The runtime's own name for a depth buffer, when it has one to hand over - a browser texture, a Vulkan
-    /// image, a scene mesh. An associated type for the same reason [`Session::Image`] is one, and `()` is the
-    /// honest answer for a session with no depth at all.
-    type Depth;
+    /// The runtime's own name for the depth it measured of the room, when it measured any - a browser
+    /// texture, a Vulkan image. Named for the environment because the other depth a session has is the
+    /// attachment an app *draws into*, which arrives with the image and needs no type of its own. An
+    /// associated type like [`Session::Image`], and `()` for a session that measures nothing.
+    type EnvironmentDepth;
 
     /// The backend's own session, when a program needs the platform the core deliberately does not speak -
     /// the core's `as_hal`, explained in the module docs.
@@ -475,13 +476,12 @@ pub trait Session: Any {
     /// `XRFrame.getDepthInformation`, OpenXR's environment depth.
     ///
     /// `None` for a runtime with no depth sensing, for a view it has none for, for one that has paused it, and
-    /// for a backend that never had any - the same answer to a caller asking how far away the wall is, and why
-    /// [`Features::DEPTH`] is what says whether a session has this at all.
+    /// for one that never had any - the same answer, and why [`Features::DEPTH`] says whether this exists.
     ///
     /// Ask once per frame, like a view: the way a runtime delivers depth is a buffer made for the frame and
-    /// taken back at the end of it, and the metadata says what the values in it mean. The buffer is the
-    /// platform's own, and the renderer's importer is what turns it into something to draw with.
-    fn depth(&mut self, _view: usize) -> Option<(&Self::Depth, DepthInfo)> {
+    /// taken back at the end of it, and the metadata says what the values mean. The buffer is the platform's
+    /// own, and the renderer's importer turns it into something to draw with.
+    fn environment_depth(&mut self, _view: usize) -> Option<(&Self::EnvironmentDepth, DepthInfo)> {
         None
     }
 

@@ -94,11 +94,9 @@ impl WebXrSession {
         }
     }
 
-    /// Ask for the binding and the layer, and keep them if the browser gives them.
-    ///
-    /// Three things have to be true and only one is this crate's to arrange: the session needs the `webgpu`
-    /// feature, the device must come from an XR-compatible adapter, and the browser needs the binding. Any
-    /// missing leaves a head and no picture, which is a warning rather than a failure.
+    /// Ask for the binding and the layer, and keep them if the browser gives them: the session needs the
+    /// `webgpu` feature, the device must come from an XR-compatible adapter, and the browser needs the
+    /// binding. Any missing leaves a head and no picture, which is a warning rather than a failure.
     fn start_gpu(&mut self, session: &XrSession) {
         if self.gpu.is_some() || !has_feature(session, "webgpu") {
             return;
@@ -174,9 +172,9 @@ impl wxr::Session for WebXrSession {
     /// sub-image per view that shares both and differs only in which part of the colour one the view draws
     /// into - so a frame here is one image, two viewports, and two array layers when the layer is stereo.
     type Image = FrameImage;
-    /// The depth buffer, as the browser's own `GPUTexture` - which is what `gpu-optimized` depth arrives as,
-    /// and only while the frame it was made for is the frame being drawn.
-    type Depth = JsValue;
+    /// What the browser measured of the room, as its own `GPUTexture` - which is what `gpu-optimized` depth
+    /// arrives as, and only while the frame it was made for is the frame being drawn.
+    type EnvironmentDepth = JsValue;
 
     fn presentation(&self) -> wxr::Presentation {
         wxr::Presentation::Composited
@@ -307,10 +305,8 @@ impl wxr::Session for WebXrSession {
         self.profiles_impl(source, out)
     }
 
-    /// A buzz on one source, which is the gamepad's own `pulse`.
-    ///
-    /// The prompt one where there is a choice between this and `play_pcm`: the standard call is what every
-    /// browser with an actuator implements, and the draft's waveform is meta's and OpenXR's.
+    /// A buzz on one source, which is the gamepad's own `pulse`. The standard call rather than `play_pcm`:
+    /// every browser with an actuator implements this one, and the draft's waveform is Meta's, as in OpenXR.
     fn pulse(
         &mut self,
         source: wxr::InputId,
@@ -434,7 +430,10 @@ impl wxr::Session for WebXrSession {
         self.delete_persistent_anchor_impl(id)
     }
 
-    fn depth(&mut self, view: usize) -> Option<(&Self::Depth, wxr::DepthInfo)> {
+    fn environment_depth(
+        &mut self,
+        view: usize,
+    ) -> Option<(&Self::EnvironmentDepth, wxr::DepthInfo)> {
         self.depth_image = None;
         // A runtime that has paused depth has nothing for this frame to measure, even if the binding would
         // still answer.

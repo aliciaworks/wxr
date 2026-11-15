@@ -212,7 +212,7 @@ struct CompositorDepth;
 
 impl Import for CompositorDepth {
     type Image = u32;
-    type Depth = ();
+    type EnvironmentDepth = ();
 
     fn texture(
         &self,
@@ -223,7 +223,7 @@ impl Import for CompositorDepth {
         Plain.texture(device, meta, image)
     }
 
-    fn depth(
+    fn target_depth(
         &self,
         device: &wgpu::Device,
         meta: ImageMeta,
@@ -263,7 +263,7 @@ fn the_compositor_depth_is_let_go_when_the_frame_is_given_back() {
         .expect("the frame draws");
 
     assert!(
-        renderer.session_depth.is_none(),
+        renderer.target_depth.is_none(),
         "the last view's depth is the frame's, and `end` has handed the frame back"
     );
 }
@@ -276,7 +276,7 @@ struct Keeping {
 
 impl Import for Keeping {
     type Image = u32;
-    type Depth = ();
+    type EnvironmentDepth = ();
 
     fn texture(
         &self,

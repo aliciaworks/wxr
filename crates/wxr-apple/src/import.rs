@@ -19,7 +19,7 @@ impl wxr_render::Import for Images {
     /// The colour texture and the depth buffer the drawable gave with it, which are one image here.
     type Image = FrameImage;
     /// No depth to hand over.
-    type Depth = ();
+    type EnvironmentDepth = ();
 
     fn texture(
         &self,
@@ -48,7 +48,7 @@ impl wxr_render::Import for Images {
     /// The same plumbing as the colour one, and for the same reason: a `CompositorServices` drawable gives
     /// both, its depth is `depth32float`, and a renderer that made its own would be submitting a picture
     /// without the depth that goes with it.
-    fn depth(
+    fn target_depth(
         &self,
         device: &wgpu::Device,
         meta: wxr::ImageMeta,

@@ -45,7 +45,8 @@ fn turn(session: &mut wxr_openxr::OpenXrSession) {
 /// `features()` and the answer the matching method gives are the same fact read in two places.
 ///
 /// The layer test can check both directions because a layer is either made or refused and that is the whole
-/// answer. These are not all like that - `Session::depth` is `Option` on a runtime that has one and has not
+/// answer. These are not all like that - `Session::environment_depth` is `Option` on a runtime that has
+/// one and has not
 /// been asked yet - so the direction that can be checked exactly is the one checked exactly: a bit **not**
 /// set means the call refuses, and refuses with `Unsupported` rather than an error about something else. A
 /// bit set for a method that says the platform cannot do it is a promise the session is not keeping, which
@@ -181,9 +182,9 @@ fn a_world_modelling_bit_is_the_same_fact_as_its_method() {
     // first ask - so the ask is made here either way, and what it proves depends on which runtime this is.
     //
     // No image comes back from it even on a headset: the runtime hands one over only between a frame's
-    // begin and its end, and this suite has neither, so the acquire is refused and `depth` answers `None`.
+    // begin and its end, and this suite has neither, so the acquire is refused and `environment_depth` answers `None`.
     // What the ask does prove is the start, which is the whole of what the laziness is for.
-    let first = session.depth(0);
+    let first = session.environment_depth(0);
     if features.contains(wxr::Features::DEPTH) {
         assert_eq!(
             session.depth_sensing().and_then(|sensing| sensing.active),

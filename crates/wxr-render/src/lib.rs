@@ -111,9 +111,11 @@ pub trait Import {
     /// for.
     type Image;
 
-    /// The session's own name for a depth buffer, when it has one - [`wxr::Session::Depth`] on the session this
-    /// is written for. `()` for a backend with none, which is what a session that never measured anything is.
-    type Depth;
+    /// The session's own name for the depth it measured of the room - [`wxr::Session::EnvironmentDepth`] on
+    /// the session this is written for. `()` for a backend with none, which is a session that measured
+    /// nothing. The *other* depth here is the attachment a pass draws into, and it needs no type: it comes
+    /// with the image and is the same texture the compositor would otherwise make for the app.
+    type EnvironmentDepth;
 
     /// Wrap one of the session's images.
     ///
@@ -127,17 +129,19 @@ pub trait Import {
         image: &Self::Image,
     ) -> Option<wgpu::Texture>;
 
-    /// The depth buffer this frame should be drawn with, if the session has one to offer.
+    /// The depth attachment this frame's image carries, if the session's compositor takes one.
     ///
-    /// A compositor that gets depth back can reproject the frame - move it to match where the head really is
-    /// when the picture reaches the display - and two of the three here hand one over: a `CompositorServices`
-    /// drawable has a depth texture, and a WebXR/WebGPU sub-image has a `depthStencilTexture`. Drawing into
-    /// the compositor's own is the whole difference between submitting depth and keeping it.
+    /// It is the *target*: the buffer a pass is drawn into, which the compositor then reads to reproject the
+    /// frame - move it to match where the head really is when the picture reaches the display. Two of the
+    /// three backends hand one over with every image: a `CompositorServices` drawable has a depth texture, and
+    /// a WebXR/WebGPU sub-image has a `depthStencilTexture`. Drawing into the compositor's own is the whole
+    /// difference between submitting depth and keeping it, and a frame drawn into a private one still reaches
+    /// the display, just without the reprojection.
     ///
-    /// `None` - the default - is a session with no depth to give, and then the renderer makes its own. So is a
-    /// session whose depth is not the format this renderer's pipeline was built for: the renderer decides
-    /// that per view, and falling back is deliberate.
-    fn depth(
+    /// `None` - the default - is a session whose images carry no depth, and then the renderer makes its own.
+    /// So is an attachment of a format this renderer's pipeline was not built for: the renderer decides that
+    /// per view, and falling back is deliberate.
+    fn target_depth(
         &self,
         _device: &wgpu::Device,
         _meta: ImageMeta,
@@ -148,16 +152,17 @@ pub trait Import {
 
     /// The room's depth for a view, as a texture to test fragments against, when the session measured one.
     ///
-    /// [`Import::depth`] above is the buffer a pass is *drawn into*; this is the measurement of the real world
-    /// beside it, and it is what a scene throws occluded fragments away against. The metadata comes along
-    /// because an importer needs the buffer's size to describe it, and a shader needs what its values mean.
+    /// [`Import::target_depth`] above is the buffer a pass is *drawn into*; this is the measurement of the real
+    /// world beside it, and it is what a scene throws occluded fragments away against. The metadata comes
+    /// along because an importer needs the buffer's size to describe it, and a shader needs what its values
+    /// mean.
     ///
     /// `None` - the default - is a session with no depth to test against, and then the scene draws everything.
-    fn session_depth(
+    fn environment_depth(
         &self,
         _device: &wgpu::Device,
         _info: wxr::DepthInfo,
-        _depth: &Self::Depth,
+        _depth: &Self::EnvironmentDepth,
     ) -> Option<wgpu::Texture> {
         None
     }
@@ -215,9 +220,9 @@ pub struct Renderer {
     /// One private depth buffer per image, made on first use - the same shape as the image it tests against,
     /// and what a session with no depth of its own gets. Remade when that image changes shape.
     depth_textures: Vec<Option<OwnDepth>>,
-    /// The session's depth for the view being drawn, kept only as long as the view is: a compositor's depth
+    /// The compositor's depth for the view being drawn, kept only as long as the view is: a compositor's depth
     /// belongs to the frame it came with, like its colour does.
-    session_depth: Option<wgpu::Texture>,
+    target_depth: Option<wgpu::Texture>,
     /// The convention the target insists on, which decides how the depth buffer compares and what an empty
     /// one is worth.
     depth: Depth,
@@ -234,7 +239,7 @@ impl Renderer {
             },
             scene: None,
             depth_textures: Vec::new(),
-            session_depth: None,
+            target_depth: None,
             depth: Depth::default(),
         }
     }
@@ -289,12 +294,12 @@ impl Renderer {
     ) -> Result<usize, wxr::Error>
     where
         S: wxr::Session,
-        I: Import<Image = S::Image, Depth = S::Depth>,
+        I: Import<Image = S::Image, EnvironmentDepth = S::EnvironmentDepth>,
     {
-        // A session's depth is the frame's, and the last frame's is already over - including on a frame that
-        // will not draw at all. Dropping it here is what keeps a compositor's buffer from being held by a
+        // The compositor's depth is the frame's, and the last frame's is already over - including on a frame
+        // that will not draw at all. Dropping it here is what keeps a compositor's buffer from being held by a
         // renderer that is waiting for the next picture.
-        self.session_depth = None;
+        self.target_depth = None;
         if !frame.is_render() {
             return Ok(0);
         }
@@ -325,8 +330,8 @@ impl Renderer {
             // The room's depth, if this session measured any: imported and let go of in one breath, because the
             // buffer belongs to the frame and the session cannot be asked for anything else while a reference
             // into it is held.
-            let occlusion = session.depth(index).and_then(|(depth, info)| {
-                let texture = importer.session_depth(device, info, depth)?;
+            let occlusion = session.environment_depth(index).and_then(|(depth, info)| {
+                let texture = importer.environment_depth(device, info, depth)?;
                 // A room measured once per eye is an array, and this eye is one slice of a depth map that has
                 // one picture per eye. A buffer that is one picture has a single slice, and the clamp in
                 // `eye_layer` leaves the left eye's zero alone.
@@ -411,13 +416,13 @@ impl Renderer {
         // The last view is over too, and its depth buffer belongs to the frame that `end` is about to hand
         // back. Letting it go here means a session that is waiting for a slow compositor is not also holding
         // the previous frame's depth - which is the whole reason the field is per view rather than per renderer.
-        self.session_depth = None;
+        self.target_depth = None;
         session.end(frame)?;
         Ok(drawn)
     }
 
-    /// The depth buffer for this view: the session's if it offered one this renderer can draw into, and a
-    /// private one otherwise.
+    /// The depth buffer for this view: the compositor's if the session's image carries one this renderer can
+    /// draw into, and a private one otherwise.
     ///
     /// The format is what decides it, and the check is not a formality: a pipeline declares the depth format it
     /// was built for, and a pass has to attach one of that format - so a compositor handing over another one is
@@ -431,17 +436,19 @@ impl Renderer {
         index: usize,
         image: &I::Image,
     ) -> Option<&wgpu::Texture> {
-        // The previous view's session depth is not this view's, even in the same frame: each is a separate
+        // The previous view's target depth is not this view's, even in the same frame: each is a separate
         // attachment for a separate pass, and only the one being returned has to outlive the call.
-        self.session_depth = None;
-        if let Some(session) = importer.depth(device, meta, image) {
-            if session.format() == DEPTH_FORMAT {
-                self.session_depth = Some(session);
-                return self.session_depth.as_ref();
+        self.target_depth = None;
+        if let Some(target) = importer.target_depth(device, meta, image) {
+            if target.format() == DEPTH_FORMAT {
+                self.target_depth = Some(target);
+                return self.target_depth.as_ref();
             }
             log::warn!(
-                "wxr-render: this session's depth is {:?} and the pipeline was built for {DEPTH_FORMAT:?};                  drawing into a private one, which loses the reprojection and not the frame",
-                session.format()
+                "wxr-render: the compositor's depth is {:?} and the pipeline was built for \
+                 {DEPTH_FORMAT:?}; drawing into a private one, which loses the reprojection and not \
+                 the frame",
+                target.format()
             );
         }
         self.private_depth(device, meta, index)

@@ -97,7 +97,8 @@ impl WebXrSession {
     ///
     /// Called when a frame is begun and when it is given back, because those are the two ends of the only
     /// window in which a browser's `XRFrame` and its images are valid. A frame left in the slot between them
-    /// is a frame `views`, `depth` or `anchor` would answer from after the browser had taken it back.
+    /// is a frame `views`, `environment_depth` or `anchor` would answer from after the browser had taken
+    /// it back.
     fn clear_frame(&mut self) {
         self.current = None;
         self.frame_views.clear();

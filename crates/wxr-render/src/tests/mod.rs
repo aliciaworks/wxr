@@ -168,7 +168,7 @@ struct Recording {
 
 impl Import for Recording {
     type Image = u32;
-    type Depth = ();
+    type EnvironmentDepth = ();
 
     fn texture(
         &self,
@@ -258,7 +258,7 @@ struct WrongDepth;
 
 impl Import for WrongDepth {
     type Image = u32;
-    type Depth = ();
+    type EnvironmentDepth = ();
 
     fn texture(
         &self,
@@ -269,7 +269,7 @@ impl Import for WrongDepth {
         Plain.texture(device, meta, image)
     }
 
-    fn depth(
+    fn target_depth(
         &self,
         device: &wgpu::Device,
         meta: ImageMeta,
@@ -293,7 +293,7 @@ impl Import for WrongDepth {
 }
 
 #[test]
-fn a_session_depth_of_another_format_falls_back_to_a_private_one() {
+fn a_compositors_depth_of_another_format_falls_back_to_a_private_one() {
     let Some((_turn, device, queue)) = device() else {
         return;
     };
@@ -353,7 +353,7 @@ struct Plain;
 
 impl Import for Plain {
     type Image = u32;
-    type Depth = ();
+    type EnvironmentDepth = ();
 
     fn texture(
         &self,

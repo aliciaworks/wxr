@@ -20,7 +20,7 @@ struct Keeping {
 
 impl Import for Keeping {
     type Image = u32;
-    type Depth = ();
+    type EnvironmentDepth = ();
 
     fn texture(
         &self,
@@ -56,7 +56,7 @@ struct Refused;
 
 impl Import for Refused {
     type Image = u32;
-    type Depth = ();
+    type EnvironmentDepth = ();
 
     fn texture(
         &self,

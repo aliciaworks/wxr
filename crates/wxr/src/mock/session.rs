@@ -17,7 +17,7 @@ impl MockSession {
 
 impl Session for MockSession {
     type Image = u32;
-    type Depth = ();
+    type EnvironmentDepth = ();
 
     fn presentation(&self) -> Presentation {
         Presentation::Composited

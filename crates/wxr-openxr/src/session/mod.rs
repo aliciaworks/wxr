@@ -12,9 +12,9 @@ mod layers;
 mod planes;
 mod state;
 
-// The types the four world-modelling modules make, named here so `state` can hold them and the trait block
-// below can point at them. `DepthImage` is public because it is this backend's `Session::Depth` - a caller
-// has to be able to name what a depth query hands back, however it reads it.
+// The types the four world-modelling modules make, so `state` can hold them and the trait block below can
+// point at them. `EnvironmentDepthImage` is public because it is this backend's `Session::EnvironmentDepth`:
+// a caller has to be able to name what a depth query hands back.
 use anchors::Anchors;
 use depth::{EnvironmentDepth, MeasuredDepth};
 use hits::Raycaster;
@@ -22,7 +22,7 @@ use planes::PlaneDetector;
 
 pub(crate) use state::{HapticExtensions, InputExtensions, LayerExtensions, SpatialExtensions};
 
-pub use depth::DepthImage;
+pub use depth::EnvironmentDepthImage;
 pub use state::OpenXrSession;
 use state::*;
 
@@ -43,9 +43,9 @@ mod making;
 
 impl wxr::Session for OpenXrSession {
     type Image = u64;
-    /// The runtime's own depth map for this frame, which is a texture the *scene* samples rather than a
-    /// depth layer to submit - `XR_META_environment_depth` measures the room for the app to draw against.
-    type Depth = DepthImage;
+    /// The runtime's own depth map for this frame, a texture the *scene* samples rather than a layer to
+    /// submit - `XR_META_environment_depth` measures the room for the app to draw against.
+    type EnvironmentDepth = EnvironmentDepthImage;
 
     fn presentation(&self) -> wxr::Presentation {
         wxr::Presentation::Composited
@@ -63,10 +63,8 @@ impl wxr::Session for OpenXrSession {
         self.features_impl()
     }
 
-    /// The rates the runtime offers, which is `xrEnumerateDisplayRefreshRatesFB`.
-    ///
-    /// A runtime without the extension offers none, and a caller that finds the list empty keeps the rate the
-    /// display is already at.
+    /// The rates the runtime offers, which is `xrEnumerateDisplayRefreshRatesFB`. A runtime without the
+    /// extension offers none, and a caller that finds the list empty keeps the rate the display is already at.
     fn refresh_rates(&mut self, out: &mut Vec<f32>) {
         self.refresh_rates_impl(out)
     }
@@ -455,18 +453,19 @@ impl wxr::Session for OpenXrSession {
         self.release_hit_test_source_impl(source)
     }
 
-    /// What the runtime measured of the room, which is `XR_META_environment_depth`'s depth map.
-    ///
-    /// OpenXR's depth is a buffer the *runtime* fills and the app reads, acquired once a frame between the
-    /// frame being begun and ended. What comes back is the image and what its values mean.
-    fn depth(&mut self, view: usize) -> Option<(&Self::Depth, wxr::DepthInfo)> {
-        self.depth_impl(view)
+    /// What the runtime measured of the room, which is `XR_META_environment_depth`'s depth map: a buffer the
+    /// *runtime* fills and the app reads, acquired once a frame between the frame being begun and ended. What
+    /// comes back is the image and what its values mean.
+    fn environment_depth(
+        &mut self,
+        view: usize,
+    ) -> Option<(&Self::EnvironmentDepth, wxr::DepthInfo)> {
+        self.environment_depth_impl(view)
     }
 
-    /// What this session's depth sensing is, once it has a depth provider.
-    ///
-    /// `XR_META_environment_depth` is one measurement the app asked for, at a resolution the runtime picked and
-    /// in a buffer the runtime owns - WebXR's `cpu-optimized`, at the platform's own resolution.
+    /// What this session's depth sensing is, once it has a depth provider: `XR_META_environment_depth` is one
+    /// measurement the app asked for, at a resolution the runtime picked and in a buffer the runtime owns -
+    /// WebXR's `cpu-optimized`, at the platform's own resolution.
     fn depth_sensing(&self) -> Option<wxr::DepthSensing> {
         self.depth_sensing_impl()
     }

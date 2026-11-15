@@ -156,7 +156,7 @@ extern "C" {
     ) -> Result<XrgpuSubImage, JsValue>;
 
     /// `XRGPUBinding.getDepthInformation`, which throws for a session that was not configured for GPU depth -
-    /// which is the answer `Session::depth` gives as `None`.
+    /// which is the answer `Session::environment_depth` gives as `None`.
     #[wasm_bindgen(method, catch, js_name = "getDepthInformation")]
     fn get_depth_information_caught(
         this: &XrgpuBinding,

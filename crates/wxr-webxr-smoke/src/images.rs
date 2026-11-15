@@ -120,7 +120,7 @@ pub(super) fn check_images(
         sensing.ty,
         sensing.active.unwrap_or(false)
     ));
-    let Some((_, info)) = session.depth(0) else {
+    let Some((_, info)) = session.environment_depth(0) else {
         return Err("a session configured for GPU depth gave no depth for view 0".into());
     };
     if info.size != meta.extent {
@@ -160,7 +160,7 @@ pub(super) fn check_images(
         Some(false) => {}
         other => return Err(format!("paused depth reports active {other:?}")),
     }
-    if session.depth(0).is_some() {
+    if session.environment_depth(0).is_some() {
         return Err("a paused session still measured the room".into());
     }
     if let Err(error) = session.set_depth_active(true) {
@@ -170,7 +170,7 @@ pub(super) fn check_images(
         Some(true) => {}
         other => return Err(format!("resumed depth reports active {other:?}")),
     }
-    if session.depth(0).is_none() {
+    if session.environment_depth(0).is_none() {
         return Err("a resumed session stopped measuring the room".into());
     }
     say("depth was paused, asked twice, and resumed");

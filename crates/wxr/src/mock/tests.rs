@@ -172,7 +172,7 @@ fn a_space_with_no_boundary_has_an_empty_one() {
 #[test]
 fn a_backend_without_depth_sensing_answers_none() {
     let mut session = running();
-    assert!(session.depth(0).is_none());
+    assert!(session.environment_depth(0).is_none());
     // Not `Features::NONE`: the mock's controllers have actuators now, so haptics is a bit it does have. What
     // this test is about is the bit it does not.
     assert!(!session.features().contains(crate::Features::DEPTH));

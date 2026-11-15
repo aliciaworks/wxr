@@ -196,7 +196,8 @@ impl wxr::Backend for WebXr {
         }
         init.set_optional_features(&features(&optional));
         // Depth is asked for as `gpu-optimized`, which is the delivery that hands over a texture rather than
-        // bytes - the one the core's `Session::Depth` is shaped for, and the one a renderer can test against.
+        // bytes - the one the core's `Session::EnvironmentDepth` is shaped for, and the one a renderer can test
+        // against.
         // `depth-sensing` as a feature is not enough: the specification wants this key beside it whenever the
         // feature is granted.
         if mode == wxr::SessionMode::ImmersiveAr {

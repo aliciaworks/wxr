@@ -28,15 +28,15 @@ column only on a Mac, since that one counts the SDK's own headers rather than an
 | --- | ---: | ---: | ---: |
 | **Native API reached** - of each backend's own spec | 219/290 | 77/551 | 103/618 |
 | *as a percentage* | 76% | 14% | 17% |
-| **WebXR API reached** - of the whole API | 358/452 | 238/452 | 229/452 |
-| *as a percentage* | 79% | 53% | 51% |
+| **WebXR API reached** - of the whole API | 358/452 | 238/452 | 226/452 |
+| *as a percentage* | 79% | 53% | 50% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
 Input, Depth Sensing, Hit Test, Lighting Estimation, Anchors, Plane Detection, the AR Module, DOM Overlays
 and the Gamepads module - counted member by member, with the community-group drafts left out. It is a
 *floor*: the core gives a concept its own name (`requestReferenceSpace` is `space`) and both native backends
 go through the core, so a member a backend serves can still share no name with anything in its source. The
-core itself names 312 of the 452.
+core itself names 310 of the 452.
 
 ## The core is small on purpose
 
@@ -82,11 +82,12 @@ them; the set is how an app knows what to offer rather than what it can survive.
 
 Depth is the one place the specification hands over a *delivery* as well as a thing, and it is worth naming.
 WebXR can give depth as bytes (`cpu-optimized`) or as a texture (`gpu-optimized`), one per session, and mirroring
-that split into the core was a mistake: it is the web platform's constraint, not the concept. `Session::Depth`
-is the runtime's own buffer - the same associated type `Session::Image` is for colour - and the backend picks the
-delivery, which for WebXR is the texture, because a texture is what a renderer can test against. A scalar
-distance is a convenience of the bytes mode and is not in the core: reading a buffer back is a `copy`, the way
-`wgpu`'s is, not a second way to ask.
+that split into the core was a mistake: it is the web platform's constraint, not the concept.
+`Session::EnvironmentDepth` is the runtime's own buffer - the same associated type `Session::Image` is for
+colour, and named for the room rather than for depth in general because the attachment a pass draws into is the
+image's business - and the backend picks the delivery, which for WebXR is the texture, because a texture is what
+a renderer can test against. A scalar distance is a convenience of the bytes mode and is not in the core:
+reading a buffer back is a `copy`, the way `wgpu`'s is, not a second way to ask.
 
 Three things the core deliberately does not know:
 

@@ -14,7 +14,7 @@ impl Features {
     /// The session itself, which is every session.
     pub const NONE: Self = Self(0);
 
-    /// What the runtime measured of the real world per eye: [`crate::Session::depth`].
+    /// What the runtime measured of the real world per eye: [`crate::Session::environment_depth`].
     pub const DEPTH: Self = Self(1 << 0);
     /// The surfaces a runtime has found: [`crate::Session::planes`].
     pub const PLANES: Self = Self(1 << 1);

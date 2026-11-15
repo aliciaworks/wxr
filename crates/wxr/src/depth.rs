@@ -6,9 +6,9 @@ use crate::target::Extent2d;
 /// What a runtime measured of the real world for one eye, which is WebXR's `XRDepthInformation`.
 ///
 /// The shape of the depth buffer, what its values are, and the transform a shader needs to index it. The
-/// buffer itself is not here but in [`crate::Session::Depth`] - this platform's own name for it, the same
-/// split [`crate::Session::Image`] has for colour and for the same reason. What this is, is the part that
-/// says what that buffer means.
+/// buffer itself is not here but in [`crate::Session::EnvironmentDepth`] - this platform's own name for it,
+/// the same split [`crate::Session::Image`] has for colour and for the same reason. What this is, is the part
+/// that says what that buffer means.
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct DepthInfo {
     /// How many columns and rows the depth buffer has.

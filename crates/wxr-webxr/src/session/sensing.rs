@@ -124,7 +124,8 @@ impl WebXrSession {
         }
         // Depth is granted by a feature and readable only through the binding that gives a texture: a browser
         // that granted it and no binding is a depth this backend cannot hand over. The usage matters too,
-        // because a CPU-optimised session delivers bytes rather than the texture [`wxr::Session::Depth`] is.
+        // because a CPU-optimised session delivers bytes rather than the texture
+        // [`wxr::Session::EnvironmentDepth`] is.
         if has_feature(&session, "depth-sensing")
             && self.gpu.is_some()
             && session.depth_usage() != XrDepthUsage::CpuOptimized

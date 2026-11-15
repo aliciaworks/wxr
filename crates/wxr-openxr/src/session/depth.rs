@@ -8,33 +8,30 @@
 //! taken for a frame with `xrAcquireEnvironmentDepthImageMETA` and given back by the frame ending.
 //!
 //! The cost of that is a rule with teeth: at most one acquire per frame, and only between `xrBeginFrame` and
-//! `xrEndFrame`. The core's [`wxr::Session::depth`] is asked once *per view*, and asking twice is
+//! `xrEndFrame`. The core's [`wxr::Session::environment_depth`] is asked once *per view*, and asking twice is
 //! `XR_ERROR_LIMIT_REACHED` - so the acquire happens on the first ask of a frame and both views read the one
 //! measurement. That is why the provider and its swapchain live in [`EnvironmentDepth`] and the measurement
 //! is carried separately: one belongs to the session and one belongs to the frame.
 //!
 //! **What OpenXR does not give, and this file does not invent.** The extension hands back a D16 buffer of
-//! *window* depth plus the near and far planes it was rendered with, and WebXR's depth sensing hands back a
-//! `rawValueToMeters` scalar and a `normDepthBufferFromNormView` transform. Neither of the two platforms can
-//! answer in the other's terms, and the core says so rather than hiding it: [`wxr::DepthEncoding`] is the two
-//! encodings as a choice, so a consumer has to see which one it got before it can turn a number into a
-//! distance. The planes this file has always been given and now reports - see [`EnvironmentDepth::info`],
-//! which also names the one assumption no machine here can check.
+//! *window* depth plus the near and far planes it was rendered with, where WebXR hands back a
+//! `rawValueToMeters` scalar and a `normDepthBufferFromNormView` transform. Neither platform can answer in the
+//! other's terms, so [`wxr::DepthEncoding`] is a choice a consumer has to read; the planes are reported - see
+//! [`EnvironmentDepth::info`], which also names the one assumption no machine here can check.
 //!
-//! The transform still has no counterpart, and that one is not a gap: what WebXR's carries beyond a pose is a
-//! projection along `z`, and a rigid pose cannot carry a projection at all. What it would say is instead what
-//! the encoding says.
+//! The transform still has no counterpart, and that is not a gap: what WebXR's carries beyond a pose is a
+//! projection along `z`, which a rigid pose cannot carry at all; what it would say is what the encoding says.
 
 use super::*;
 
 /// The runtime's depth map, as the renderer names one.
 ///
-/// This is [`wxr::Session::Depth`] for this backend, and it carries the format for the same reason
+/// This is [`wxr::Session::EnvironmentDepth`] for this backend, and it carries the format for the same reason
 /// [`wxr::Session::Image`] does not have to: the runtime chose it (`VK_FORMAT_D16_UNORM`, always, and the
 /// app is not asked) and the core's vocabulary has no depth formats in it at all - [`wxr::ColorFormat`] is
 /// colour. So the number travels, and the importer is the one that names it.
 #[derive(Clone, Copy, Debug)]
-pub struct DepthImage {
+pub struct EnvironmentDepthImage {
     /// One of the depth swapchain's images, as the runtime names it - a `VkImage`, which on this platform is
     /// an integer.
     pub(crate) image: u64,
@@ -59,7 +56,7 @@ pub(super) struct EnvironmentDepth {
     /// is what the spec promises and what makes it safe to hand one of them to a renderer.
     images: Vec<u64>,
     /// What one image is: the format the extension mandates, and the size the runtime chose.
-    depth: DepthImage,
+    depth: EnvironmentDepthImage,
     /// Whether the provider has been started, which the runtime insists happens once and only once.
     started: bool,
     /// Whether the near and far planes have been said out loud yet, which is once and not every frame.
@@ -198,7 +195,7 @@ impl EnvironmentDepth {
             provider,
             swapchain,
             images: images.into_iter().map(|image| image.image).collect(),
-            depth: DepthImage {
+            depth: EnvironmentDepthImage {
                 image: 0,
                 format: ash::vk::Format::D16_UNORM.as_raw() as u32,
                 extent: wxr::Extent2d::new(state.width, state.height),
@@ -292,7 +289,7 @@ impl EnvironmentDepth {
             return None;
         };
         Some(MeasuredDepth {
-            image: DepthImage {
+            image: EnvironmentDepthImage {
                 image: *source,
                 ..self.depth
             },
@@ -361,7 +358,10 @@ impl OpenXrSession {
     /// array layers, and what would differ per eye is its field of view and pose - which the core's
     /// [`wxr::DepthInfo`] has nowhere for. A renderer that wants the eye asks the frame's views, which are
     /// the same ones the measurement was taken in.
-    pub(super) fn depth_impl(&mut self, view: usize) -> Option<(&DepthImage, wxr::DepthInfo)> {
+    pub(super) fn environment_depth_impl(
+        &mut self,
+        view: usize,
+    ) -> Option<(&EnvironmentDepthImage, wxr::DepthInfo)> {
         // Only inside a frame: the acquire is a call between `xrBeginFrame` and `xrEndFrame`, and the
         // image belongs to that pair. `end` drops `held`, so a caller between frames takes nothing.
         self.held?;
@@ -413,7 +413,7 @@ impl OpenXrSession {
 
 /// What this backend holds for a frame's measurement: the image, and what its values mean.
 pub(super) struct MeasuredDepth {
-    pub(super) image: DepthImage,
+    pub(super) image: EnvironmentDepthImage,
     pub(super) info: wxr::DepthInfo,
 }
 

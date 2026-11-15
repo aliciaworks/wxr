@@ -25,7 +25,8 @@
 //! colour one: `COLOR_ATTACHMENT | SAMPLED`, a colour format picked off the runtime's list. Depth wants a depth
 //! format off that same list, `DEPTH_STENCIL_ATTACHMENT`, a second swapchain acquired and released in step with
 //! the first, and a `wgpu` texture of its own for the renderer to draw into. And the core has nowhere for an app
-//! to say *what* it wants submitted: [`wxr::Session::depth`] is the runtime measuring the room, which is the
+//! to say *what* it wants submitted: [`wxr::Session::environment_depth`] is the runtime measuring the room,
+//! which is the
 //! other direction, and [`wxr::Session::set_depth_range`] is only the two planes. So it is a question the core's
 //! vocabulary does not have an answer to yet, which is a design change across three crates rather than a patch
 //! to this one.
@@ -36,7 +37,8 @@
 //!
 //! **Reading the room is a different extension, and it is driven by hand.** `XR_EXT_plane_detection`,
 //! `XR_FB_spatial_entity`, `XR_META_environment_raycast` and `XR_META_environment_depth` are the four that
-//! answer the core's `planes`, `anchor`, `hits` and `depth`, and `openxr` 0.22 loads all four's function
+//! answer the core's `planes`, `anchor`, `hits` and `environment_depth`, and `openxr` 0.22 loads all four's
+//! function
 //! pointers and wraps none of them - so each of the four is a state machine this crate drives over
 //! `openxr-sys` structs and raw pointers, in a module of its own under `session/`. Two of them need care that
 //! is not visible from the call site: `XR_META_environment_raycast` cannot be enabled without `XR_EXT_future`
@@ -72,7 +74,7 @@ mod input;
 mod session;
 
 pub use import::Images;
-pub use session::{DepthImage, OpenXrSession};
+pub use session::{EnvironmentDepthImage, OpenXrSession};
 pub(crate) use session::{HapticExtensions, InputExtensions, LayerExtensions, SpatialExtensions};
 
 /// The pose and velocity conversions `input` reaches by name, kept at the root so a module can say

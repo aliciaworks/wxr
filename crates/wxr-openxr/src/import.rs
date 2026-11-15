@@ -16,7 +16,7 @@
 
 use ash::vk::Handle as _;
 
-use crate::session::DepthImage;
+use crate::session::EnvironmentDepthImage;
 
 /// The compositor's images, as the renderer's importer.
 #[derive(Clone, Copy, Debug, Default)]
@@ -25,7 +25,7 @@ pub struct Images;
 impl wxr_render::Import for Images {
     type Image = u64;
     /// The runtime's own depth map, which is a texture the scene samples rather than a layer to submit.
-    type Depth = DepthImage;
+    type EnvironmentDepth = EnvironmentDepthImage;
 
     fn texture(
         &self,
@@ -56,11 +56,11 @@ impl wxr_render::Import for Images {
     /// room into it and the scene reads it to decide what is behind what. The format is `VK_FORMAT_D16_UNORM`
     /// and the runtime chose it, so it is named here rather than carried in [`wxr::ImageMeta`], whose
     /// formats are all colour.
-    fn session_depth(
+    fn environment_depth(
         &self,
         device: &wgpu::Device,
         info: wxr::DepthInfo,
-        depth: &Self::Depth,
+        depth: &Self::EnvironmentDepth,
     ) -> Option<wgpu::Texture> {
         let size = wgpu::Extent3d {
             width: info.size.width,
