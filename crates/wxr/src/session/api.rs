@@ -89,9 +89,8 @@ pub trait Session: Any {
     }
 
     /// Start or stop the runtime measuring the room - WebXR's `resumeDepthSensing` and `pauseDepthSensing`.
-    /// A request: a runtime with no depth to pause, or no way to pause it, answers [`Error::Unsupported`].
-    /// Asking for the state the runtime already reports is a no-op, so a caller may say what it wants every
-    /// frame - and that is also the case the browser's own methods refuse, being transitions.
+    /// A request: no depth to pause is [`Error::Unsupported`], and asking for the state already reported is a
+    /// no-op, so a caller may say what it wants every frame - the case the browser's own methods refuse.
     fn set_depth_active(&mut self, _active: bool) -> Result<(), Error> {
         Err(Error::Unsupported("pausing depth sensing".into()))
     }
@@ -108,11 +107,9 @@ pub trait Session: Any {
     fn set_depth_range(&mut self, _range: DepthRange) {}
 
     /// How much foveation the compositor should apply, from `0` (none) to `1` (the most it has) - WebXR's
-    /// `fixedFoveation`.
-    ///
-    /// It is the fill-rate lever, and it is a *request*: a compositor that does not foveate ignores it, which
-    /// is why it is a knob and not a [`Features`] bit. Nothing is sent by default, which keeps the runtime's
-    /// own choice.
+    /// `fixedFoveation`. It is the fill-rate lever, and it is a *request*: a compositor that does not foveate
+    /// ignores it, which is why it is a knob rather than a [`Features`] bit. Nothing is sent by default, which
+    /// keeps the runtime's own choice.
     fn set_foveation(&mut self, _amount: f32) {}
 
     /// The refresh rates the display offers, in hertz, appended to `out` - `XR_FB_display_refresh_rate`'s
@@ -250,6 +247,9 @@ pub trait Session: Any {
     fn begin(&mut self, now: Duration, out: &mut Frame) -> Result<(), Error>;
 
     /// Fill in the views for the frame just begun, in the space given.
+    ///
+    /// The last answer is replaced rather than added to - head, eyes and speed together, as [`Frame::reset`]
+    /// says - so asking twice is two answers to one question, and a call that cannot locate leaves neither.
     fn views(&mut self, space: ReferenceSpace, out: &mut Frame) -> Result<(), Error>;
 
     /// Fill in what the user is holding, in the space given.

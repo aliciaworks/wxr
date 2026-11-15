@@ -149,12 +149,11 @@ impl AppleSession {
         out: &mut wxr::Frame,
     ) -> Result<(), wxr::Error> {
         // Asking twice replaces the eyes rather than adding a second pair to the same frame, and a call that
-        // fails replaces them with nothing: a caller that logs a `NoSpace` and ends the frame must not have
-        // the last call's eyes presented at a head pose from the space in that call.
-        out.views_mut().clear();
-        // And the head's speed, which this backend has none of: `CompositorServices` reports a device
-        // transform per frame and no velocity, so `None` is the answer rather than a measured zero.
-        out.motion = None;
+        // fails replaces the whole answer with nothing: a caller that logs a `NoSpace` and ends the frame must
+        // not have the last call's eyes presented at a head pose from that call's space. `reset` also leaves
+        // the speed at `None`, which is this backend's answer anyway: `CompositorServices` reports a device
+        // transform per frame and no velocity.
+        out.reset();
         if !self.has_space(space) {
             return Err(wxr::Error::NoSpace(space.kind));
         }

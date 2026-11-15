@@ -164,13 +164,11 @@ impl WebXrSession {
         space: wxr::ReferenceSpace,
         out: &mut wxr::Frame,
     ) -> Result<(), wxr::Error> {
-        // This frame's eyes replace the last answer rather than adding to it. The same is true of the
-        // browser's views the depth pass is indexed by: a retry that returned early must not leave a count
-        // that names views no longer in the frame.
-        out.views_mut().clear();
-        // Nor is the head still going at last call's speed, for the same reason: this call's answer may be no
-        // views at all, and a speed with no head is a speed for the wrong frame.
-        out.motion = None;
+        // This frame's eyes replace the last answer rather than adding to it - and so do the head they hang
+        // from and its speed, cleared before anything here can fail: a retry that answers nothing must not
+        // leave the first call's head over no eyes. The browser's views the depth pass is indexed by go too,
+        // so a retry that returned early leaves no count that names views no longer in the frame.
+        out.reset();
         self.frame_views.clear();
         // Nor is the picture still this answer's: the sub-image was taken for the eyes that were just dropped,
         // and a caller left holding it has a texture with no viewport to draw it through. Clearing here rather

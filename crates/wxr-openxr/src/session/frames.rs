@@ -176,12 +176,11 @@ impl OpenXrSession {
         space: wxr::ReferenceSpace,
         out: &mut wxr::Frame,
     ) -> Result<(), wxr::Error> {
-        // Asking for views twice in one frame replaces them; it does not give the frame four eyes. The
-        // runtime's own views and the space they were located in go with them, so a second call that fails
-        // cannot leave `end` submitting the first call's eyes.
-        out.views_mut().clear();
-        // The head's speed goes with its eyes: a second call that finds nothing leaves no motion behind either.
-        out.motion = None;
+        // Asking for views twice in one frame replaces them; it does not give the frame four eyes, nor a head
+        // from the first answer over no eyes. The frame's whole answer goes before anything here can fail, and
+        // with it the runtime's own views and the space they were located in - so a second call that fails
+        // cannot leave `end` submitting the first call's eyes either.
+        out.reset();
         self.located.clear();
         self.view_space = None;
         let Some(index) = self.space_index(space) else {

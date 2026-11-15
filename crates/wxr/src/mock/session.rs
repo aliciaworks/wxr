@@ -213,9 +213,10 @@ impl Session for MockSession {
     }
 
     fn views(&mut self, space: ReferenceSpace, out: &mut Frame) -> Result<(), Error> {
-        // The eyes go before the space is checked, so that a call that fails does not leave the caller
-        // drawing the last call's pair at a head pose from a space this one refused.
-        out.views_mut().clear();
+        // The last answer goes before the space is checked - eyes, head and speed at once, the same reset
+        // `begin` does - so that a call that fails does not leave the caller drawing the last call's pair at a
+        // head pose from a space this one refused, nor last call's head over no eyes.
+        out.reset();
         if !self.has_space(space) {
             return Err(Error::NoSpace(space.kind));
         }
@@ -223,9 +224,6 @@ impl Session for MockSession {
         // exactly like a real runtime. Asking twice for one frame replaces the eyes rather than adding a
         // second pair to them: `views` fills the frame, and the caller's vector is the one a frame loop keeps.
         out.viewer = Pose::IDENTITY;
-        // A mock's head stands still, and a speed left over from a frame that had one would be this frame's
-        // answer too.
-        out.motion = None;
         let fov = FieldOfView::symmetric(std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
         let views = out.views_mut();
         if self.stereo {

@@ -142,6 +142,13 @@ pub enum FrameState {
 ///
 /// The views are owned and reused by the session, so a frame loop does not allocate a `Vec` per frame - and
 /// so a caller cannot hold on to one frame's views while the next is being built.
+///
+/// One `Frame` serves the whole loop, and the runtime is what makes it this frame's:
+/// [`Session::begin`](crate::Session::begin) resets it and says what to do,
+/// [`Session::views`](crate::Session::views) fills in the head and the eyes around it, and
+/// [`Session::end`](crate::Session::end) presents it. Both writers clear the
+/// previous answer first - see [`Frame::reset`] - because the two halves are one fact: a head with no eyes, or
+/// eyes under the last call's head, is a frame no backend can mean.
 #[derive(Default, Debug)]
 pub struct Frame {
     /// When the picture will be on the display, as the runtime predicts it. A simulation that wants to be
@@ -175,19 +182,24 @@ impl Frame {
         &self.views
     }
 
-    /// The views, to be filled by the backend. Emptying it first is the backend's business.
+    /// The views, to be filled by the backend. Emptying it first is the backend's business - `views` starts
+    /// with [`Frame::reset`].
     pub fn views_mut(&mut self) -> &mut Vec<View> {
         &mut self.views
     }
 
-    /// Forget the last frame: its eyes, where its head was, and how fast it was going.
+    /// Forget where the head was: its eyes, its place, how fast it was going, and whether that place was a
+    /// guess.
     ///
-    /// A frame is the caller's and is reused, so a runtime that begins a new one has to say that the old
-    /// one's views are gone. `viewer` is part of the same fact - it is filled by `views`, and a frame
-    /// whose views have not been asked for yet is a frame with no head either; reading last frame's
-    /// would stand a scene at last frame's eye height for a frame that never located one. The head's
-    /// [`motion`](Frame::motion) and whether its place was a guess are that pose's other halves, so they go
-    /// with it.
+    /// A frame is the caller's and is reused, so a runtime that begins a new one has to say that the old one's
+    /// answer is gone. `viewer` is part of the same fact - it is filled by `views`, and a frame whose views
+    /// have not been asked for yet is a frame with no head either; reading the last one would stand a scene at
+    /// an eye height that was never located for this frame. The head's [`motion`](Frame::motion) and whether
+    /// its place was a guess are that pose's other halves, so they go with it.
+    ///
+    /// Both writers call this: `begin` for a new frame, and `views` before it answers, including the ways it
+    /// can answer with nothing. That is what makes "no eyes" and "no head" one state rather than two that a
+    /// failed call can leave half-applied.
     pub fn reset(&mut self) {
         self.viewer = Pose::IDENTITY;
         self.emulated_position = false;
