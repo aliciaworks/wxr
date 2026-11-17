@@ -103,6 +103,40 @@ impl OpenXrSession {
                     }
                     continue;
                 }
+                // The storage side of an anchor: the component change that makes one storable, the save that
+                // then keeps it, and the erase that forgets a name. None of these is a core event, for the
+                // same reason creation is not - the answer shows up where the question was asked, in
+                // `anchor_id` and `anchor_pose`.
+                Ok(Some(xr::Event::SpaceSetStatusCompleteFB(event))) => {
+                    if let Some(anchors) = self.anchors.as_mut() {
+                        anchors.complete_status(
+                            event.request_id(),
+                            event.result(),
+                            event.component_type(),
+                            event.enabled(),
+                        );
+                    }
+                    continue;
+                }
+                Ok(Some(xr::Event::SpacesSaveResultMETA(event))) => {
+                    if let Some(anchors) = self.anchors.as_mut() {
+                        anchors.complete_save(event.request_id(), event.result());
+                    }
+                    continue;
+                }
+                Ok(Some(xr::Event::SpacesEraseResultMETA(event))) => {
+                    if let Some(anchors) = self.anchors.as_mut() {
+                        anchors.complete_erase(event.request_id(), event.result());
+                    }
+                    continue;
+                }
+                // A lookup finishing, which is the one of the four that turns into a space.
+                Ok(Some(xr::Event::SpaceDiscoveryCompleteMETA(event))) => {
+                    if let Some(anchors) = self.anchors.as_mut() {
+                        anchors.complete_discovery(event.request_id(), event.result());
+                    }
+                    continue;
+                }
                 // The display changing its own rate, which is news the app has no other way to hear. The new
                 // rate is the answer; a value that is not a number of hertz is not one, so there is nothing
                 // to report.

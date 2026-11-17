@@ -145,7 +145,11 @@ impl OpenXrSession {
         // four then answers with an honest refusal rather than a handle that never arrives - which is why
         // they are decided here, at the one moment where "this runtime can" is a fact rather than a hope.
         let planes = PlaneDetector::new(&session, backend.spatial.planes);
-        let anchors = Anchors::new(&session, backend.spatial.anchors);
+        let anchors = Anchors::new(
+            &session,
+            backend.spatial.anchors,
+            backend.spatial.persistence,
+        );
         let raycast = Raycaster::new(&session, backend.spatial.raycast);
         let depth = EnvironmentDepth::new(&session, backend.spatial.depth);
 

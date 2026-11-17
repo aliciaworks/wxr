@@ -218,22 +218,28 @@ pub(crate) struct InputExtensions {
     pub(crate) eye_gaze: bool,
 }
 
-/// Which of the four world-modelling extensions the instance was made with.
+/// Which of the world-modelling extensions the instance was made with.
 ///
-/// All four are asked for from a runtime that lists them and no others, and all four are facilities rather
-/// than levers: an extension not enabled at `xrCreateInstance` is a set of function pointers the session
-/// does not have, so what a session can answer about the room was decided before the session existed.
+/// All of them are asked for from a runtime that lists them and no others, and all of them are facilities
+/// rather than levers: an extension not enabled at `xrCreateInstance` is a set of function pointers the
+/// session does not have, so what a session can answer about the room was decided before the session existed.
 ///
-/// Two of them are not one thing each, and that is worth saying because it is not visible from here:
+/// Some of them are more than one extension, and that is worth saying because it is not visible from here:
 /// `XR_META_environment_raycast` cannot be enabled without `XR_EXT_future` (`xrCreateInstance` answers
 /// `XR_ERROR_EXTENSION_DEPENDENCY_NOT_ENABLED`), so a runtime missing the future loses the raycaster too;
-/// and `XR_FB_spatial_entity` is the one carrying anchors - the Khronos `XR_EXT_spatial_anchor` is an
+/// `anchors` is `XR_FB_spatial_entity`, the one carrying anchors - the Khronos `XR_EXT_spatial_anchor` is an
 /// entity-and-context API whose pieces are not in this backend yet, and an anchor here is an `XrSpace`
-/// which is what the core's vocabulary has a place for.
+/// which is what the core's vocabulary has a place for; and `persistence` is the pair that keeps a name
+/// between sessions, which is `XR_META_spatial_entity_persistence` and `XR_META_spatial_entity_discovery`
+/// together.
 #[derive(Clone, Copy, Default)]
 pub(crate) struct SpatialExtensions {
     pub(crate) planes: bool,
     pub(crate) anchors: bool,
+    /// Whether the instance has both of the extensions that keep an anchor's name between runs,
+    /// `XR_META_spatial_entity_persistence` and `XR_META_spatial_entity_discovery`. Read as one flag
+    /// because either alone is half an answer: see [`super::persistence`].
+    pub(crate) persistence: bool,
     pub(crate) raycast: bool,
     pub(crate) depth: bool,
 }

@@ -275,13 +275,6 @@ DEFAULT_IS_ENOUGH = {
     ("wxr-webxr", "play_pcm"): "no browser has it: `GamepadHapticActuator` documents `pulse`, `playEffect` "
     "and `reset`, and MDN has no `playPCM` page at all - the binding generated into `sys/` is a trap",
     ("wxr-openxr", "interaction_mode"): "only a browser is ever `ScreenSpace`",
-    ("wxr-openxr", "restore_anchor"): "a name is looked up with `XR_FB_spatial_entity_query` - "
-    "`xrQuerySpacesFB` under an `XrSpaceUuidFilterInfoFB`, then the results event - and kept between runs "
-    "with `XR_FB_spatial_entity_storage`'s `xrSaveSpaceFB`. Both are unbound here, and the anchor this "
-    "backend makes is `XR_FB_spatial_entity`'s create alone: a lookup over two more raw state machines is a "
-    "feature, not a default",
-    ("wxr-openxr", "delete_persistent_anchor"): "as `restore_anchor`: erasing is `xrEraseSpaceFB` from "
-    "`XR_FB_spatial_entity_storage`, and the same two unbound extensions stand between this backend and it",
     ("wxr-openxr", "request_viewport_scale"): "OpenXR's resolution is the swapchain's to choose, and a "
     "runtime that recommends nothing is a runtime at full resolution - which is what the request would "
     "have been ignored into anyway",

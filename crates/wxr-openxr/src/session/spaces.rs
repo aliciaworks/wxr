@@ -128,6 +128,16 @@ fn owns(kinds: &[wxr::SpaceKind], space: wxr::ReferenceSpace) -> bool {
         .is_some_and(|kind| *kind == space.kind)
 }
 
+/// Whether a runtime stands behind the place it reported.
+///
+/// Both halves of the pose have to be valid, and the `_TRACKED` bits are deliberately not asked for: they say
+/// whether tracking is *active*, and a valid pose that is momentarily untracked is still a place the runtime
+/// stands behind - the difference between a frame that lost sight of the wall and one that cannot say at all.
+pub(super) fn is_located(flags: openxr_sys::SpaceLocationFlags) -> bool {
+    use openxr_sys::SpaceLocationFlags as Bits;
+    flags.contains(Bits::POSITION_VALID) && flags.contains(Bits::ORIENTATION_VALID)
+}
+
 /// The four corners of a `width` by `height` rectangle, in `space`.
 ///
 /// The runtime says `STAGE`'s boundary by its size, centred on `STAGE`'s origin; `space` is an offset of

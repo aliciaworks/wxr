@@ -39,6 +39,13 @@
 //! or `xrCreateInstance` refuses the pair, and the depth map can only be taken once between a frame's begin
 //! and its end.
 //!
+//! **An anchor's name is three extensions, not one.** `XR_FB_spatial_entity` makes the anchor and says
+//! whether it can be stored (`STORABLE`), and Meta's `XR_META_spatial_entity_persistence` and
+//! `XR_META_spatial_entity_discovery` are what actually keep it and find it again - so `anchor_id`,
+//! `restore_anchor` and `delete_persistent_anchor` are real only where all three are. The pair is also where
+//! the FB storage and query extensions are deliberately not used: the registry marks both obsolete, and the
+//! META ones erase by UUID rather than by space. `session/persistence.rs` is that story.
+//!
 //! The honest part of that list is what a runtime that does not have one of them gets. Every extension is
 //! asked for from a runtime that lists it and no others, and a session without one answers with the core's
 //! `Unsupported`, an empty list, or `None` - so `features()` is the same fact read from the other side, and a
@@ -193,6 +200,16 @@ impl OpenXr {
         // the future is a runtime without a raycaster too - which is what `spatial` below will say.
         extensions.ext_plane_detection = supported.ext_plane_detection;
         extensions.fb_spatial_entity = supported.fb_spatial_entity;
+        // The pair that keeps an anchor's name between runs: Meta's persistence for the save and erase, and
+        // its discovery for finding a saved place again. Both, because a name that can be written and not
+        // read back is not one - `SpatialExtensions::persistence` is where the pair is decided and
+        // `session/persistence.rs` is what uses it. Both also depend on `XR_FB_spatial_entity`, which is why
+        // they are gated on it: a runtime that lists one without the other would otherwise get an instance
+        // that `xrCreateInstance` refuses for a missing dependency.
+        extensions.meta_spatial_entity_persistence =
+            supported.meta_spatial_entity_persistence && supported.fb_spatial_entity;
+        extensions.meta_spatial_entity_discovery =
+            supported.meta_spatial_entity_discovery && supported.fb_spatial_entity;
         extensions.meta_environment_depth = supported.meta_environment_depth;
         extensions.meta_environment_raycast =
             supported.meta_environment_raycast && supported.ext_future;
@@ -223,6 +240,8 @@ impl OpenXr {
         let spatial = SpatialExtensions {
             planes: extensions.ext_plane_detection,
             anchors: extensions.fb_spatial_entity,
+            persistence: extensions.meta_spatial_entity_persistence
+                && extensions.meta_spatial_entity_discovery,
             raycast: extensions.meta_environment_raycast,
             depth: extensions.meta_environment_depth,
         };

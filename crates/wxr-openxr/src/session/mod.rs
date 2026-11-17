@@ -10,12 +10,12 @@ mod depth;
 mod depth_submission;
 mod hits;
 mod layers;
+mod persistence;
 mod planes;
 mod state;
 
-// The types the four world-modelling modules make, so `state` can hold them and the trait block below can
-// point at them. `EnvironmentDepthImage` is public because it is this backend's `Session::EnvironmentDepth`:
-// a caller has to be able to name what a depth query hands back.
+// The types the world-modelling modules make, so `state` can hold them and the trait block below can point
+// at them. `EnvironmentDepthImage` is public because it is this backend's `Session::EnvironmentDepth`.
 use anchors::Anchors;
 use depth::{EnvironmentDepth, MeasuredDepth};
 use hits::Raycaster;
@@ -24,21 +24,12 @@ use planes::PlaneDetector;
 pub(crate) use state::{HapticExtensions, InputExtensions, LayerExtensions, SpatialExtensions};
 
 pub use depth::EnvironmentDepthImage;
+use spaces::is_located;
 pub use state::OpenXrSession;
 use state::*;
 
 use crate::convert::{color_format, field_of_view, pose, posef, reference_space};
 use crate::{Device, Error, OpenXr, hal, input};
-
-/// Whether a runtime stands behind the place it reported.
-///
-/// Both halves of the pose have to be valid, and the `_TRACKED` bits are deliberately not asked for: they say
-/// whether tracking is *active*, and a valid pose that is momentarily untracked is still a place the runtime
-/// stands behind - the difference between a frame that lost sight of the wall and one that cannot say at all.
-fn is_located(flags: openxr_sys::SpaceLocationFlags) -> bool {
-    use openxr_sys::SpaceLocationFlags as Bits;
-    flags.contains(Bits::POSITION_VALID) && flags.contains(Bits::ORIENTATION_VALID)
-}
 
 mod making;
 
@@ -71,9 +62,8 @@ impl wxr::Session for OpenXrSession {
         self.refresh_rates_impl(out)
     }
 
-    /// The rate the display is running at, which is `xrGetDisplayRefreshRateFB`.
-    ///
-    /// A runtime without the extension has one rate and no way to ask, so `None` is the whole answer.
+    /// The rate the display is running at, which is `xrGetDisplayRefreshRateFB`. A runtime without the
+    /// extension has one rate and no way to ask, so `None` is the whole answer.
     fn refresh_rate(&mut self) -> Option<f32> {
         self.refresh_rate_impl()
     }
@@ -432,6 +422,16 @@ impl wxr::Session for OpenXrSession {
 
     fn anchor_id(&mut self, anchor: wxr::Anchor) -> Option<wxr::AnchorId> {
         self.anchor_id_impl(anchor)
+    }
+
+    /// Find a place the runtime stored - `XR_META_spatial_entity_discovery`.
+    fn restore_anchor(&mut self, id: wxr::AnchorId) -> Result<wxr::Anchor, wxr::Error> {
+        self.restore_anchor_impl(id)
+    }
+
+    /// Forget a name for good, which `XR_META_spatial_entity_persistence` takes by UUID.
+    fn delete_persistent_anchor(&mut self, id: wxr::AnchorId) -> Result<(), wxr::Error> {
+        self.delete_persistent_anchor_impl(id)
     }
 
     /// Ask for a source of hits along a ray - the app's, or the space's own aim - which is

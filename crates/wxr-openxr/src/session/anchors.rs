@@ -15,6 +15,10 @@
 //! The spec does not say - there is no valid-usage block on the structure and the one sentence about
 //! ownership is written for the success case - so the handle is taken ownership of only when the runtime
 //! said it succeeded, and a failed request is a slot that stays empty.
+//!
+//! Keeping one *after* the session ends is the other file's business - [`super::persistence`] - because a
+//! name costs two more extensions and two more requests in flight per anchor, and a runtime can have the
+//! first without the second.
 
 use super::*;
 
@@ -24,26 +28,67 @@ pub(super) enum Slot {
     /// will arrive under. What the core's [`wxr::Session::anchor_pose`] answers `None` for - a place that is
     /// not there *yet*, which is not the same as one that is gone.
     Pending(openxr_sys::AsyncRequestIdFB),
-    /// The runtime made it. This is the space, and it is this backend that owns it now - and the UUID the
-    /// completion carried, which is the name that outlives the space.
-    Live { space: xr::Space, id: wxr::AnchorId },
+    /// The caller asked for a name from an earlier run and the runtime is looking for it. The id is the one
+    /// that was asked for, kept here because the runtime's answer names the UUID it found rather than the one
+    /// it was given - and the caller's handle has to mean the place it asked for either way.
+    Restoring {
+        request: openxr_sys::AsyncRequestIdFB,
+        id: wxr::AnchorId,
+    },
+    /// The runtime made it or found it. This is the space, and it is this backend that owns it now - and the
+    /// UUID the completion carried, which is the name that outlives the space.
+    Live {
+        space: xr::Space,
+        id: wxr::AnchorId,
+        saved: Saved,
+    },
+}
+
+/// Whether the runtime is keeping a live anchor's name, which is the other half of [`Slot::Live`].
+///
+/// The UUID arrives when the anchor is made, but a UUID is only a *name* once the runtime has stored the
+/// entity it names: the same bytes in a later run find nothing otherwise. So the core's `anchor_id` answers
+/// only once the save has been confirmed, and these are the ways it gets there - see
+/// [`super::persistence`].
+pub(super) enum Saved {
+    /// Nothing has been asked yet, or the last ask failed in a way worth trying again.
+    Unstored,
+    /// `xrSetSpaceComponentStatusFB` asked for `STORABLE`, which is the component saving requires.
+    Enabling(openxr_sys::AsyncRequestIdFB),
+    /// `xrSaveSpacesMETA` has the space and the runtime has not answered yet.
+    Saving(openxr_sys::AsyncRequestIdFB),
+    /// The runtime has it, so the name is one a later run can ask for.
+    Stored,
+    /// The runtime says this entity cannot be stored, which asking again will not change.
+    Refused,
 }
 
 /// The anchors this session has, and the requests in flight.
 pub(super) struct Anchors {
-    table: xr::raw::SpatialEntityFB,
+    pub(super) table: xr::raw::SpatialEntityFB,
     /// The session, kept because the completion event hands back a *raw* handle and an `xr::Space` is made
     /// from one plus the session it belongs to. It is an `Arc` underneath, so this keeps the session alive
     /// rather than borrowing it.
-    session: xr::Session<xr::Vulkan>,
+    pub(super) session: xr::Session<xr::Vulkan>,
     /// By the core's own id, which is the index. A release leaves a hole rather than shifting the ones
     /// after it, because a caller holding an id has to keep holding the same one.
-    slots: Vec<Option<Slot>>,
+    pub(super) slots: Vec<Option<Slot>>,
+    /// The two extensions that keep a name between runs, when this runtime has both - see
+    /// [`super::persistence`].
+    pub(super) persistence: Option<super::persistence::Persistence>,
 }
 
 impl Anchors {
     /// Turn the spatial-entity system on, or say this runtime has no way to keep a place fixed.
-    pub(super) fn new(session: &xr::Session<xr::Vulkan>, enabled: bool) -> Option<Self> {
+    ///
+    /// `persistence` is the pair of extensions that keep a name between runs, which is a separate ask: a
+    /// runtime can make anchors without keeping them, and an anchor that outlives the session cannot be made
+    /// by a runtime that cannot store one.
+    pub(super) fn new(
+        session: &xr::Session<xr::Vulkan>,
+        enabled: bool,
+        persistence: bool,
+    ) -> Option<Self> {
         if !enabled {
             log::info!("wxr-openxr: no anchors: this runtime has no XR_FB_spatial_entity");
             return None;
@@ -52,10 +97,20 @@ impl Anchors {
             log::info!("wxr-openxr: no anchors: the extension was enabled but did not load");
             return None;
         };
+        let persistence = if persistence {
+            super::persistence::Persistence::new(session)
+        } else {
+            log::info!(
+                "wxr-openxr: anchors are per-session: this runtime does not have both of \
+                 XR_META_spatial_entity_persistence and XR_META_spatial_entity_discovery"
+            );
+            None
+        };
         Some(Self {
             table: *table,
             session: session.clone(),
             slots: Vec::new(),
+            persistence,
         })
     }
 
@@ -101,6 +156,9 @@ impl Anchors {
         *slot = Some(Slot::Live {
             space: unsafe { xr::Space::reference_from_raw(self.session.clone(), space) },
             id: wxr::AnchorId::from_bytes(uuid.data),
+            // The UUID is this session's answer, not a name the runtime is keeping: nothing has been asked
+            // to store it yet, which is what `anchor_id` does when the app says it wants one.
+            saved: Saved::Unstored,
         });
     }
 }
@@ -190,19 +248,6 @@ impl OpenXrSession {
                 log::debug!("wxr-openxr: locating an anchor: {error:?}");
                 Ok(None)
             }
-        }
-    }
-
-    /// The UUID the runtime gave the anchor when it made it, which is the name a caller saves.
-    ///
-    /// Nothing to ask the runtime for: `XR_FB_spatial_entity` carries the UUID on the completion that made
-    /// the anchor, so it is stored with the space and answered from there. A pending request has no name yet,
-    /// and a released one has nobody to name.
-    pub(super) fn anchor_id_impl(&self, anchor: wxr::Anchor) -> Option<wxr::AnchorId> {
-        let anchors = self.anchors.as_ref()?;
-        match anchors.slots.get(anchor.id() as usize)?.as_ref()? {
-            Slot::Live { id, .. } => Some(*id),
-            Slot::Pending(_) => None,
         }
     }
 
