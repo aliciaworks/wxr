@@ -270,6 +270,35 @@ impl WebXrSession {
         Ok(())
     }
 
+    /// Where one space is seen from another, which is `XRFrame.getPose`.
+    ///
+    /// Both spaces are promises until the browser has resolved them, so an unresolved one is `Ok(None)`: a
+    /// session one or two frames old is not one that failed. A handle this session never made is `NoSpace`
+    /// before any of that, and a pose the frame will not give is `None` like an unresolved space.
+    pub(super) fn locate_impl(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        base: wxr::ReferenceSpace,
+    ) -> Result<Option<wxr::TrackedPose>, wxr::Error> {
+        let Some(space) = self.resolved_space(space)? else {
+            return Ok(None);
+        };
+        let Some(base) = self.resolved_space(base)? else {
+            return Ok(None);
+        };
+        let Some(frame) = self.frame() else {
+            return Ok(None);
+        };
+        let Some(pose) = frame.get_pose(&space, &base) else {
+            return Ok(None);
+        };
+        Ok(Some(wxr::TrackedPose {
+            pose: transform(pose.transform()),
+            motion: motion(&pose),
+            emulated_position: pose.emulated_position(),
+        }))
+    }
+
     /// Ask for a view to render at `scale` of its full resolution.
     ///
     /// The view is the current frame's `XRView`, which is why this is here beside the call that keeps them:

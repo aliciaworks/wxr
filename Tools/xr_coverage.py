@@ -769,6 +769,8 @@ ALIASES = {
     "detectedPlanes": "fn planes",
     "planeSpace": "fn planes",
     "getDepthInformation": "fn environment_depth",
+    "getPose": "fn locate",
+    "getViewerPose": "fn views",
     "createQuadLayer": "fn layer",
     "createCylinderLayer": "fn layer",
     "createEquirectLayer": "fn layer",

@@ -20,7 +20,7 @@ use crate::layer::{Binding, Layer, LayerImage, LayerShape, SubImage};
 use crate::light::{LightEstimate, LightProbe};
 use crate::mesh::Mesh;
 use crate::plane::Plane;
-use crate::space::{Pose, ReferenceSpace, SpaceKind};
+use crate::space::{Pose, ReferenceSpace, SpaceKind, TrackedPose};
 use crate::target::ImageMeta;
 use crate::visibility::VisibilityMask;
 
@@ -156,13 +156,11 @@ pub trait Session: Any {
         None
     }
 
-    /// Make a picture the compositor places itself, which is WebXR's `XRCompositionLayer`s and OpenXR's
-    /// `XrCompositionLayer`s other than the projection one. It is drawn once - a menu, a video, a 360°
-    /// photograph - and the runtime puts it where the shape and the space say.
-    ///
-    /// Which shapes a session has is [`Features::LAYER_QUAD`] and its siblings, one bit per shape; a session
-    /// with none answers [`Error::Unsupported`]. `pixels` is the resolution to draw at, and the *shape*'s
-    /// aspect is the geometry's, so an aspect that disagrees with `pixels` is the picture stretched.
+    /// Make a picture the compositor places itself - WebXR's and OpenXR's `XRCompositionLayer`s other than the
+    /// projection one. It is drawn once (a menu, a video, a 360° photograph) and the runtime puts it where the
+    /// shape and the space say. Which shapes a session has is [`Features::LAYER_QUAD`] and its siblings, one
+    /// bit per shape; a session with none answers [`Error::Unsupported`], and `pixels` is the resolution to
+    /// draw at - an aspect that disagrees with the *shape*'s is the picture stretched.
     fn layer(
         &mut self,
         _space: ReferenceSpace,
@@ -181,11 +179,10 @@ pub trait Session: Any {
         None
     }
 
-    /// Whether the compositor wants this layer drawn again, which is WebXR's `needsRedraw`.
-    ///
-    /// True for a layer nothing has been drawn into yet, and after a [`Redraw`](Event::Redraw) that says the
-    /// picture the compositor had was lost; false once the app has taken the layer's image. A compositor that
-    /// never asks - every other platform here, which takes a complete layer list each frame - answers false.
+    /// Whether the compositor wants this layer drawn again, which is WebXR's `needsRedraw`. True for a layer
+    /// nothing has been drawn into yet, and after a [`Redraw`](Event::Redraw) that says the picture the
+    /// compositor had was lost; false once the app has taken the layer's image, and for a compositor that
+    /// takes a complete layer list each frame, which never asks.
     fn layer_needs_redraw(&self, _layer: Layer) -> bool {
         false
     }
@@ -205,18 +202,14 @@ pub trait Session: Any {
     }
 
     /// Put a layer where it is, in the space it was made in - WebXR's `XRCompositionLayer.transform`, OpenXR's
-    /// layer pose.
-    ///
-    /// Per frame for a layer that moves, and once for one that does not: a panel put on a wall is placed when it
-    /// is put there, and a panel the wearer carries is placed every frame from wherever they are.
+    /// layer pose. Per frame for one that moves and once for one that does not: a panel on a wall is placed
+    /// when it is put there, and one the wearer carries from wherever they are.
     fn set_layer_pose(&mut self, _layer: Layer, _pose: Pose) -> Result<(), Error> {
         Err(Error::Unsupported("layers".into()))
     }
 
-    /// Tell the runtime the app is done with a layer.
-    ///
-    /// Nothing by default: a backend with no layers has none to release, and unlike an anchor or a light probe
-    /// a layer holds an image the runtime wants back - a reason to say so rather than let a handle go.
+    /// Tell the runtime the app is done with a layer. Nothing by default: a backend with no layers has none to
+    /// release, and unlike an anchor a layer holds an image the runtime wants back - a reason to say so.
     fn release_layer(&mut self, _layer: Layer) {}
 
     /// Ask for a space to measure poses in. A runtime that does not have the one asked for says so, rather
@@ -234,6 +227,17 @@ pub trait Session: Any {
         offset: Pose,
     ) -> Result<ReferenceSpace, Error>;
 
+    /// Where `space` is seen from `base`, which is WebXR's `XRFrame.getPose` and OpenXR's `xrLocateSpace`.
+    /// The other direction from [`views`](Session::views): that places something in a space, and this asks
+    /// where one space sits inside another - a controller in the floor's, the head in the world. `Ok(None)`
+    /// is a space this session handed out that the runtime cannot place right now; a handle it never gave out
+    /// is [`Error::NoSpace`], which is a different fact.
+    fn locate(
+        &mut self,
+        space: ReferenceSpace,
+        base: ReferenceSpace,
+    ) -> Result<Option<TrackedPose>, Error>;
+
     /// Begin a frame. Fills in the predicted display time and what the caller should do with it.
     fn begin(&mut self, now: Duration, out: &mut Frame) -> Result<(), Error>;
 
@@ -244,11 +248,10 @@ pub trait Session: Any {
     fn views(&mut self, space: ReferenceSpace, out: &mut Frame) -> Result<(), Error>;
 
     /// Fill in the part of one view's picture the display shows, and let an empty mask mean the whole view.
-    ///
     /// `view` is an index into the frame's views, which is what [`Event::VisibilityMaskChanged`] carries; the
-    /// mask is in that eye's view space on the plane `z = -1`, as [VisibilityMask] describes. A session without
-    /// [`Features::VISIBILITY_MASK`] says [`Error::Unsupported`] rather than handing back a mask that claims
-    /// the whole view, which is a different fact from never having looked.
+    /// mask is in that eye's view space on the plane `z = -1`, as [VisibilityMask] describes. A session
+    /// without [`Features::VISIBILITY_MASK`] says [`Error::Unsupported`] rather than a mask that claims the
+    /// whole view.
     fn visibility_mask(&mut self, _view: usize, out: &mut VisibilityMask) -> Result<(), Error> {
         out.clear();
         Err(Error::Unsupported("visibility masks".into()))

@@ -155,6 +155,28 @@ impl Motion {
     }
 }
 
+/// Where a tracked thing is and how it is moving, as one answer: WebXR's `XRPose` and OpenXR's
+/// `XrSpaceLocation` with its velocity beside it.
+///
+/// A pose alone is enough to draw with and not enough to reproject with. A runtime that reports a hand's speed
+/// beside its place is saying where the hand will be next frame, which is what a renderer showing a frame it
+/// finished late needs - so the two travel together, and a runtime with no speed to report carries `None`
+/// rather than a speed of zero.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub struct TrackedPose {
+    /// Where the thing is, in the base space the question was asked from.
+    pub pose: Pose,
+    /// How fast it is moving, when the runtime reports it.
+    pub motion: Option<Motion>,
+    /// Whether the runtime worked the position out from an orientation rather than measuring it.
+    ///
+    /// A three-degree-of-freedom device has no position sensor, so a runtime that still wants to answer puts
+    /// the thing somewhere plausible and says so here - WebXR's `XRPose.emulatedPosition`. A pose with this
+    /// set is a place to draw from and not a place a measurement was taken, which is the difference between
+    /// a controller that is somewhere and one that could not be located.
+    pub emulated_position: bool,
+}
+
 /// A reference space the session has given out.
 ///
 /// It is a handle with a kind on it rather than a transform, because a runtime is free to move the space

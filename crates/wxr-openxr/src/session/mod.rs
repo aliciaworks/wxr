@@ -68,8 +68,7 @@ impl wxr::Session for OpenXrSession {
         self.refresh_rate_impl()
     }
 
-    /// Ask for one of them, which is `xrRequestDisplayRefreshRateFB`. A refusal is logged rather than
-    /// returned - the same shape `set_foveation` has: it is a request.
+    /// Ask for one of them, which is `xrRequestDisplayRefreshRateFB`. A refusal is logged, not returned.
     fn set_refresh_rate(&mut self, rate: f32) {
         self.set_refresh_rate_impl(rate)
     }
@@ -129,6 +128,14 @@ impl wxr::Session for OpenXrSession {
         self.offset_space_impl(base, offset)
     }
 
+    fn locate(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        base: wxr::ReferenceSpace,
+    ) -> Result<Option<wxr::TrackedPose>, wxr::Error> {
+        self.locate_impl(space, base)
+    }
+
     fn bounds(
         &mut self,
         space: wxr::ReferenceSpace,
@@ -143,9 +150,8 @@ impl wxr::Session for OpenXrSession {
         shape: wxr::LayerShape,
         pixels: wxr::Extent2d,
     ) -> Result<wxr::Layer, wxr::Error> {
-        // A quad is in the core specification; the other three are `XR_KHR_composition_layer_*`, one extension
-        // each, and an extension is enabled when the instance is made or not at all. So the refusal is per
-        // shape and reads the instance's own answer, which is what the capability bits report.
+        // One extension per non-quad shape, enabled when the instance is made or not at all - so the refusal
+        // is per shape and reads what the capability bits report.
         let enabled = match shape {
             wxr::LayerShape::Quad { .. } => true,
             wxr::LayerShape::Cylinder { .. } => self.layers_enabled.cylinder,
@@ -161,10 +167,8 @@ impl wxr::Session for OpenXrSession {
                 .into(),
             ));
         }
-        // The kind this session recorded for the id, not the public half of the handle: a layer keeps the
-        // kind because a translated cube is placed by making a reference space of that kind. Both halves are
-        // checked first, though, because a kind the caller changed is not a space this session handed out -
-        // answering `NoSpace` is the same thing every other entry taking a space says about it.
+        // The kind this session recorded for the id, not the public half: a translated cube is placed by making
+        // a reference space of that kind. Both halves are checked first, so a changed kind is `NoSpace`.
         let Some(space_id) = self.space_index(space) else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
@@ -350,9 +354,8 @@ impl wxr::Session for OpenXrSession {
         self.profiles_impl(source, out)
     }
 
-    /// A vibration on one source, which is `xrApplyHapticFeedback` with a `XrHapticVibration`. A source with no
-    /// output path - and every source without the extension - is `Unsupported` rather than a silent nothing:
-    /// this is a call the app chose to make, so an answer it can act on is worth more.
+    /// A vibration on one source, which is `xrApplyHapticFeedback`. A source with no output path - and every
+    /// source without the extension - is `Unsupported` rather than a silent nothing: the app chose to call.
     fn pulse(
         &mut self,
         source: wxr::InputId,
@@ -457,8 +460,7 @@ impl wxr::Session for OpenXrSession {
         self.hits_impl(source, space, out)
     }
 
-    /// Let a source of hits go. Nothing to destroy: one raycaster serves the session, so a source is only a
-    /// space and a ray, and the entry stays because the id is its position.
+    /// Let a source of hits go. One raycaster serves the session, so a source is only a space and a ray.
     fn release_hit_test_source(&mut self, source: wxr::HitTestSource) {
         self.release_hit_test_source_impl(source)
     }
@@ -471,8 +473,7 @@ impl wxr::Session for OpenXrSession {
         self.environment_depth_impl(view)
     }
 
-    /// What this session's depth sensing is: one measurement in a buffer the runtime owns and fills, at the
-    /// platform's own resolution - WebXR's `cpu-optimized`.
+    /// What this session's depth sensing is: one measurement in a runtime-owned buffer, at its resolution.
     fn depth_sensing(&self) -> Option<wxr::DepthSensing> {
         self.depth_sensing_impl()
     }

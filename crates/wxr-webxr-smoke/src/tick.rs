@@ -18,8 +18,7 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
         }
     }
     // Reported on every change rather than per frame: a session that never reaches `Visible` is exactly the
-    // case this backend has to be honest about, and frames never arrive to say it in. The lifecycle and the
-    // visibility are separate axes, so each is reported when it moves.
+    // case this backend has to be honest about, and frames never arrive to say it in.
     if session.state() != board.state || session.visibility() != board.visibility {
         board.state = session.state();
         board.visibility = session.visibility();
@@ -37,8 +36,7 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
         say(&format!("features: {:?}", session.features()));
     }
 
-    // The layer count is the session's, so it is asked once and before a frame. The stub names four: a
-    // backend that answered `None` would have said the limit was the compositor's own business.
+    // The layer count is the session's, asked once and before a frame: the stub names four.
     if !board.max_layers_checked {
         board.max_layers_checked = true;
         match session.max_render_layers() {
@@ -73,8 +71,7 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
                 return Err(format!("no floor space: {error}"));
             }
         }
-        // The stub has no unbounded space, so this request settles without one. Nothing is drawn in it; it is
-        // here for the offset check above, which is the one thing a refused request has to get right.
+        // The stub has no unbounded space; this request is here for the offset check above.
         match session.space(wxr::SpaceKind::Unbounded) {
             Ok(space) => board.unbounded = Some(space),
             Err(error) => say(&format!(
@@ -82,8 +79,7 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
             )),
         }
     }
-    // The refresh rate is a `float` on the way in and a promise on the way out, and both halves are the
-    // browser's. Read back off the stub, because a request is not the answer.
+    // The refresh rate is a `float` in and a promise out; read back off the stub, not taken on trust.
     if !board.refresh_rate_checked {
         board.refresh_rate_checked = true;
         if !session.features().contains(wxr::Features::REFRESH_RATE) {
@@ -244,6 +240,10 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
                 ));
             }
         }
+    }
+    // The other question a space answers, in the same frame: where the viewer is from the floor.
+    if board.space_resolved && !board.pose_checked {
+        pose::step(board, session)?;
     }
     // The ray the app named, and the place it lands: a hit test is the one call whose numbers the frame
     // cannot supply, so the stub records the ray it was given and puts the hit one metre along it. Only after

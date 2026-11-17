@@ -191,6 +191,22 @@ impl Session for MockSession {
         ))
     }
 
+    fn locate(
+        &mut self,
+        space: ReferenceSpace,
+        base: ReferenceSpace,
+    ) -> Result<Option<TrackedPose>, Error> {
+        // Every mock space is the same place, so one seen from another is the identity - and both handles are
+        // still checked, because a mock that answered for a handle it never gave out would hide the very
+        // mistake the check exists for.
+        for handle in [space, base] {
+            if !self.has_space(handle) {
+                return Err(Error::NoSpace(handle.kind));
+            }
+        }
+        Ok(Some(TrackedPose::default()))
+    }
+
     fn begin(&mut self, now: Duration, out: &mut Frame) -> Result<(), Error> {
         self.frames += 1;
         // Three, like a swapchain, so that an image is reused before long and a cached one would be visibly

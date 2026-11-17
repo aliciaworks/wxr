@@ -263,6 +263,36 @@ impl AppleSession {
         spaces::world_from_space(self.device_in_space(space), self.origin)
     }
 
+    /// Where one space is seen from another, composed from the two transforms that make each.
+    ///
+    /// ARKit's world is the pivot: `space` in `base` is `base` seen from the world composed with the world seen
+    /// from `space`. There is no runtime call to ask and no speed to report - a `CompositorServices` frame is
+    /// drawn when the app draws it - so the motion is `None` and the position is measured rather than guessed.
+    fn locate_impl(
+        &self,
+        space: wxr::ReferenceSpace,
+        base: wxr::ReferenceSpace,
+    ) -> Result<Option<wxr::TrackedPose>, wxr::Error> {
+        // Both handles are checked before either transform is read: a space this session never made is
+        // `NoSpace`, which is not the same answer as one it made and cannot place.
+        for handle in [space, base] {
+            if !self.has_space(handle) {
+                return Err(wxr::Error::NoSpace(handle.kind));
+            }
+        }
+        let (_, orientation, position) = (self.space_from_world(base)
+            * self.world_from_space(space))
+        .to_scale_rotation_translation();
+        Ok(Some(wxr::TrackedPose {
+            pose: wxr::Pose {
+                position,
+                orientation,
+            },
+            motion: None,
+            emulated_position: false,
+        }))
+    }
+
     /// What the layer is doing, as the two things a session can be: here or not, and shown or not.
     ///
     /// There is no event queue on this side - the C surface has a state and no events - so this is read

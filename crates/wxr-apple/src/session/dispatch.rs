@@ -200,6 +200,14 @@ impl wxr::Session for AppleSession {
         ))
     }
 
+    fn locate(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        base: wxr::ReferenceSpace,
+    ) -> Result<Option<wxr::TrackedPose>, wxr::Error> {
+        self.locate_impl(space, base)
+    }
+
     /// Taking the compositor's next frame and reading its views, which is a sequence rather than an
     /// answer: `frame` keeps it, and the ordering there is the compositor's requirement rather than this
     /// backend's policy.

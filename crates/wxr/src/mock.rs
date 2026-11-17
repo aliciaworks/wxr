@@ -20,7 +20,7 @@ use crate::mesh::{Mesh, SurfaceKind};
 use crate::session::{
     Backend, Error, Event, Presentation, Session, SessionMode, State, Visibility,
 };
-use crate::space::{Pose, ReferenceSpace, SpaceKind};
+use crate::space::{Pose, ReferenceSpace, SpaceKind, TrackedPose};
 use crate::target::{ColorFormat, Extent2d, ImageMeta};
 
 /// How many sources the mock hands out: two controllers, or two hands when it has them.

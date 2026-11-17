@@ -64,6 +64,40 @@ impl OpenXrSession {
             (self.spaces.len() - 1) as u32,
         ))
     }
+
+    /// Where one space is seen from another, which is `xrLocateSpace` with the speed beside it.
+    ///
+    /// Both handles are checked before the runtime is asked anything: a space this session never made is
+    /// `NoSpace`, which is a different answer from a pair it did make that the runtime cannot place just now.
+    /// `relate` asks for the location and the velocity in one call, which is what a reprojecting renderer wants
+    /// and what this being one call makes cheap.
+    pub(super) fn locate_impl(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        base: wxr::ReferenceSpace,
+    ) -> Result<Option<wxr::TrackedPose>, wxr::Error> {
+        let Some(space) = self.reference(space) else {
+            return Err(wxr::Error::NoSpace(space.kind));
+        };
+        let Some(base) = self.reference(base) else {
+            return Err(wxr::Error::NoSpace(base.kind));
+        };
+        let (location, velocity) = space
+            .relate(base, self.predicted)
+            .map_err(|error| wxr::Error::Present(format!("{error:?}").into()))?;
+        if !is_located(location.location_flags) {
+            return Ok(None);
+        }
+        Ok(Some(wxr::TrackedPose {
+            pose: pose(location.pose),
+            motion: crate::motion(&velocity),
+            // OpenXR separates "valid" from "tracked": a position that is valid but not tracked is the
+            // runtime's estimate, which is WebXR's `emulatedPosition` by another name.
+            emulated_position: !location
+                .location_flags
+                .contains(xr::SpaceLocationFlags::POSITION_TRACKED),
+        }))
+    }
 }
 
 impl OpenXrSession {

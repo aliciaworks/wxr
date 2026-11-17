@@ -28,7 +28,7 @@ column only on a Mac, since that one counts the SDK's own headers rather than an
 | --- | ---: | ---: | ---: |
 | **Native API reached** - of each backend's own spec | 222/290 | 85/551 | 118/618 |
 | *as a percentage* | 77% | 15% | 19% |
-| **WebXR API reached** - of the whole API | 363/452 | 250/452 | 233/452 |
+| **WebXR API reached** - of the whole API | 363/452 | 250/452 | 236/452 |
 | *as a percentage* | 80% | 55% | 52% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
@@ -36,7 +36,7 @@ Input, Depth Sensing, Hit Test, Lighting Estimation, Anchors, Plane Detection, t
 and the Gamepads module - counted member by member, with the community-group drafts left out. It is a
 *floor*: the core gives a concept its own name (`requestReferenceSpace` is `space`) and both native backends
 go through the core, so a member a backend serves can still share no name with anything in its source. The
-core itself names 311 of the 452.
+core itself names 314 of the 452.
 
 ## The core is small on purpose
 
@@ -55,11 +55,13 @@ each, asked for as one thing rather than a joint at a time. `InputSource::hand` 
 source says whether there is a skeleton to ask for, which a controller and a palm-only platform both answer no
 to.
 
-Two more of WebXR's words are here for the same reason. `offset_space` is `getOffsetReferenceSpace`: a space at
-a pose inside one the session handed out, which is how a scene anchors something to a place - a table, a wall, a
-controller. And `set_depth_range` is `XRRenderState.depthNear` and `depthFar`, the one number a renderer and a
-compositor have to agree on, because a compositor that reprojects a frame with depth cannot read the planes out
-of the picture.
+Three more of WebXR's words are here for the same reason. `offset_space` is `getOffsetReferenceSpace`: a space
+at a pose inside one the session handed out, which is how a scene anchors something to a place - a table, a
+wall, a controller. `locate` is `XRFrame.getPose`: where one space is seen from another, which is the question
+about a *space* rather than about a thing in one - the head over the floor, a controller's origin in the
+viewer's - and `TrackedPose` is that answer with the speed WebXR reports on the same pose. And `set_depth_range`
+is `XRRenderState.depthNear` and `depthFar`, the one number a renderer and a compositor have to agree on,
+because a compositor that reprojects a frame with depth cannot read the planes out of the picture.
 
 AR is the other half of what WebXR has: `Plane` and `Session::planes` are the surfaces a runtime has detected,
 `Ray`, `HitTestSource` and `Session::hits` are a ray and where it lands on them, and `LightProbe` and
@@ -406,7 +408,7 @@ are in it. A native item with no counterpart in the core is one no backend will 
 can reach 100% by design.
 
 The second is the direction that says whether the *unification* is done, and it has two factors. The core
-speaks 69% of WebXR's vocabulary - 311 of the 452 members across every specification - it is the vocabulary all
+speaks 69% of WebXR's vocabulary - 314 of the 452 members across every specification - it is the vocabulary all
 three backends share rather than a mirror of the spec - and of its own `Session` methods the backends define
 **91%**, **81%** and **60%**. So a backend cannot reach the whole of WebXR by implementing
 methods: the word has to exist in the core first. Widening the core and filling the methods are the two things

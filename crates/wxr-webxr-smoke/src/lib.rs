@@ -37,6 +37,7 @@ mod hits;
 mod images;
 mod layers;
 mod masks;
+mod pose;
 mod tick;
 
 /// How many frames to draw before saying so and stopping.
@@ -131,8 +132,8 @@ fn frame_rate_requests() -> Option<u32> {
 struct Board {
     frame: wxr::Frame,
     space: Option<wxr::ReferenceSpace>,
-    /// A space the browser refuses, asked for alongside the floor: the stub has no `unbounded`, and a request
-    /// that settles without a space is the one shape an offset has to refuse rather than wait on forever.
+    /// A space the browser refuses, asked for alongside the floor: a request that settles without one is the
+    /// shape an offset has to refuse rather than wait on forever.
     unbounded: Option<wxr::ReferenceSpace>,
     /// Whether that refusal has been checked, which is once - after the promise has had a frame to settle.
     refusal_checked: bool,
@@ -157,25 +158,21 @@ struct Board {
     /// Whether a `views` call the browser cannot answer has been retried, which is once and after the image
     /// checks: it is the retry that must leave no picture behind, and the frame it checks is the one with eyes.
     retry_checked: bool,
-    /// Whether the viewport scale has been asked for, which is once: the request applies to the frame it is
-    /// made in, and the values that matter are the ones the browser cannot convert.
+    /// Whether the viewport scale has been asked for, once: the request applies to the frame it is made in.
     viewport_scale_checked: bool,
-    /// Whether the display's refresh rates have been read and asked for, which is once: the list is the
-    /// session's, and the rate a request leaves behind is the stub's record.
+    /// Whether the display's refresh rates have been read and asked for, once: the stub records the answer.
     refresh_rate_checked: bool,
-    /// Whether the layer count the session names has been read, which is once and needs no frame: the number
-    /// is the session's and the stub says four.
+    /// Whether the layer limit has been read, which is once and needs no frame: the stub says four.
     max_layers_checked: bool,
-    /// The tick the request was made on, so the event that follows it is checked on the next poll and not on
-    /// the tick that asked: a handler fires synchronously, and the poll that reports it is one tick later.
+    /// The tick the request was made on, so the event that follows it is checked on the next poll: a handler
+    /// fires synchronously, and the poll that reports it is one tick later.
     refresh_rate_asked: u32,
     /// The rate the display announced changing to, if it has, and whether that has been checked.
     refresh_rate_event: Option<f32>,
     refresh_rate_event_checked: bool,
     /// How many rate-change events the session has reported, so a refused request cannot slip a second one in.
     refresh_rate_events: u32,
-    /// Whether a space handle this session never made has been asked about, which is once: the answer is the
-    /// same on every frame, and the call writes only the vector it is given.
+    /// Whether a space handle this session never made has been asked about, which is once: `NoSpace` always.
     forged_space_checked: bool,
     /// The viewer space, kept because the refusal of an environment layer in it is checked once and a space
     /// made twice is two slots for one answer.
@@ -200,8 +197,7 @@ struct Board {
     anchor_step: u8,
     /// Whether asking for an anchor with no frame open has been refused, which is once and before any frame.
     anchor_unframed_checked: bool,
-    /// Whether the floor space has resolved. A space is a promise, so the tick that asks for one has no pose
-    /// to make an anchor at - and an anchor asked for in an unresolved space is a different refusal.
+    /// Whether the floor space has resolved: a space is a promise, so an anchor cannot be made in one yet.
     space_resolved: bool,
     /// The hit-test source this run made, if it has, and whether the ray it was asked along has been read
     /// back with the place it landed - a hit test is the one call whose numbers the frame cannot supply.
@@ -209,6 +205,8 @@ struct Board {
     hit_checked: bool,
     /// Whether a mask change arrived and its geometry was read back from it, which is once.
     masks_checked: bool,
+    /// Whether a space was located from another, which is once: the answer is the frame's.
+    pose_checked: bool,
 }
 
 /// Record the events that are checked later rather than as they arrive.
@@ -402,6 +400,7 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         hit_source: None,
         hit_checked: false,
         masks_checked: false,
+        pose_checked: false,
         stopped: false,
     }));
 
@@ -428,6 +427,7 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
                     && board.layers_checked
                     && board.redraw_checked
                     && board.masks_checked
+                    && board.pose_checked
                     && (!session.features().contains(wxr::Features::ANCHORS)
                         || board.anchor_step == 8) =>
             {

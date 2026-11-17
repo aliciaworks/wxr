@@ -30,8 +30,7 @@ use crate::sys::{
 use crate::{depth, hit, input, planes, throws};
 
 impl Drop for WebXrSession {
-    /// End the browser's session when this one is dropped: the session belongs to the browser, and dropping
-    /// the handle is how an app says it is finished.
+    /// End the browser's session when this one is dropped; dropping the handle is how an app says it is done.
     fn drop(&mut self) {
         if let Some(session) = self.inner.borrow().session.clone() {
             // Caught: a session dropped from inside its own frame handler is still active, and `end` throws
@@ -96,8 +95,7 @@ impl WebXrSession {
         }
     }
 
-    /// Ask for the binding and the layer, and keep them if the browser gives them. Any missing leaves a head
-    /// and no picture, which is a warning rather than a failure.
+    /// Ask for the binding and the layer, and keep them: any missing leaves a head and no picture, a warning.
     fn start_gpu(&mut self, session: &XrSession) {
         if self.gpu.is_some() || !has_feature(session, "webgpu") {
             return;
@@ -118,8 +116,7 @@ impl WebXrSession {
                 return;
             }
         };
-        // The colour format is the runtime's preference; the depth format is named here, because a projection
-        // layer made without one has no depth texture at all.
+        // The colour format is the runtime's preference; the depth format is named here: no depth, no texture.
         let init = XrgpuProjectionLayerInit::new(&binding.get_preferred_color_format());
         init.set_depth_stencil_format(Some(DEPTH_FORMAT_NAME));
         let layer = match throws::create_projection_layer(&binding, &init) {
@@ -131,8 +128,7 @@ impl WebXrSession {
         };
         sensing::note_ignored_depth(&layer);
         self.gpu = Some(Gpu { binding, layer });
-        // The render state is handed the projection layer before anything else, because a WebGPU-compatible
-        // session with no layer set is a session whose animation frames never arrive at all.
+        // The render state gets the projection layer first: a WebGPU session with no layer set never ticks.
         if let Err(error) = self.present_layers() {
             log::warn!("wxr-webxr: the browser took no layer list: {error}");
         }
@@ -165,8 +161,7 @@ impl WebXrSession {
 }
 
 impl wxr::Session for WebXrSession {
-    /// The browser's `GPUTexture`, and the depth that came with it: a sub-image per view shares both and
-    /// differs only in which part of the colour texture the view draws into.
+    /// The browser's `GPUTexture` and the depth that came with it: a sub-image per view shares both.
     type Image = FrameImage;
     /// What the browser measured of the room, as its own `GPUTexture`, while its frame is being drawn.
     type EnvironmentDepth = JsValue;
@@ -206,8 +201,7 @@ impl wxr::Session for WebXrSession {
         self.interaction_mode_impl()
     }
 
-    /// What the display shows behind the picture - WebXR's `environmentBlendMode` - or `Opaque` until there
-    /// is a session to ask.
+    /// What the display shows behind the picture - WebXR's `environmentBlendMode` - `Opaque` until asked.
     fn blend(&self) -> wxr::Blend {
         let Some(session) = self.inner.borrow().session.clone() else {
             return wxr::Blend::Opaque;
@@ -222,8 +216,7 @@ impl wxr::Session for WebXrSession {
         }
     }
 
-    /// The near and far planes, through the browser's own render state. Remembered as well as applied, because
-    /// an app may set them while the session is still `Connecting`.
+    /// The near and far planes, through the browser's render state; remembered for one set while `Connecting`.
     fn set_depth_range(&mut self, range: wxr::DepthRange) {
         self.depth_range = Some(range);
         self.apply_depth_range();
@@ -253,6 +246,14 @@ impl wxr::Session for WebXrSession {
         offset: wxr::Pose,
     ) -> Result<wxr::ReferenceSpace, wxr::Error> {
         self.offset_space_impl(space, offset)
+    }
+
+    fn locate(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        base: wxr::ReferenceSpace,
+    ) -> Result<Option<wxr::TrackedPose>, wxr::Error> {
+        self.locate_impl(space, base)
     }
 
     fn begin(&mut self, _now: Duration, out: &mut wxr::Frame) -> Result<(), wxr::Error> {
@@ -436,8 +437,7 @@ impl wxr::Session for WebXrSession {
         view: usize,
     ) -> Option<(&Self::EnvironmentDepth, wxr::DepthInfo)> {
         self.depth_image = None;
-        // A runtime that has paused depth has nothing for this frame to measure, even if the binding would
-        // still answer.
+        // A runtime that has paused depth has nothing for this frame, even if the binding would still answer.
         if self.depth_paused() {
             return None;
         }

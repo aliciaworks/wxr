@@ -77,8 +77,7 @@ fn the_escape_hatch_hands_back_the_backends_own_type() {
 
     // The core's type says one thing...
     assert_eq!(session.state(), State::Connecting);
-    // ...and the backend's own type is reachable through the seam, which is what a program needs when
-    // the platform has something the core has decided not to say.
+    // ...and the backend's own type is reachable through the seam, for what the core did not say.
     let same: &MockSession = session
         .as_backend::<MockSession>()
         .expect("the mock is this backend");
@@ -97,10 +96,8 @@ fn the_escape_hatch_hands_back_the_backends_own_type() {
 
 #[test]
 fn the_core_can_be_erased_and_the_hatch_is_what_cannot() {
-    // `Session` is object-safe: every question a caller asks without knowing the backend is in a trait object's
-    // table, which is what lets `should_render` take one unsized. `as_backend` is not, because a generic method
-    // cannot be - and a program that holds an erased session has not lost the hatch, it knows which platform it
-    // has from the associated types. This test is the compile-time half of that rule, run.
+    // `Session` is object-safe, which lets `should_render` take one unsized. `as_backend` is not, and a program
+    // holding an erased session has not lost the hatch - it knows its platform from the associated types.
     let session = running();
     let erased: &dyn Session<Image = u32, EnvironmentDepth = ()> = &session;
     assert!(should_render(erased));
@@ -111,8 +108,7 @@ fn the_core_can_be_erased_and_the_hatch_is_what_cannot() {
 
 #[test]
 fn inputs_replace_the_last_frame_rather_than_pile_up() {
-    // The vector is the caller's, and a frame loop keeps one across frames - so what `inputs` leaves in it is
-    // this frame's sources and not this frame's plus every frame before it.
+    // The vector is the caller's, kept across frames: what `inputs` leaves in it is this frame's sources only.
     let mut session = running();
     let space = session.space(SpaceKind::LocalFloor).expect("a floor");
     let mut sources = Vec::new();
@@ -154,8 +150,7 @@ fn the_mock_room_has_triangles_in_it() {
     assert_eq!(meshes.len(), 1);
     let mesh = &meshes[0];
     assert_eq!(mesh.kind, crate::SurfaceKind::Table);
-    // Three at a time, and every one of them names a corner: the shape a mesh has to have to be worth
-    // anything, which is also the shape a mock that fabricated one would get wrong.
+    // Three at a time, and every one names a corner: the shape a mesh has to have to be worth anything.
     assert_eq!(mesh.indices.len() % 3, 0);
     assert!(
         mesh.indices
@@ -188,12 +183,10 @@ fn a_space_with_no_boundary_has_an_empty_one() {
 fn a_backend_without_depth_sensing_answers_none() {
     let mut session = running();
     assert!(session.environment_depth(0).is_none());
-    // Not `Features::NONE`: the mock's controllers have actuators now, so haptics is a bit it does have. What
-    // this test is about is the bit it does not.
+    // Not `Features::NONE`: the mock's controllers have actuators now. This test is about the bit it lacks.
     assert!(!session.features().contains(crate::Features::DEPTH));
 
-    // Anchors are the same shape: a backend that cannot make one says so rather than handing back a name that
-    // never resolves.
+    // Anchors are the same shape: no way to make one says so rather than naming one that never resolves.
     let space = session.space(SpaceKind::LocalFloor).expect("a floor");
     assert!(matches!(
         session.anchor(space, Pose::IDENTITY),
@@ -238,8 +231,7 @@ fn a_backend_without_hit_testing_says_so() {
 
 #[test]
 fn a_session_with_no_permission_model_grants_everything() {
-    // What an app reads on a backend with no permission of its own: `Granted`, not "unknown" - including
-    // when it asks about several capabilities at once.
+    // What an app reads on a backend with no permission of its own: `Granted`, for one capability or several.
     let mut session = running();
     let granted = crate::Authorization::Granted;
     let set = crate::Features::PLANES.union(crate::Features::HAND_TRACKING);
@@ -267,8 +259,7 @@ fn a_controller_has_no_skeleton() {
     session.hand(sources[0].id, space, &mut hand).unwrap();
     assert!(!hand.is_tracked());
     assert_eq!(hand.joint(crate::HandJoint::Wrist), None);
-    // Asked, and answered with nothing - which is the whole difference between "no hand" and "hands not on".
-    // The first is a hand out of view; the second is a floor-level session.
+    // Asked, and answered with nothing: a hand out of view, as opposed to a session with its hands off.
     assert_eq!(session.hand_asks(), &[sources[0].id]);
 }
 
@@ -300,6 +291,25 @@ fn a_space_can_be_offset_from_another() {
 }
 
 #[test]
+fn a_mock_space_seen_from_another_is_the_identity() {
+    let mut session = running();
+    let floor = session.space(SpaceKind::LocalFloor).expect("a floor");
+    let bounds = session.space(SpaceKind::BoundedFloor).expect("bounds");
+    // Every mock space is the same place, so the answer is the identity - but both handles are checked.
+    assert_eq!(
+        session.locate(bounds, floor).unwrap(),
+        Some(TrackedPose::default())
+    );
+    let forged = ReferenceSpace::new(floor.kind, floor.id() + 2);
+    for (a, b) in [(forged, floor), (floor, forged)] {
+        assert!(matches!(
+            session.locate(a, b),
+            Err(Error::NoSpace(SpaceKind::LocalFloor))
+        ));
+    }
+}
+
+#[test]
 fn a_space_this_session_never_made_is_refused() {
     // A handle is an id and a public kind, so a caller can hold one that no session made. Every real backend
     // answers `NoSpace` rather than inventing a place, and a mock that did otherwise would let code ship that
@@ -328,8 +338,7 @@ fn a_space_this_session_never_made_is_refused() {
 
 #[test]
 fn a_mock_says_nothing_about_the_display_and_that_is_opaque() {
-    // The default in the trait, and the right assumption: a session that does not say is one that fills
-    // the display, which is what both ways of presenting into one do.
+    // The trait's default, and the right assumption: a session that does not say fills the display.
     let session = running();
     assert_eq!(session.blend(), crate::Blend::Opaque);
 }
@@ -355,9 +364,7 @@ fn a_session_without_the_layer_feature_refuses_one() {
         },
         Extent2d::new(256, 256),
     );
-    // Refused, and not handed back a layer that nothing would ever place - which is what the capability bit is
-    // for: an app that branches on `features` never sees this, and one that does not gets an error rather than a
-    // silent nothing.
+    // Refused rather than handed a layer nothing would place: an app branching on `features` never gets here.
     assert!(matches!(refused, Err(Error::Unsupported(_))));
     assert!(!session.features().contains(Features::LAYER_QUAD));
     assert_eq!(session.layer_count(), 0);
@@ -402,8 +409,7 @@ fn a_layer_is_made_placed_drawn_into_and_released() {
     session.set_layer_pose(layer, placed).unwrap();
     assert_eq!(session.layer_pose(layer), Some(placed));
 
-    // A frame hands out an image, and the next frame hands out a different one: a layer's picture belongs to the
-    // frame, and a renderer that kept the first would draw into a picture the compositor has taken back.
+    // A layer's picture belongs to the frame: a renderer that kept the first would draw into a taken picture.
     let mut frame = Frame::default();
     session.begin(Duration::ZERO, &mut frame).unwrap();
     let (first, image) = session.layer_image(layer).unwrap();
@@ -427,8 +433,7 @@ fn a_shape_the_session_does_not_have_is_refused_even_with_layers() {
     let mut session = with_layers();
     let space = session.space(SpaceKind::LocalFloor).unwrap();
     let refused = session.layer(space, LayerShape::Cube, Extent2d::new(256, 256));
-    // The bit is per shape on both platforms, so a session with a quad and no cube is the normal case rather
-    // than an odd one.
+    // The bit is per shape on both platforms, so a session with a quad and no cube is the normal case.
     assert!(matches!(refused, Err(Error::Unsupported(_))));
     assert_eq!(session.layer_count(), 0);
 }
@@ -454,8 +459,7 @@ fn a_hand_is_a_skeleton_and_a_controller_is_not() {
     let mut session = with_hands();
     let space = session.space(SpaceKind::LocalFloor).unwrap();
 
-    // A session with hands is a session that says it has them, which is the question a caller asks before it
-    // asks for one - and the only reason it is worth asking is that the answer can be no.
+    // A session with hands says it has them, which is the question a caller asks before it asks for one.
     assert!(session.features().contains(Features::HAND_TRACKING));
     let mut sources = Vec::new();
     session.inputs(space, &mut sources).unwrap();
@@ -468,14 +472,12 @@ fn a_hand_is_a_skeleton_and_a_controller_is_not() {
     session.hand(sources[1].id, space, &mut right).unwrap();
     assert!(left.is_tracked() && right.is_tracked());
 
-    // Two sources, two places: a left wrist at the right wrist is one answer handed out twice, and a game
-    // drawing both hands would draw one.
+    // Two sources, two places: a left wrist at the right wrist is one answer handed out twice.
     let left_wrist = left.joint(HandJoint::Wrist).unwrap();
     let right_wrist = right.joint(HandJoint::Wrist).unwrap();
     assert_ne!(left_wrist.pose.position, right_wrist.pose.position);
 
-    // And a skeleton has a direction, which is what a fingertip a little way along the hand from the wrist
-    // gives it: a joint at the origin of the one next to it is a dot, not a finger.
+    // A skeleton has a direction: a fingertip a little way along the hand from the wrist, not a dot.
     let tip = left.joint(HandJoint::IndexFingerTip).unwrap();
     assert!(tip.pose.position.z < left_wrist.pose.position.z);
     assert!(tip.radius < left_wrist.radius, "a fingertip is thinner");
@@ -486,9 +488,8 @@ fn a_hand_is_a_skeleton_and_a_controller_is_not() {
 
 #[test]
 fn a_session_without_hands_is_asked_nothing_about_them() {
-    // The default, and the floor: `inputs` says the sources are controllers, so the round trip never happens -
-    // which is what `hand_asks` is there to show, since a `hand` that returned an empty skeleton for a
-    // controller would look identical to one that returned nothing for a hand out of view.
+    // The default, and the floor: `inputs` says controllers, so the round trip never happens - which is what
+    // `hand_asks` shows, since an empty skeleton for a controller looks like one for a hand out of view.
     let mut session = running();
     let space = session.space(SpaceKind::LocalFloor).unwrap();
     let mut sources = Vec::new();
