@@ -74,6 +74,10 @@ pub struct WebXrSession {
     /// also keeps the `XRSession` out of the closure, which would otherwise be a cycle.
     pub(super) rate_changed: Rc<Cell<bool>>,
     pub(super) on_rate_change: Option<Closure<dyn FnMut(Event)>>,
+    /// The `visibilitymaskchange` handler, kept alive for the same reason as the two above. `None` is a
+    /// browser that does not expose the attribute, and then every view is wholly visible.
+    pub(super) on_visibility_mask:
+        Option<Closure<dyn FnMut(crate::sys::XrVisibilityMaskChangeEvent)>>,
     /// Whether `Lost` has been said, so that the end of a session is news once.
     pub(super) lost: bool,
     /// Spaces, each a slot: the request is a promise, so a space exists a frame or two after it is asked for.
@@ -105,6 +109,11 @@ pub struct WebXrSession {
     pub(super) reset: Rc<RefCell<VecDeque<wxr::Event>>>,
     /// Layer `redraw` events, which arrive on a layer and are passed on the same way - and for the same reason.
     pub(super) redraw: Rc<RefCell<VecDeque<wxr::Event>>>,
+    /// The masks the browser has reported, by view index. `None` is a view whose mask has not been reported,
+    /// which the specification makes the whole view being visible.
+    pub(super) visibility_masks: Rc<RefCell<Vec<Option<wxr::VisibilityMask>>>>,
+    /// Views whose mask changed since the last poll, so a change is news once.
+    pub(super) visibility_mask_changed: Rc<RefCell<VecDeque<usize>>>,
     /// The device the app made, kept because a WebXR/WebGPU session needs it: the binding that hands out the
     /// textures is built from it, once, when the session arrives.
     pub(super) device: Option<wgpu::Device>,

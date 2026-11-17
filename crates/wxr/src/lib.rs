@@ -40,6 +40,7 @@ pub mod plane;
 pub mod session;
 pub mod space;
 pub mod target;
+pub mod visibility;
 
 pub use anchor::{Anchor, AnchorId};
 pub use authorization::Authorization;
@@ -60,3 +61,4 @@ pub use session::{
 };
 pub use space::{Motion, Pose, ReferenceSpace, SpaceKind};
 pub use target::{ColorFormat, Extent2d, ImageMeta};
+pub use visibility::VisibilityMask;

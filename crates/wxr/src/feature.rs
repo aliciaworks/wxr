@@ -60,6 +60,12 @@ impl Features {
     /// own that need not be on at all.
     pub const MESH: Self = Self(1 << 12);
 
+    /// Which part of each eye's view the display shows: [`crate::Session::visibility_mask`].
+    ///
+    /// The bit is about the *event* as much as the geometry - a runtime that can answer once but never says
+    /// the mask changed is a runtime whose mask a renderer would keep drawing into the wrong shape.
+    pub const VISIBILITY_MASK: Self = Self(1 << 13);
+
     /// Whether every bit of `other` is in this set.
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0

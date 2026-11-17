@@ -126,6 +126,14 @@ pub enum Event {
     /// The same news is [`Session::layer_needs_redraw`] for an app that would rather ask every frame; a layer
     /// nothing has been drawn into yet needs a picture too, and says so there without an event.
     Redraw(Layer),
+    /// The part of a view the display shows has changed, named by its index in the frame's views - WebXR's
+    /// `visibilitymaskchange` and OpenXR's `XrEventDataVisibilityMaskChangedKHR`.
+    ///
+    /// The new mask is read from [`Session::visibility_mask`](crate::Session::visibility_mask); the event only
+    /// says which view to ask about, because a mask is geometry and an event that carried it would be a frame
+    /// in the queue. A runtime that reports one every few seconds is a headset being adjusted, not a frame
+    /// loop that has to react within one.
+    VisibilityMaskChanged(usize),
     /// The primary action started on a source. WebXR's `selectstart`.
     SelectStart(InputId),
     /// It finished. WebXR's `selectend`.

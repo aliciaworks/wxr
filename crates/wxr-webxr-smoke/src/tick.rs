@@ -12,6 +12,10 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
     while let Some(event) = session.poll() {
         say(&format!("event: {event:?}"));
         note_event(board, event);
+        if let wxr::Event::VisibilityMaskChanged(view) = event {
+            masks::check(session, view)?;
+            board.masks_checked = true;
+        }
     }
     // Reported on every change rather than per frame: a session that never reaches `Visible` is exactly the
     // case this backend has to be honest about, and frames never arrive to say it in. The lifecycle and the
@@ -79,9 +83,7 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
         }
     }
     // The refresh rate is a `float` on the way in and a promise on the way out, and both halves are the
-    // browser's: the list it offers, the rate it took, and the two values that are not numbers of hertz at
-    // all. Asked once, because the list is the session's rather than the frame's - and read back off the stub,
-    // because a request is not the answer. It is before the frame for that reason: no frame is needed.
+    // browser's. Read back off the stub, because a request is not the answer.
     if !board.refresh_rate_checked {
         board.refresh_rate_checked = true;
         if !session.features().contains(wxr::Features::REFRESH_RATE) {

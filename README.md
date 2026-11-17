@@ -26,10 +26,10 @@ column only on a Mac, since that one counts the SDK's own headers rather than an
 
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
-| **Native API reached** - of each backend's own spec | 221/290 | 84/551 | 118/618 |
-| *as a percentage* | 76% | 15% | 19% |
-| **WebXR API reached** - of the whole API | 361/452 | 246/452 | 233/452 |
-| *as a percentage* | 80% | 54% | 52% |
+| **Native API reached** - of each backend's own spec | 222/290 | 85/551 | 118/618 |
+| *as a percentage* | 77% | 15% | 19% |
+| **WebXR API reached** - of the whole API | 363/452 | 250/452 | 233/452 |
+| *as a percentage* | 80% | 55% | 52% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
 Input, Depth Sensing, Hit Test, Lighting Estimation, Anchors, Plane Detection, the AR Module, DOM Overlays
@@ -396,7 +396,7 @@ its row reads so low.
 
 The denominator is the whole API, extensions included: `xrCreateSession` is one of five hundred commands once
 the drivers' own extensions are counted, and ARKit's C surface is six hundred functions once accessory and
-room tracking are in it. Neither is what this workspace offers an app - that is ten `Features`, one
+room tracking are in it. Neither is what this workspace offers an app - that is fourteen `Features`, one
 hand-written answer per backend, small enough to read in `crates/wxr/src/feature.rs`.
 
 The first number is the one about each backend's *own*
@@ -408,7 +408,7 @@ can reach 100% by design.
 The second is the direction that says whether the *unification* is done, and it has two factors. The core
 speaks 69% of WebXR's vocabulary - 311 of the 452 members across every specification - it is the vocabulary all
 three backends share rather than a mirror of the spec - and of its own `Session` methods the backends define
-**91%**, **80%** and **61%**. So a backend cannot reach the whole of WebXR by implementing
+**91%**, **81%** and **60%**. So a backend cannot reach the whole of WebXR by implementing
 methods: the word has to exist in the core first. Widening the core and filling the methods are the two things
 that move this, and both are work.
 

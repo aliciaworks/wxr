@@ -13,6 +13,7 @@ mod layers;
 mod persistence;
 mod planes;
 mod state;
+mod visibility;
 
 // The types the world-modelling modules make, so `state` can hold them and the trait block below can point
 // at them. `EnvironmentDepthImage` is public because it is this backend's `Session::EnvironmentDepth`.
@@ -20,6 +21,7 @@ use anchors::Anchors;
 use depth::{EnvironmentDepth, MeasuredDepth};
 use hits::Raycaster;
 use planes::PlaneDetector;
+use visibility::VisibilityMasks;
 
 pub(crate) use state::{HapticExtensions, InputExtensions, LayerExtensions, SpatialExtensions};
 
@@ -36,8 +38,8 @@ mod making;
 impl wxr::Session for OpenXrSession {
     /// The colour image this frame drew into and the depth image it drew with, when the runtime took one.
     type Image = crate::import::SwapchainImage;
-    /// The runtime's own depth map for this frame, a texture the *scene* samples rather than a layer to
-    /// submit - `XR_META_environment_depth` measures the room for the app to draw against.
+    /// The runtime's own depth map for this frame - `XR_META_environment_depth` measures the room for the
+    /// scene to draw against rather than a layer to submit.
     type EnvironmentDepth = EnvironmentDepthImage;
 
     fn presentation(&self) -> wxr::Presentation {
@@ -56,22 +58,18 @@ impl wxr::Session for OpenXrSession {
         self.features_impl()
     }
 
-    /// The rates the runtime offers, which is `xrEnumerateDisplayRefreshRatesFB`. A runtime without the
-    /// extension offers none, and a caller that finds the list empty keeps the rate the display is already at.
+    /// The rates the runtime offers, which is `xrEnumerateDisplayRefreshRatesFB`; none without the extension.
     fn refresh_rates(&mut self, out: &mut Vec<f32>) {
         self.refresh_rates_impl(out)
     }
 
-    /// The rate the display is running at, which is `xrGetDisplayRefreshRateFB`. A runtime without the
-    /// extension has one rate and no way to ask, so `None` is the whole answer.
+    /// The rate the display is running at, which is `xrGetDisplayRefreshRateFB`; `None` without the extension.
     fn refresh_rate(&mut self) -> Option<f32> {
         self.refresh_rate_impl()
     }
 
-    /// Ask for one of them, which is `xrRequestDisplayRefreshRateFB`.
-    ///
-    /// A runtime that will not take this one keeps the rate it has, so a refusal is logged rather than
-    /// returned - the same shape `set_foveation` has, and for the same reason: it is a request.
+    /// Ask for one of them, which is `xrRequestDisplayRefreshRateFB`. A refusal is logged rather than
+    /// returned - the same shape `set_foveation` has: it is a request.
     fn set_refresh_rate(&mut self, rate: f32) {
         self.set_refresh_rate_impl(rate)
     }
@@ -81,9 +79,7 @@ impl wxr::Session for OpenXrSession {
     }
 
     /// The near and far planes the scene draws with, which is `XrCompositionLayerDepthInfoKHR`'s
-    /// `nearZ`/`farZ`. Stored, because there is nothing to send it with until a frame is submitted - and saying
-    /// it at all is what turns depth submission on: a runtime never told the planes is never given a depth
-    /// chain, because a buffer nobody explained is one the compositor cannot reproject with.
+    /// `nearZ`/`farZ`. Stored until a frame is submitted, and saying it at all is what turns depth on.
     fn set_depth_range(&mut self, range: wxr::DepthRange) {
         self.depth_range = Some(range);
     }
@@ -322,6 +318,15 @@ impl wxr::Session for OpenXrSession {
         self.views_impl(space, out)
     }
 
+    /// What part of a view the display shows, or `Unsupported` without `XR_KHR_visibility_mask`.
+    fn visibility_mask(
+        &mut self,
+        view: usize,
+        out: &mut wxr::VisibilityMask,
+    ) -> Result<(), wxr::Error> {
+        self.visibility_mask_impl(view, out)
+    }
+
     fn inputs(
         &mut self,
         space: wxr::ReferenceSpace,
@@ -385,9 +390,8 @@ impl wxr::Session for OpenXrSession {
             .map_err(wxr::Error::from)
     }
 
-    /// The surfaces the runtime has found this frame, which is `XR_EXT_plane_detection`'s state machine:
-    /// looking for planes is asynchronous, so one call here is one *step* of begin, poll and read - an empty
-    /// list is a pass that has not finished, and this frame's list rather than one to keep.
+    /// The surfaces the runtime has found this frame, which is `XR_EXT_plane_detection`'s state machine: one
+    /// call is one *step* of begin, poll and read, so an empty list is a pass that has not finished.
     fn planes(
         &mut self,
         space: wxr::ReferenceSpace,
@@ -396,10 +400,8 @@ impl wxr::Session for OpenXrSession {
         self.planes_impl(space, out)
     }
 
-    /// Ask the runtime to keep a place fixed in the room, which is `XR_FB_spatial_entity`'s anchor.
-    ///
-    /// Made asynchronously by OpenXR too, so what comes back names a slot that fills in when the runtime
-    /// answers - and `anchor_pose` on one that has not is `None`, which is a place that is not there yet.
+    /// Ask the runtime to keep a place fixed in the room, which is `XR_FB_spatial_entity`'s anchor. Made
+    /// asynchronously: `anchor_pose` on one that has not arrived is `None`.
     fn anchor(
         &mut self,
         space: wxr::ReferenceSpace,
@@ -435,9 +437,8 @@ impl wxr::Session for OpenXrSession {
     }
 
     /// Ask for a source of hits along a ray - the app's, or the space's own aim - which is
-    /// `XR_META_environment_raycast`, and where `hits` says it lands. `kinds` is only ever `ALL` or `NONE`:
-    /// the extension hands back a point and a normal without saying what surface it was, so a narrowed
-    /// request is `Unsupported`. The raycaster is made on the first call, asynchronously.
+    /// `XR_META_environment_raycast`. `kinds` is only ever `ALL` or `NONE`: the extension does not say what
+    /// surface it met, so a narrowed request is `Unsupported`.
     fn hit_test_source(
         &mut self,
         space: wxr::ReferenceSpace,
@@ -456,15 +457,13 @@ impl wxr::Session for OpenXrSession {
         self.hits_impl(source, space, out)
     }
 
-    /// Let a source of hits go, which is the slot the source's ray is measured from. Nothing to destroy: one
-    /// raycaster serves the session and takes the ray with every call, so a source is only the space and ray it
-    /// was made from. The entry stays, because the id is its position.
+    /// Let a source of hits go. Nothing to destroy: one raycaster serves the session, so a source is only a
+    /// space and a ray, and the entry stays because the id is its position.
     fn release_hit_test_source(&mut self, source: wxr::HitTestSource) {
         self.release_hit_test_source_impl(source)
     }
 
-    /// What the runtime measured of the room, which is `XR_META_environment_depth`'s depth map: a buffer the
-    /// *runtime* fills and the app reads, acquired once a frame between the frame being begun and ended.
+    /// What the runtime measured of the room: `XR_META_environment_depth`'s buffer, acquired once a frame.
     fn environment_depth(
         &mut self,
         view: usize,
@@ -472,9 +471,8 @@ impl wxr::Session for OpenXrSession {
         self.environment_depth_impl(view)
     }
 
-    /// What this session's depth sensing is, once it has a depth provider: `XR_META_environment_depth` is one
-    /// measurement the app asked for, at a resolution the runtime picked and in a buffer the runtime owns -
-    /// WebXR's `cpu-optimized`, at the platform's own resolution.
+    /// What this session's depth sensing is: one measurement in a buffer the runtime owns and fills, at the
+    /// platform's own resolution - WebXR's `cpu-optimized`.
     fn depth_sensing(&self) -> Option<wxr::DepthSensing> {
         self.depth_sensing_impl()
     }

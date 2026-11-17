@@ -102,6 +102,11 @@ pub struct OpenXrSession {
     /// Whether this frame has already asked the runtime for its depth, which it permits once per frame -
     /// including the ask that answered that no depth was ready yet.
     pub(super) depth_asked: bool,
+    /// The parts of the eyes' views the display shows, when the runtime has `XR_KHR_visibility_mask`.
+    ///
+    /// Read lazily and kept until the runtime's change event drops one, because a mask follows the headset on
+    /// the wearer's face rather than the frame loop. `None` is a runtime that draws every pixel it renders.
+    pub(super) visibility_masks: Option<super::VisibilityMasks>,
     /// The app's own depth, as the swapchain it goes out through, when the runtime takes one.
     ///
     /// The opposite direction from [`Self::depth`] above: that one is the runtime measuring the room, and

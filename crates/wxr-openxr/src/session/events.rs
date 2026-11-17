@@ -150,6 +150,21 @@ impl OpenXrSession {
                     );
                     continue;
                 }
+                // The part of a view the display shows moving, which is news a renderer hears and then asks
+                // about. The cached mask is dropped so the next ask reads the new one; an event for the other
+                // view configuration names no view this backend draws, so there is nothing to say.
+                Ok(Some(xr::Event::VisibilityMaskChangedKHR(changed))) => {
+                    if changed.view_configuration_type()
+                        == xr::ViewConfigurationType::PRIMARY_STEREO
+                    {
+                        let view = changed.view_index() as usize;
+                        if let Some(visibility) = self.visibility_masks.as_mut() {
+                            visibility.invalidate(view);
+                            return Some(wxr::Event::VisibilityMaskChanged(view));
+                        }
+                    }
+                    continue;
+                }
                 Ok(Some(_)) => continue,
                 Ok(None) => {
                     // A session the runtime has taken away is `Lost` once, after the state that said so: a frame

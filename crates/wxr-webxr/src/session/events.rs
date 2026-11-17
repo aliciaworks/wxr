@@ -57,6 +57,10 @@ impl WebXrSession {
             session.set_onframeratechange(Some(on_rate_change.as_ref().unchecked_ref()));
             self.on_rate_change = Some(on_rate_change);
 
+            // A browser that has the attribute can say which part of a view it shows, and that is a handler on
+            // the session rather than a call - see `visibility`.
+            self.listen_for_visibility_masks(&session);
+
             // Subscribed to here because a session is the only thing that can have the events, and this is the
             // only moment there is one to ask.
             self.input = Some(input::Events::new(&session, &self.sources));
@@ -90,6 +94,12 @@ impl WebXrSession {
         // And a layer the compositor lost is the same shape of news, from a handler on the layer.
         if let Some(event) = self.redraw.borrow_mut().pop_front() {
             return Some(event);
+        }
+
+        // The part of a view the display shows moving is the same shape again, from a handler on the session:
+        // the event names the view and the mask is read from the cache the handler filled.
+        if let Some(view) = self.visibility_mask_changed.borrow_mut().pop_front() {
+            return Some(wxr::Event::VisibilityMaskChanged(view));
         }
 
         // The display saying its rate moved, read back from the session rather than from the event: WebXR's

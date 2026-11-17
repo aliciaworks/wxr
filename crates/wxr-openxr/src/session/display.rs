@@ -154,6 +154,11 @@ impl OpenXrSession {
         if self.haptics.feedback {
             features = features.union(wxr::Features::HAPTICS);
         }
+        // Whether the display can say which part of a view it shows, which is a fact about the instance that
+        // was turned into a cache at session creation rather than asked now.
+        if self.visibility_masks.is_some() {
+            features = features.union(wxr::Features::VISIBILITY_MASK);
+        }
         features
     }
 }

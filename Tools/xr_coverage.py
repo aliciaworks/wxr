@@ -342,6 +342,9 @@ DEFAULT_IS_ENOUGH = {
     "enabled`, on the configuration Apple describes as the one handed to the provider *while the layer is "
     "being made*, and unlike `set_render_quality` there is no runtime counterpart - a setter that probably "
     "does nothing is a setter that lies",
+    ("wxr-apple", "visibility_mask"): "CompositorServices has no mask geometry: a drawable's view is a "
+    "texture map and a transform, and the region the optics show is the compositor's business rather than "
+    "something an app is told to draw around - so the whole view is the default for want of any other answer",
 }
 
 
@@ -521,6 +524,9 @@ OPENXR_RENAMES = {
     # `Instance::view_configuration_properties`.
     "xrGetInstanceProperties": "properties",
     "xrGetViewConfigurationProperties": "view_configuration_properties",
+    # The one command the generator gives its vendor suffix to rather than stripping it: the method is
+    # `Session::get_visibility_mask_khr`, and no other spelling of the command appears.
+    "xrGetVisibilityMaskKHR": "get_visibility_mask_khr",
 }
 
 

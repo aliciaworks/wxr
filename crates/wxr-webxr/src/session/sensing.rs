@@ -143,6 +143,11 @@ impl WebXrSession {
                 .union(wxr::Features::LAYER_EQUIRECT)
                 .union(wxr::Features::LAYER_CUBE);
         }
+        // Visibility masks are the handler rather than a granted feature: the specification has no name to put
+        // in `enabledFeatures`, and a browser that has the attribute is one that dispatches the event.
+        if self.on_visibility_mask.is_some() {
+            features = features.union(wxr::Features::VISIBILITY_MASK);
+        }
         // Haptics is the gamepad's rather than the session's: an actuator belongs to a controller, so the only
         // place the answer exists is the controllers that are connected. An empty list, and a list of
         // controllers with no actuators, are the same answer - a session with nothing to buzz.

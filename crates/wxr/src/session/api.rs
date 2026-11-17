@@ -22,6 +22,7 @@ use crate::mesh::Mesh;
 use crate::plane::Plane;
 use crate::space::{Pose, ReferenceSpace, SpaceKind};
 use crate::target::ImageMeta;
+use crate::visibility::VisibilityMask;
 
 use super::*;
 
@@ -65,9 +66,8 @@ pub trait Session: Any {
     /// actually got and not what it asked for, since a browser may refuse a feature and a runtime lack one.
     fn features(&self) -> Features;
 
-    /// Whether this session is allowed to use `feature` - see [`Authorization`], which is also the answer for
-    /// a set of them. [`features`](Session::features) says what the session has; this says whether the
-    /// platform let it have it, which is what tells "not on this device" from "you said no".
+    /// Whether this session is allowed to use `feature`, which is what tells "not on this device" from "you
+    /// said no" - [`features`](Session::features) says what it has, and this says whether it was allowed it.
     fn authorization(&mut self, _feature: Features) -> Authorization {
         Authorization::Granted
     }
@@ -75,8 +75,8 @@ pub trait Session: Any {
     /// The session's lifecycle: is it being asked for, is it here, is it over.
     fn state(&self) -> State;
 
-    /// Whether the session is being shown. Hidden by default: a backend that does not say is one whose
-    /// display nobody has looked at yet, and drawing into a session that is not shown is drawing into nothing.
+    /// Whether the session is being shown. Hidden by default: a backend that does not say has a display nobody
+    /// has looked at, and drawing into an unshown session draws into nothing.
     fn visibility(&self) -> Visibility {
         Visibility::Hidden
     }
@@ -93,21 +93,20 @@ pub trait Session: Any {
     }
 
     /// What this session's depth sensing is, when it asked for any - WebXR's `depthUsage`, `depthDataFormat`,
-    /// `depthType` and `depthActive`, four attributes of one thing and one value here. `None` for a session with
-    /// no depth sensing, and for one whose depth is its compositor's rather than a measurement: nothing to read.
+    /// `depthType` and `depthActive` as one value. `None` for no depth sensing and for a compositor's own depth.
     fn depth_sensing(&self) -> Option<DepthSensing> {
         None
     }
 
     /// Start or stop the runtime measuring the room - WebXR's `resumeDepthSensing` and `pauseDepthSensing`.
     /// A request: no depth to pause is [`Error::Unsupported`], and asking for the state already reported is a
-    /// no-op, so a caller may say what it wants every frame - the case the browser's own methods refuse.
+    /// no-op, so a caller may say what it wants every frame.
     fn set_depth_active(&mut self, _active: bool) -> Result<(), Error> {
         Err(Error::Unsupported("pausing depth sensing".into()))
     }
 
-    /// How this session reads its input - WebXR's `interactionMode`, `WorldSpace` by default because that is
-    /// what a session drawn into a display is. A browser's can be `ScreenSpace` too, so that backend asks.
+    /// How this session reads its input - WebXR's `interactionMode`. `WorldSpace` by default, because that is
+    /// what a session drawn into a display is; a browser's can be `ScreenSpace` too, so that backend asks.
     fn interaction_mode(&self) -> InteractionMode {
         InteractionMode::WorldSpace
     }
@@ -117,10 +116,8 @@ pub trait Session: Any {
     /// rather than clamped: the app is the only one that knows which end it meant.
     fn set_depth_range(&mut self, _range: DepthRange) {}
 
-    /// How much foveation the compositor should apply, from `0` (none) to `1` (the most it has) - WebXR's
-    /// `fixedFoveation`. It is the fill-rate lever, and it is a *request*: a compositor that does not foveate
-    /// ignores it, which is why it is a knob rather than a [`Features`] bit. Nothing is sent by default, which
-    /// keeps the runtime's own choice.
+    /// How much foveation the compositor should apply, from `0` to `1` - WebXR's `fixedFoveation`. A request,
+    /// so a compositor that does not foveate ignores it; nothing is sent by default.
     fn set_foveation(&mut self, _amount: f32) {}
 
     /// The refresh rates the display offers, in hertz, appended to `out` - `XR_FB_display_refresh_rate`'s
@@ -139,9 +136,8 @@ pub trait Session: Any {
     /// will not take this one, keeps the rate it has - and that default is the display's own choice.
     fn set_refresh_rate(&mut self, _rate: f32) {}
 
-    /// Ask for a view to be rendered at `scale` of its full resolution - WebXR's `requestViewportScale`. The
-    /// app's half of the foveation trade above: fewer pixels where the eye is not looking. `None` is ignored,
-    /// so passing a [`crate::View::recommended_viewport_scale`] unchecked is safe.
+    /// Ask for a view to be rendered at `scale` of its full resolution - WebXR's `requestViewportScale`, the
+    /// app's half of the foveation trade. `None` is ignored, so passing a `recommended_viewport_scale` is safe.
     fn request_viewport_scale(&mut self, _view: usize, _scale: Option<f32>) {}
 
     /// The shape of every image this session presents.
@@ -154,26 +150,18 @@ pub trait Session: Any {
     fn image(&self, index: usize) -> Option<&Self::Image>;
 
     /// How many layers this session may hand the compositor at once, when the runtime names a number -
-    /// WebXR's `maxRenderLayers`.
-    ///
-    /// The layers are the ones [`layer`](Session::layer) makes, and a runtime that takes four and not ten
-    /// would rather say so than fail an app's fifth. `None` for a runtime that does not name a limit - not
-    /// the same as zero, and a compositor whose layer count is its own business is asked by making one.
+    /// WebXR's `maxRenderLayers`. `None` is not zero: a compositor whose limit is its own business is asked
+    /// by making a layer, and one that takes four would rather say so than fail an app's fifth.
     fn max_render_layers(&self) -> Option<u32> {
         None
     }
 
     /// Make a picture the compositor places itself, which is WebXR's `XRCompositionLayer`s and OpenXR's
-    /// `XrCompositionLayer`s other than the projection one.
+    /// `XrCompositionLayer`s other than the projection one. It is drawn once - a menu, a video, a 360°
+    /// photograph - and the runtime puts it where the shape and the space say.
     ///
-    /// The one part of a frame not drawn per eye: the runtime takes the image, puts it where the shape and the
-    /// space say, and warps it for the optics. What an app draws into it is drawn once - a menu, a video, a
-    /// 360° photograph - and the compositor decides where that picture is and how it meets the others.
-    ///
-    /// Which shapes a session has is [`Features::LAYER_QUAD`] and its siblings, one bit per shape, because that
-    /// is how the platforms say it too; a session with none answers [`Error::Unsupported`] rather than handing
-    /// back a layer nothing will place. `pixels` is the resolution to draw at, which is the app's choice - the
-    /// runtime may adjust it, and what it settled on comes back from [`Session::layer_image`]. The *shape*'s
+    /// Which shapes a session has is [`Features::LAYER_QUAD`] and its siblings, one bit per shape; a session
+    /// with none answers [`Error::Unsupported`]. `pixels` is the resolution to draw at, and the *shape*'s
     /// aspect is the geometry's, so an aspect that disagrees with `pixels` is the picture stretched.
     fn layer(
         &mut self,
@@ -254,6 +242,17 @@ pub trait Session: Any {
     /// The last answer is replaced rather than added to - head, eyes and speed together, as [`Frame::reset`]
     /// says - so asking twice is two answers to one question, and a call that cannot locate leaves neither.
     fn views(&mut self, space: ReferenceSpace, out: &mut Frame) -> Result<(), Error>;
+
+    /// Fill in the part of one view's picture the display shows, and let an empty mask mean the whole view.
+    ///
+    /// `view` is an index into the frame's views, which is what [`Event::VisibilityMaskChanged`] carries; the
+    /// mask is in that eye's view space on the plane `z = -1`, as [VisibilityMask] describes. A session without
+    /// [`Features::VISIBILITY_MASK`] says [`Error::Unsupported`] rather than handing back a mask that claims
+    /// the whole view, which is a different fact from never having looked.
+    fn visibility_mask(&mut self, _view: usize, out: &mut VisibilityMask) -> Result<(), Error> {
+        out.clear();
+        Err(Error::Unsupported("visibility masks".into()))
+    }
 
     /// Fill in what the user is holding, in the space given.
     ///

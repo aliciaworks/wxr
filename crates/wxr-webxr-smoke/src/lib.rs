@@ -36,6 +36,7 @@ mod haptics;
 mod hits;
 mod images;
 mod layers;
+mod masks;
 mod tick;
 
 /// How many frames to draw before saying so and stopping.
@@ -100,10 +101,8 @@ fn opened_for_images() -> bool {
         .is_some_and(|search| search.contains("gpu"))
 }
 
-/// What the stub's `XRView.requestViewportScale` last took, if it took anything.
-///
-/// The browser's answer to a request is not the request, and a view is the session's rather than the page's,
-/// so the stub records what it accepted where the page can read it. `None` before the first request.
+/// What the stub's `XRView.requestViewportScale` last took, if it took anything: the browser's answer to a
+/// request is not the request, and `None` before the first one.
 fn viewport_scale() -> Option<f64> {
     js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str("__wxrViewportScale"))
         .ok()
@@ -208,6 +207,8 @@ struct Board {
     /// back with the place it landed - a hit test is the one call whose numbers the frame cannot supply.
     hit_source: Option<wxr::HitTestSource>,
     hit_checked: bool,
+    /// Whether a mask change arrived and its geometry was read back from it, which is once.
+    masks_checked: bool,
 }
 
 /// Record the events that are checked later rather than as they arrive.
@@ -227,9 +228,7 @@ fn note_event(board: &mut Board, event: wxr::Event) {
 /// The backend's own log lines, which are the ones that say *why*.
 ///
 /// A refused session arrives as an event, and an event has nowhere to put a sentence - so `wxr-webxr` logs
-/// the browser's own explanation and hands back `Lost`. A page with no logger drops those lines on the floor,
-/// and what is left on the record is "the session was lost" with no reason in it, which is the least useful
-/// sentence a backend can produce.
+/// the browser's own explanation and hands back `Lost`, which without this logger is lost on the floor.
 struct Beacon;
 
 impl log::Log for Beacon {
@@ -402,6 +401,7 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         space_resolved: false,
         hit_source: None,
         hit_checked: false,
+        masks_checked: false,
         stopped: false,
     }));
 
@@ -427,6 +427,7 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
                 if board.drawn >= FRAMES
                     && board.layers_checked
                     && board.redraw_checked
+                    && board.masks_checked
                     && (!session.features().contains(wxr::Features::ANCHORS)
                         || board.anchor_step == 8) =>
             {

@@ -11,6 +11,7 @@ use wasm_bindgen_futures::JsFuture;
 
 mod state;
 mod util;
+mod visibility;
 
 use state::*;
 pub use state::{FrameImage, WebXrSession};
@@ -24,15 +25,13 @@ use crate::sys::{
     DomPointReadOnly, Event, XrBoundedReferenceSpace, XrDepthDataFormat, XrDepthType, XrDepthUsage,
     XrEnvironmentBlendMode, XrEye, XrFrame, XrHand, XrHandedness, XrInteractionMode, XrLayerLayout,
     XrPose, XrProjectionLayer, XrReferenceSpace, XrRenderStateInit, XrSession, XrSpace, XrView,
-    XrgpuBinding, XrgpuProjectionLayerInit, XrgpuQuadLayerInit,
+    XrVisibilityMaskChangeEvent, XrgpuBinding, XrgpuProjectionLayerInit, XrgpuQuadLayerInit,
 };
 use crate::{depth, hit, input, planes, throws};
 
 impl Drop for WebXrSession {
-    /// End the browser's session when this one is dropped.
-    ///
-    /// A WebXR session belongs to the browser, and without this it keeps it - and the display - until the page
-    /// goes away. Dropping the handle is how an app says it is finished, so this is where the browser is told.
+    /// End the browser's session when this one is dropped: the session belongs to the browser, and dropping
+    /// the handle is how an app says it is finished.
     fn drop(&mut self) {
         if let Some(session) = self.inner.borrow().session.clone() {
             // Caught: a session dropped from inside its own frame handler is still active, and `end` throws
@@ -63,6 +62,7 @@ impl WebXrSession {
             on_end: None,
             rate_changed: Rc::new(Cell::new(false)),
             on_rate_change: None,
+            on_visibility_mask: None,
             lost: false,
             spaces: Vec::new(),
             state: wxr::State::Connecting,
@@ -78,6 +78,8 @@ impl WebXrSession {
             frame_views: Vec::new(),
             reset: Rc::new(RefCell::new(VecDeque::new())),
             redraw: Rc::new(RefCell::new(VecDeque::new())),
+            visibility_masks: Rc::new(RefCell::new(Vec::new())),
+            visibility_mask_changed: Rc::new(RefCell::new(VecDeque::new())),
             device: Some(device),
             gpu: None,
             image: None,
@@ -94,9 +96,8 @@ impl WebXrSession {
         }
     }
 
-    /// Ask for the binding and the layer, and keep them if the browser gives them: the session needs the
-    /// `webgpu` feature, the device must come from an XR-compatible adapter, and the browser needs the
-    /// binding. Any missing leaves a head and no picture, which is a warning rather than a failure.
+    /// Ask for the binding and the layer, and keep them if the browser gives them. Any missing leaves a head
+    /// and no picture, which is a warning rather than a failure.
     fn start_gpu(&mut self, session: &XrSession) {
         if self.gpu.is_some() || !has_feature(session, "webgpu") {
             return;
@@ -117,9 +118,8 @@ impl WebXrSession {
                 return;
             }
         };
-        // The colour format is the runtime's own preference; the depth format is named here, because a
-        // projection layer made without one has no depth texture at all and one made with another would hand
-        // over depth the renderer's pipeline cannot be attached to.
+        // The colour format is the runtime's preference; the depth format is named here, because a projection
+        // layer made without one has no depth texture at all.
         let init = XrgpuProjectionLayerInit::new(&binding.get_preferred_color_format());
         init.set_depth_stencil_format(Some(DEPTH_FORMAT_NAME));
         let layer = match throws::create_projection_layer(&binding, &init) {
@@ -142,9 +142,7 @@ impl WebXrSession {
     }
 
     /// Hand the browser the whole layer list: the projection layer first, then every layer the app has made.
-    ///
-    /// Called again whenever a layer appears or goes away, because the render state is where a layer *is* - a
-    /// layer the browser was never told about is a texture nothing composites.
+    /// Called again whenever a layer appears or goes away, because the render state is where a layer *is*.
     fn present_layers(&self) -> Result<(), wxr::Error> {
         let Some(gpu) = &self.gpu else {
             return Ok(());
@@ -160,20 +158,17 @@ impl WebXrSession {
             presented.push(slot.layer.as_ref());
         }
         state.set_layers(&presented);
-        // Caught, because `updateRenderState` throws during an animation frame and a layer list is handed over
-        // between frames: a caller that breaks that rule gets an error rather than a trap.
+        // Caught: `updateRenderState` throws during an animation frame, and a layer list is handed over between.
         throws::update_render_state(&session, &state)
             .map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))
     }
 }
 
 impl wxr::Session for WebXrSession {
-    /// The browser's `GPUTexture`, and the depth that came with it: a WebXR/WebGPU projection layer gives a
-    /// sub-image per view that shares both and differs only in which part of the colour one the view draws
-    /// into - so a frame here is one image, two viewports, and two array layers when the layer is stereo.
+    /// The browser's `GPUTexture`, and the depth that came with it: a sub-image per view shares both and
+    /// differs only in which part of the colour texture the view draws into.
     type Image = FrameImage;
-    /// What the browser measured of the room, as its own `GPUTexture` - which is what `gpu-optimized` depth
-    /// arrives as, and only while the frame it was made for is the frame being drawn.
+    /// What the browser measured of the room, as its own `GPUTexture`, while its frame is being drawn.
     type EnvironmentDepth = JsValue;
 
     fn presentation(&self) -> wxr::Presentation {
@@ -196,14 +191,12 @@ impl wxr::Session for WebXrSession {
         self.poll_impl()
     }
 
-    /// What the browser says the depth sensing is - the only backend where this is an app's request rather
-    /// than a compositor's buffer, and so the only one that answers with something.
+    /// What the browser says the depth sensing is: an app's request, and the only backend that answers one.
     fn depth_sensing(&self) -> Option<wxr::DepthSensing> {
         self.depth_sensing_impl()
     }
 
-    /// Start or stop the browser measuring the room, which is the one backend with a depth sensor an app
-    /// can switch off.
+    /// Start or stop the browser measuring the room, the one backend with a depth sensor an app can switch.
     fn set_depth_active(&mut self, active: bool) -> Result<(), wxr::Error> {
         self.set_depth_active_impl(active)
     }
@@ -213,8 +206,8 @@ impl wxr::Session for WebXrSession {
         self.interaction_mode_impl()
     }
 
-    /// What the display shows behind the picture, which WebXR calls `environmentBlendMode`. Opaque until there
-    /// is a session to ask: what a display does with the world behind it is a fact about the display.
+    /// What the display shows behind the picture - WebXR's `environmentBlendMode` - or `Opaque` until there
+    /// is a session to ask.
     fn blend(&self) -> wxr::Blend {
         let Some(session) = self.inner.borrow().session.clone() else {
             return wxr::Blend::Opaque;
@@ -229,16 +222,15 @@ impl wxr::Session for WebXrSession {
         }
     }
 
-    /// The near and far planes, through the browser's own render state. Remembered as well as applied, because an
-    /// app may set them while the session is still `Connecting` - the planes are the renderer's choice.
+    /// The near and far planes, through the browser's own render state. Remembered as well as applied, because
+    /// an app may set them while the session is still `Connecting`.
     fn set_depth_range(&mut self, range: wxr::DepthRange) {
         self.depth_range = Some(range);
         self.apply_depth_range();
     }
 
     fn images(&self) -> wxr::ImageMeta {
-        // Read off the texture the browser handed over, so a session with no binding reports an unknown format
-        // and a zero extent rather than a size it made up: a renderer reading this draws with what it was told.
+        // Read off the texture, so a session with no binding reports an unknown format and a zero extent.
         self.meta
     }
 
@@ -283,6 +275,15 @@ impl wxr::Session for WebXrSession {
         self.views_impl(space, out)
     }
 
+    /// What part of a view the display shows, or `Unsupported` when the browser never exposed the attribute.
+    fn visibility_mask(
+        &mut self,
+        view: usize,
+        out: &mut wxr::VisibilityMask,
+    ) -> Result<(), wxr::Error> {
+        self.visibility_mask_impl(view, out)
+    }
+
     fn inputs(
         &mut self,
         space: wxr::ReferenceSpace,
@@ -305,8 +306,7 @@ impl wxr::Session for WebXrSession {
         self.profiles_impl(source, out)
     }
 
-    /// A buzz on one source, which is the gamepad's own `pulse`. The standard call rather than `play_pcm`:
-    /// every browser with an actuator implements this one, and the draft's waveform is Meta's, as in OpenXR.
+    /// A buzz on one source, which is the gamepad's own `pulse` rather than the draft's `play_pcm`.
     fn pulse(
         &mut self,
         source: wxr::InputId,

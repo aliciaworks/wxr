@@ -600,8 +600,10 @@ class XRSession {
     this.onsqueezeend = null;
     this.oninputsourceschange = null;
     this.onvisibilitychange = null;
+    this.onvisibilitymaskchange = null;
     this._ended = false;
     this._frame = null;
+    this._masksSent = false;
     // Every layer this session presents, which is what `XRGPUBinding` has to know: a sub-image is only ever
     // for a layer of the session that made it.
     this._layers = new Set();
@@ -701,6 +703,24 @@ class XRSession {
       }
       const frame = new XRFrame(this, time);
       this._frame = frame;
+      // The mask a browser reports is geometry per view, and the event is the only way to learn it - so this
+      // stub sends one for each eye on the first frame, a triangle on the left and a quad on the right, and
+      // never again: a mask that has not moved is not news.
+      if (!this._masksSent) {
+        this._masksSent = true;
+        if (this.onvisibilitymaskchange) {
+          this.onvisibilitymaskchange({
+            index: 0,
+            vertices: new Float32Array([-0.9, -0.9, 0.9, -0.9, 0.0, 0.9]),
+            indices: new Uint32Array([0, 1, 2]),
+          });
+          this.onvisibilitymaskchange({
+            index: 1,
+            vertices: new Float32Array([-0.8, -0.8, 0.8, -0.8, 0.8, 0.8, -0.8, 0.8]),
+            indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+          });
+        }
+      }
       try {
         callback(time, frame);
       } finally {

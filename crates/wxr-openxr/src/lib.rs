@@ -29,6 +29,12 @@
 //! worse than submitting nothing. The chain itself is raw - `openxr` 0.22 binds no `CompositionLayerDepthInfoKHR`
 //! - and both halves are in `session/depth_submission.rs`.
 //!
+//! **The view is bigger than the part the optics show.** `XR_KHR_visibility_mask` answers with the triangle
+//! mesh a display actually presents, per eye, and says when it moves - a stencil a renderer can test against,
+//! so the fragments outside the lens are never shaded. It is the one extension here whose answer follows the
+//! headset on the wearer's face rather than the room, so each view's mask is kept until the runtime's event
+//! drops it. A runtime without it draws every pixel it renders, which is a whole view and not a failure.
+//!
 //! **Reading the room is a different extension, and it is driven by hand.** `XR_EXT_plane_detection`,
 //! `XR_FB_spatial_entity`, `XR_META_environment_raycast` and `XR_META_environment_depth` are the four that
 //! answer the core's `planes`, `anchor`, `hits` and `environment_depth`, and `openxr` 0.22 loads all four's
@@ -121,6 +127,10 @@ pub struct OpenXr {
     /// eyes, and the controllers whose own extension names them. A profile is a path the runtime only knows
     /// while its extension is enabled, so which of them can be suggested was decided here as well.
     input: InputExtensions,
+    /// Whether the instance was made with `XR_KHR_visibility_mask`, which is how a runtime says which part of
+    /// each eye's view is worth drawing. Fixed at `xrCreateInstance`, like the rest, and read by the capability
+    /// bit and the one call.
+    visibility_mask: bool,
 }
 
 impl OpenXr {
@@ -188,6 +198,10 @@ impl OpenXr {
         // it. A runtime without it is a runtime whose display runs at one rate, which is a fact and not a
         // failure.
         extensions.fb_display_refresh_rate = supported.fb_display_refresh_rate;
+        // Which part of each eye's view the display shows. Asked for the same way - only from a runtime that
+        // lists it - and a runtime without it draws every pixel it renders, which is a whole view and not a
+        // failure.
+        extensions.khr_visibility_mask = supported.khr_visibility_mask;
 
         // The four ways a runtime can say what the room is: the surfaces it has found, the places it is
         // keeping fixed, where a ray meets things, and how far away the walls are. Asked for the same way as
@@ -346,6 +360,7 @@ impl OpenXr {
             haptics,
             spatial,
             input,
+            visibility_mask: extensions.khr_visibility_mask,
         })
     }
 

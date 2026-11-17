@@ -190,6 +190,7 @@ impl OpenXrSession {
             depth,
             measured: None,
             depth_asked: false,
+            visibility_masks: VisibilityMasks::new(backend.visibility_mask),
             target_depth,
             depth_range: None,
             frame_image: None,
