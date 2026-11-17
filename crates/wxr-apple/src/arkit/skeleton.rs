@@ -133,13 +133,13 @@ pub(super) unsafe fn read(anchor: &ar_hand_anchor_t, space_from_hand: Mat4) -> w
 }
 
 impl ArKit {
-    /// Whether a hand provider came up, which is what `features` asks.
+    /// Whether a hand provider came up and hand tracking was not refused, which is what `features` asks.
     ///
     /// The provider and not the skeleton: a device that can ask about hands is a device with
     /// [`wxr::Features::HAND_TRACKING`], and whether any particular joint is being tracked this frame is the
     /// per-joint question [`ArKit::hand`] answers.
     pub fn has_hands(&self) -> bool {
-        self.hands.is_some()
+        self.hands.is_some() && self.permits(wxr::Features::HAND_TRACKING)
     }
 
     /// Where the hands are, as `(handedness, place in the world, tracked)`.

@@ -26,6 +26,7 @@
 pub use glam;
 
 pub mod anchor;
+pub mod authorization;
 pub mod depth;
 pub mod feature;
 pub mod frame;
@@ -41,6 +42,7 @@ pub mod space;
 pub mod target;
 
 pub use anchor::{Anchor, AnchorId};
+pub use authorization::Authorization;
 pub use depth::{DepthEncoding, DepthFormat, DepthInfo, DepthSensing, DepthType, DepthUsage};
 pub use feature::Features;
 pub use frame::{DepthRange, Eye, FieldOfView, Frame, FrameState, View, Viewport};

@@ -10,6 +10,7 @@ use std::time::Duration;
 use glam::Vec2;
 
 use crate::anchor::{Anchor, AnchorId};
+use crate::authorization::Authorization;
 use crate::depth::{DepthInfo, DepthSensing};
 use crate::feature::Features;
 use crate::frame::{DepthRange, Frame};
@@ -63,6 +64,13 @@ pub trait Session: Any {
     /// What this session can do beyond what every session can, which is [`Features`] - what the backend
     /// actually got and not what it asked for, since a browser may refuse a feature and a runtime lack one.
     fn features(&self) -> Features;
+
+    /// Whether this session is allowed to use `feature` - see [`Authorization`], which is also the answer for
+    /// a set of them. [`features`](Session::features) says what the session has; this says whether the
+    /// platform let it have it, which is what tells "not on this device" from "you said no".
+    fn authorization(&mut self, _feature: Features) -> Authorization {
+        Authorization::Granted
+    }
 
     /// The session's lifecycle: is it being asked for, is it here, is it over.
     fn state(&self) -> State;
@@ -228,15 +236,10 @@ pub trait Session: Any {
     /// origin is a scene floating at eye height.
     fn space(&mut self, kind: SpaceKind) -> Result<ReferenceSpace, Error>;
 
-    /// A space at `offset` inside `space`, for content that belongs to a place rather than to a room.
-    ///
-    /// This is WebXR's `getOffsetReferenceSpace`, and it is how a scene anchors something: a panel on a wall, a
-    /// model on a table, a point the app decided is "here". The offset is expressed in `space`, so what comes
-    /// back moves with it - a space off a controller follows the controller, and one off the floor stays put.
-    ///
-    /// A backend makes this out of what it already has: OpenXR a reference space of the same type with a pose
-    /// inside it, WebXR the browser's own offset space, and a compositor platform a transform it applies where
-    /// it would have applied the one it had.
+    /// A space at `offset` inside `space`, for content that belongs to a place rather than to a room: WebXR's
+    /// `getOffsetReferenceSpace`, which is how a panel goes on a wall. The offset is in `space`, so what comes
+    /// back moves with it - off a controller follows the controller, off the floor stays put. A backend makes
+    /// it from what it has: a reference space with a pose in it, the browser's own, or a transform it applies.
     fn offset_space(
         &mut self,
         space: ReferenceSpace,
@@ -254,12 +257,9 @@ pub trait Session: Any {
 
     /// Fill in what the user is holding, in the space given.
     ///
-    /// The vector is emptied first, because it is the caller's and a frame loop keeps one: what it holds
-    /// when this returns is this frame's sources and not the session's history.
-    ///
-    /// Empty by default, because a backend that has no inputs yet - a runtime with no controllers bound, a
-    /// scene being watched rather than played - is a backend with nothing to report rather than one that
-    /// failed.
+    /// The vector is emptied first, because it is the caller's and a frame loop keeps one: what it holds when
+    /// this returns is this frame's sources, not the session's history. Empty by default - a runtime with no
+    /// controllers bound has nothing to report rather than having failed.
     fn inputs(&mut self, _space: ReferenceSpace, out: &mut Vec<InputSource>) -> Result<(), Error> {
         out.clear();
         Ok(())
@@ -293,14 +293,11 @@ pub trait Session: Any {
         Ok(())
     }
 
-    /// Make a source buzz: `intensity` from `0` to `1`, for `duration` - WebXR's
-    /// `GamepadHapticActuator.pulse`, and the one shape every platform with an actuator can be asked for.
-    ///
-    /// A *request*, like [`set_foveation`](Session::set_foveation): intensity is clamped rather than refused,
-    /// and a platform that cannot reach its hardware answers [`Error::Unsupported`] rather than pretending.
-    /// Which is why [`InputSource::haptics`] is worth reading first - the difference between a game that
-    /// checks and one that asks a question whose answer it could have known - and [`Features::HAPTICS`] says
-    /// whether there is anything to ask at all.
+    /// Make a source buzz: `intensity` from `0` to `1`, for `duration` - WebXR's `GamepadHapticActuator.pulse`,
+    /// and the one shape every platform with an actuator can be asked for. A *request*, like
+    /// [`set_foveation`](Session::set_foveation): intensity is clamped rather than refused, and a platform
+    /// that cannot reach its hardware says [`Error::Unsupported`]. [`InputSource::haptics`] is the cheaper
+    /// question, and [`Features::HAPTICS`] says whether there is anything to ask at all.
     fn pulse(
         &mut self,
         _source: InputId,

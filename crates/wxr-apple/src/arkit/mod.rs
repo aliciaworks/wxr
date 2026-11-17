@@ -60,7 +60,9 @@
 //!
 //! Tracking is allowed to fail. A refused provider - usually a missing `NSWorldSensingUsageDescription` -
 //! leaves the scene head-locked and the hands absent, both of which still draw, so everything here comes
-//! back as an `Option` rather than as an error to stop a frame over.
+//! back as an `Option` rather than as an error to stop a frame over. A refusal and an absence are the same
+//! `None` from up here, which is what `authorization` is for: ARKit says which of the two it is, and a
+//! refused provider stops counting towards [`wxr::Session::features`] once it does.
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
@@ -80,6 +82,7 @@ use wxr::glam::Mat4;
 use crate::sys;
 
 mod anchor;
+mod authorization;
 mod hit;
 mod light;
 mod mesh;
@@ -87,6 +90,7 @@ mod persistence;
 mod plane;
 mod skeleton;
 
+use authorization::Permissions;
 use light::Lights;
 use mesh::collect_mesh;
 use persistence::{Listing, Waiting};
@@ -183,6 +187,9 @@ pub struct ArKit {
     /// shape. Separate from the two above for the same reason they are separate from each other: a session
     /// can trace a room as triangles without ever being able to photograph it.
     lights: Option<Lights>,
+    /// What ARKit says this app is allowed to see, which is not the same question as which providers came
+    /// up: a wearer who refused the room's permission leaves a provider in place that never answers.
+    permissions: Permissions,
     /// The world anchors this session made, by the name the core carries: an anchor is a handle, and
     /// the handle has to be able to find the object again.
     anchors: HashMap<u32, Retained<ar_world_anchor_t>>,
@@ -228,6 +235,9 @@ impl ArKit {
 
             // The session retains the collection, so this is the last this code has to think about it.
             ar_session_t::run(&session, &providers);
+            // Asked of a session that is going rather than one about to: ARKit answers on a queue of its
+            // own either way, so this only decides whether the question is put to a session that ran.
+            let permissions = Permissions::start(&session);
             Some(Self {
                 _session: session,
                 _providers: providers,
@@ -236,6 +246,7 @@ impl ArKit {
                 planes,
                 meshes,
                 lights,
+                permissions,
                 anchors: HashMap::new(),
                 next_anchor: 0,
                 named: HashSet::new(),
@@ -364,9 +375,28 @@ impl ArKit {
         Mat4::from_cols_array(&transform.0)
     }
 
-    /// Whether a plane provider came up, which is what `features` asks.
+    /// What ARKit has decided about `feature`'s permission - see [`wxr::Authorization`].
+    ///
+    /// A capability this session serves is `NotDetermined` until the query answers, which is a frame or two
+    /// of "nobody has said no yet" rather than a refusal.
+    pub fn authorization(&self, feature: wxr::Features) -> wxr::Authorization {
+        self.permissions.of(feature)
+    }
+
+    /// Whether this session's providers for `feature` are worth counting: they came up and the wearer has
+    /// not refused them.
+    ///
+    /// `NotDetermined` counts as permitted, which is deliberate - the question is the platform's to put,
+    /// and a capability that dropped out of [`wxr::Session::features`] because nobody had answered yet
+    /// would make an app that reads the set once watch it flicker.
+    fn permits(&self, feature: wxr::Features) -> bool {
+        self.authorization(feature) != wxr::Authorization::Denied
+    }
+
+    /// Whether a plane provider came up and the room's permission was not refused, which is what `features`
+    /// asks.
     pub fn has_planes(&self) -> bool {
-        self.planes.is_some()
+        self.planes.is_some() && self.permits(wxr::Features::PLANES)
     }
 
     /// The surfaces ARKit is tracking, which is where `planes` gets them.
@@ -387,9 +417,10 @@ impl ArKit {
         }
     }
 
-    /// Whether scene reconstruction came up, which is what `features` asks and what `meshes` answers with.
+    /// Whether scene reconstruction came up and the room's permission was not refused, which is what
+    /// `features` asks and what `meshes` answers with.
     pub fn has_meshes(&self) -> bool {
-        self.meshes.is_some()
+        self.meshes.is_some() && self.permits(wxr::Features::MESH)
     }
 
     /// The room's triangles, which is where `meshes` gets them.
@@ -410,12 +441,11 @@ impl ArKit {
         }
     }
 
-    /// Whether the room's light can be estimated, which is what `features` asks.
-    ///
-    /// The provider being up, and not a promise of a photograph: a room ARKit cannot see well enough to
-    /// light is a room that answers with no intensity and zero harmonics.
+    /// Whether the room's light can be estimated: the provider is up, its permission was not refused, and
+    /// it is not a promise of a photograph - a room ARKit cannot see well enough to light answers with no
+    /// intensity and zero harmonics.
     pub fn has_light(&self) -> bool {
-        self.lights.is_some()
+        self.lights.is_some() && self.permits(wxr::Features::LIGHT_ESTIMATION)
     }
 
     /// What the room's light is, or `None` for the frames before ARKit has seen a lit one.

@@ -14,9 +14,10 @@ use super::ArKit;
 use crate::sys;
 
 impl ArKit {
-    /// Whether world anchors can be made, which is the world-tracking provider being up.
+    /// Whether world anchors can be made: the world-tracking provider is up and the room's permission was
+    /// not refused.
     pub fn has_anchors(&self) -> bool {
-        self.world.is_some()
+        self.world.is_some() && self.permits(wxr::Features::ANCHORS)
     }
 
     /// A world anchor at `origin_from_anchor`, a transform in the session's own origin.

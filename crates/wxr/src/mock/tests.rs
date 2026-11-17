@@ -237,6 +237,17 @@ fn a_backend_without_hit_testing_says_so() {
 }
 
 #[test]
+fn a_session_with_no_permission_model_grants_everything() {
+    // What an app reads on a backend with no permission of its own: `Granted`, not "unknown" - including
+    // when it asks about several capabilities at once.
+    let mut session = running();
+    let granted = crate::Authorization::Granted;
+    let set = crate::Features::PLANES.union(crate::Features::HAND_TRACKING);
+    assert_eq!(session.authorization(crate::Features::PLANES), granted);
+    assert_eq!(session.authorization(set), granted);
+}
+
+#[test]
 fn a_session_is_asked_for_in_a_mode_and_the_mock_remembers_it() {
     let session = MockBackend::default()
         .connect((), SessionMode::ImmersiveAr)

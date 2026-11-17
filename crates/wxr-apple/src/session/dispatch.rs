@@ -66,6 +66,20 @@ impl wxr::Session for AppleSession {
         features
     }
 
+    /// Whether the platform let this session have `feature`, which on this backend is ARKit's authorization
+    /// for the provider that serves it - and the reason `features` can lose a bit after the query answers: a
+    /// wearer who refused the room leaves a provider up that never reports anything.
+    ///
+    /// A capability no provider of this session serves answers `Granted`: there is no permission to be
+    /// refused for something that is not here, and `features` is where an app reads that.
+    fn authorization(&mut self, feature: wxr::Features) -> wxr::Authorization {
+        self.arkit
+            .as_ref()
+            .map_or(wxr::Authorization::Granted, |arkit| {
+                arkit.authorization(feature)
+            })
+    }
+
     fn poll(&mut self) -> Option<wxr::Event> {
         // The press edges the last `inputs` produced come first: they are this crate's own, and waiting for
         // the layer to have another state to report would be a delay with no cause.

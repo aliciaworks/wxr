@@ -65,6 +65,12 @@
 //! kinds a source asks for narrow which of the two are read, so a request that wants only planes never copies
 //! the triangles and one that wants no kind at all can never report a hit.
 //!
+//! **A refusal is not an absence.** Every provider above can be up and answer nothing because the wearer
+//! said no, and from a count of providers that is indistinguishable from a device that cannot do it. ARKit
+//! keeps the difference in `ar_authorization_status_t`, so `Session::authorization` answers with it and a
+//! refused capability stops being counted in `Session::features` - the two questions agree about what this
+//! session has, and the app has the sentence to tell the wearer why.
+//!
 //! **Haptics are a split, and worth naming as one.** `pulse` is filled - a controller is a `GCController`,
 //! its act of buzzing is a Core Haptics pattern played on an engine, and `crate::gamecontroller` is where
 //! that is - and `play_pcm` is not: Apple's haptics are patterns rather than waveforms, so there is nothing

@@ -270,11 +270,18 @@ DEFAULT_IS_ENOUGH = {
     "would do; a backend that writes its own is the exception, not the rule",
     ("*", "as_backend_mut"): "as `as_backend`: the default is the implementation",
     ("wxr-webxr", "interaction_mode"): "only a browser is ever `ScreenSpace`, and a browser writes its own",
+    ("wxr-webxr", "authorization"): "a browser grants a feature when it puts it in `enabledFeatures`, which "
+    "is what `features` reports - so a session that has one has already been allowed it, and a feature it "
+    "did not get is a feature this session does not have rather than one the wearer refused in a way "
+    "`Session::authorization` could name",
     ("wxr-webxr", "meshes"): "mesh detection is a community-group draft with no browser behind it, so a "
     "session that has found no meshes is a session whose list is empty",
     ("wxr-webxr", "play_pcm"): "no browser has it: `GamepadHapticActuator` documents `pulse`, `playEffect` "
     "and `reset`, and MDN has no `playPCM` page at all - the binding generated into `sys/` is a trap",
     ("wxr-openxr", "interaction_mode"): "only a browser is ever `ScreenSpace`",
+    ("wxr-openxr", "authorization"): "OpenXR has no permission model of its own: a runtime that is not "
+    "allowed a capability fails the call that asks for it, and there is no status to read before that - the "
+    "grant is the extension's presence, which `features` already reports",
     ("wxr-openxr", "request_viewport_scale"): "OpenXR's resolution is the swapchain's to choose, and a "
     "runtime that recommends nothing is a runtime at full resolution - which is what the request would "
     "have been ignored into anyway",
@@ -404,6 +411,9 @@ def webxr_interfaces(include_drafts: bool = True) -> set:
 # backend's own texture. What is left after both lists is the work.
 RENAMES = {
     "XRRigidTransform": "Pose",
+    # Permission state as an app reads it: granted, denied, or not asked yet. The core carries the three
+    # rather than the EventTarget that reports them, which is why this is a rename and not an interface.
+    "XRPermissionStatus": "Authorization",
     "XRReferenceSpaceType": "SpaceKind",
     "XRJointSpace": "HandJoint",
     "XRGPUSubImage": "SubImage",
