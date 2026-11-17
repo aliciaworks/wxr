@@ -60,7 +60,7 @@
 //! not.
 //!
 //! **Hit testing is not one of those absences.** The framework has no raycast and no hit-test provider
-//! either, but it does have the room - so [`arkit::ArKit::cast`] casts the ray at the triangles scene
+//! either, but it does have the room - so `ArKit::cast` casts the ray at the triangles scene
 //! reconstruction traced and the rectangles plane detection found, and answers with the nearest surface. The
 //! kinds a source asks for narrow which of the two are read, so a request that wants only planes never copies
 //! the triangles and one that wants no kind at all can never report a hit.

@@ -51,6 +51,16 @@ if [[ "$(uname)" == "Darwin" ]]; then
   step "doc (host, the crates that are not empty on Apple)"
   RUSTDOCFLAGS="-D warnings" cargo doc -p wxr -p wxr-render -p wxr-conformance --no-deps
 
+  # The other half of that asymmetry, and the one that got through: on Ubuntu `wxr-apple` is empty, so its
+  # crate-level docs have no `arkit` module and a link into one resolves here and nowhere else. A Mac with a
+  # Linux target installed has the same question to ask, so the loop asks it rather than leaving it to CI.
+  if rustup target list --installed 2>/dev/null | grep -qx aarch64-unknown-linux-musl; then
+    step "doc (workspace, off Apple)"
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --target aarch64-unknown-linux-musl
+  else
+    step "doc (workspace, off Apple) - skipped, no Linux target"
+  fi
+
   # wasm is not a host, but it is a target this machine can build: `wxr-webxr` is empty everywhere else, so
   # a Mac with the target installed checks it the same way Ubuntu does. CI's `wasm` job is the authority;
   # this is the loop.
