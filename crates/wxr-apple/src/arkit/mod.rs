@@ -34,7 +34,8 @@
 //! and scene reconstruction is the same provider shape one level down: [`ArKit::meshes`] is the triangles
 //! themselves, each with what ARKit says it is. Two providers on the platform and two bits in the core, so a
 //! session can have either without the other. [`wxr::Session::anchor`] is the world rather than the room: a
-//! world anchor is made through the world-tracking provider, which is what [`ArKit::add_anchor`] does.
+//! world anchor is made through the world-tracking provider, which is what [`ArKit::add_anchor`] does - and
+//! [`ArKit::restore_anchor`] is the other half of that, a name from an earlier run found again or forgotten.
 //!
 //! **The room's light is a third description of it, and the only one here that is not a shape.** ARKit's
 //! environment probe photographs the room as a cubemap and pushes it over on a queue of its own; the core
@@ -56,8 +57,9 @@
 //! leaves the scene head-locked and the hands absent, both of which still draw, so everything here comes
 //! back as an `Option` rather than as an error to stop a frame over.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
+use std::sync::Mutex;
 
 use objc2::rc::Retained;
 use objc2_ar_kit::{
@@ -75,11 +77,13 @@ use crate::sys;
 mod anchor;
 mod light;
 mod mesh;
+mod persistence;
 mod plane;
 mod skeleton;
 
 use light::Lights;
 use mesh::collect_mesh;
+use persistence::{Listing, Waiting};
 use plane::collect_plane;
 
 /// Reinterpret a concrete provider as the `ar_data_provider_t` a collection takes.
@@ -177,6 +181,17 @@ pub struct ArKit {
     /// the handle has to be able to find the object again.
     anchors: HashMap<u32, Retained<ar_world_anchor_t>>,
     next_anchor: u32,
+    /// The runtime names this session has been asked about, which is what makes a place one to keep: an
+    /// anchor the app never asked the name of is removed when its handle goes, and one it did is left where
+    /// ARKit persists it. The core says as much of [`wxr::Session::release_anchor`] - it gives the handle
+    /// back and leaves the name - and this is the set that says which names there are.
+    named: HashSet<wxr::AnchorId>,
+    /// Names asked for from an earlier run whose copy completion has not answered yet, by slot. A slot here
+    /// is a handle that exists and has no anchor behind it - the same state a just-created anchor is in.
+    waiting: HashMap<u32, Waiting>,
+    /// The mailbox a copy completion fills, which is leaked because the completion may run after this
+    /// session is gone.
+    listing: &'static Mutex<Listing>,
 }
 
 impl ArKit {
@@ -217,6 +232,12 @@ impl ArKit {
                 lights,
                 anchors: HashMap::new(),
                 next_anchor: 0,
+                named: HashSet::new(),
+                waiting: HashMap::new(),
+                // Leaked for the reason every handler context here is: a copy completion can run after this
+                // session has been dropped, and there is no point at which ARKit says it is finished with a
+                // callback. The mailbox is the one thing the callback touches, so it has to outlive it.
+                listing: Box::leak(Box::new(Mutex::new(Listing::default()))),
             })
         }
     }

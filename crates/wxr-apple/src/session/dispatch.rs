@@ -369,7 +369,7 @@ impl wxr::Session for AppleSession {
         if !self.has_space(space) {
             return Err(wxr::Error::NoSpace(space.kind));
         }
-        let Some(arkit) = &self.arkit else {
+        let Some(arkit) = self.arkit.as_mut() else {
             return Ok(None);
         };
         let Some(world) = arkit.anchor_pose(anchor) else {
@@ -388,10 +388,46 @@ impl wxr::Session for AppleSession {
     }
 
     fn anchor_id(&mut self, anchor: wxr::Anchor) -> Option<wxr::AnchorId> {
-        self.arkit.as_ref()?.anchor_id(anchor)
+        self.arkit.as_mut()?.anchor_id(anchor)
+    }
+
+    /// A handle for a place ARKit kept under a name from an earlier run - `ar_world_anchors_get_count` and
+    /// the enumerator up, rather than an `ARWorldMap`: a world anchor ARKit has accepted is persisted across
+    /// device restarts until it is removed, and `copy_all_world_anchors` is what lists them.
+    ///
+    /// The handle arrives before the place does, like every anchor here: ARKit answers the copy on a queue of
+    /// its own, so `anchor_pose` is `None` until it has, and stays `None` for a name it does not have.
+    fn restore_anchor(&mut self, id: wxr::AnchorId) -> Result<wxr::Anchor, wxr::Error> {
+        self.arkit
+            .as_mut()
+            .and_then(|arkit| arkit.restore_anchor(id))
+            .ok_or_else(unsupported_restore)
+    }
+
+    /// Forget a name for good, which ARKit takes by identifier.
+    ///
+    /// The request is made whether or not ARKit still has the name, and the core treats a name the runtime
+    /// does not have as a no-op rather than an error.
+    fn delete_persistent_anchor(&mut self, id: wxr::AnchorId) -> Result<(), wxr::Error> {
+        let Some(arkit) = self.arkit.as_mut() else {
+            return Err(unsupported_restore());
+        };
+        if arkit.delete_persistent_anchor(id) {
+            Ok(())
+        } else {
+            Err(unsupported_restore())
+        }
     }
 
     fn end(&mut self, frame: &mut wxr::Frame) -> Result<(), wxr::Error> {
         self.end_impl(frame)
     }
+}
+
+/// Why this session cannot answer a question about a name from an earlier run: ARKit keeps world anchors
+/// between sessions, but only a world-tracking provider can list or forget them.
+fn unsupported_restore() -> wxr::Error {
+    wxr::Error::Unsupported(
+        "a place kept from an earlier session: this session has no ARKit world tracking".into(),
+    )
 }

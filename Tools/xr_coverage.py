@@ -307,11 +307,6 @@ DEFAULT_IS_ENOUGH = {
     ("wxr-apple", "request_exit"): "there is no runtime session to leave: a CompositorServices session is "
     "the app's own window, and the app ends it by ending the window - so the default is the whole of the "
     "answer rather than a call this backend has not made",
-    ("wxr-apple", "restore_anchor"): "persistence on ARKit is an `ARWorldMap`, saved and loaded through "
-    "`ar_session_get_world_map` and the session's `run_with_world_map` - and `objc2-ar-kit` binds neither, "
-    "nor `ar_world_map_t` at all. There is nothing here to save a name into",
-    ("wxr-apple", "delete_persistent_anchor"): "as `restore_anchor`: a name only exists as a harness of the "
-    "world map, and no world-map binding is here to erase it from",
     ("wxr-apple", "bounds"): "visionOS has no bounds geometry; the room is not a polygon the runtime drew",
     ("wxr-apple", "environment_depth"): "`objc2-ar-kit` has no `ar_scene_depth` - the depth a drawable "
     "holds is the one being drawn into, which is not a measurement of the room (see "

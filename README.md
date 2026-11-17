@@ -26,9 +26,9 @@ column only on a Mac, since that one counts the SDK's own headers rather than an
 
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
-| **Native API reached** - of each backend's own spec | 219/290 | 84/551 | 103/618 |
+| **Native API reached** - of each backend's own spec | 219/290 | 84/551 | 108/618 |
 | *as a percentage* | 76% | 15% | 17% |
-| **WebXR API reached** - of the whole API | 358/452 | 246/452 | 226/452 |
+| **WebXR API reached** - of the whole API | 358/452 | 246/452 | 228/452 |
 | *as a percentage* | 79% | 54% | 50% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
@@ -408,7 +408,7 @@ can reach 100% by design.
 The second is the direction that says whether the *unification* is done, and it has two factors. The core
 speaks 69% of WebXR's vocabulary - 310 of the 452 members across every specification - it is the vocabulary all
 three backends share rather than a mirror of the spec - and of its own `Session` methods the backends define
-**93%**, **82%** and **51%**. So a backend cannot reach the whole of WebXR by implementing
+**93%**, **82%** and **55%**. So a backend cannot reach the whole of WebXR by implementing
 methods: the word has to exist in the core first. Widening the core and filling the methods are the two things
 that move this, and both are work.
 

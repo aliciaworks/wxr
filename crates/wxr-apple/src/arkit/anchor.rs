@@ -28,7 +28,8 @@ impl ArKit {
     /// `None` when there is no world-tracking provider, because an anchor without one is a place nobody
     /// is keeping.
     pub fn add_anchor(&mut self, origin_from_anchor: Mat4) -> Option<wxr::Anchor> {
-        let world = self.world.as_ref()?;
+        self.world.as_ref()?;
+        let name = self.next_slot();
         // SAFETY: the transform is ours, and a create returns a `+1` object that the `Retained` below
         // takes ownership of.
         let raw = unsafe {
@@ -38,6 +39,7 @@ impl ArKit {
         };
         // SAFETY: a `+1` object from ARKit, which is exactly what `Retained` owns.
         let world_anchor = unsafe { Retained::from_raw(raw.cast::<ar_world_anchor_t>()) }?;
+        let world = self.world.as_ref()?;
         // SAFETY: the provider and the anchor are both live, and the completion is a no-op because the
         // anchor is already ours.
         unsafe {
@@ -48,8 +50,6 @@ impl ArKit {
                 anchor_added,
             );
         }
-        let name = self.next_anchor;
-        self.next_anchor += 1;
         self.anchors.insert(name, world_anchor);
         Some(wxr::Anchor::new(name))
     }
@@ -57,20 +57,26 @@ impl ArKit {
     /// What ARKit calls this anchor, which is the name that outlives this session.
     ///
     /// The identifier is filled in when ARKit makes the anchor rather than when it first tracks it, so this
-    /// answers as soon as there is an anchor to ask about.
-    pub fn anchor_id(&self, anchor: wxr::Anchor) -> Option<wxr::AnchorId> {
-        let world_anchor = self.anchors.get(&anchor.id())?;
-        let mut bytes = [0u8; 16];
-        // SAFETY: the anchor is live, and ARKit fills the UUID it made it with.
-        unsafe { ar_world_anchor_t::identifier(world_anchor, &mut bytes) };
-        Some(wxr::AnchorId::from_bytes(bytes))
+    /// answers as soon as there is an anchor to ask about - including one a restore has just found, which is
+    /// why the mailbox is read first. Asking is also what makes a place one to keep: see
+    /// [`ArKit::release_anchor`].
+    pub fn anchor_id(&mut self, anchor: wxr::Anchor) -> Option<wxr::AnchorId> {
+        self.drain();
+        let id = self
+            .anchors
+            .get(&anchor.id())
+            .map(|anchor| Self::identifier(anchor))?;
+        self.named.insert(id);
+        Some(id)
     }
 
-    /// Where an anchor is now, in the session's own origin.    ///
+    /// Where an anchor is now, in the session's own origin.
+    ///
     /// `None` until the provider has tracked it and while it has lost it, which is what the core's
     /// `anchor_pose` means by a place that is not there. An anchor that was never added, or whose add failed,
     /// is never tracked and so never answers with its creation transform.
-    pub fn anchor_pose(&self, anchor: wxr::Anchor) -> Option<Mat4> {
+    pub fn anchor_pose(&mut self, anchor: wxr::Anchor) -> Option<Mat4> {
+        self.drain();
         let world_anchor = self.anchors.get(&anchor.id())?;
         // SAFETY: the anchor is live, and asking whether it is tracked does not consume it.
         if !unsafe { ar_world_anchor_t::is_tracked(world_anchor) } {
@@ -85,16 +91,29 @@ impl ArKit {
         Some(Mat4::from_cols_array(&transform.0))
     }
 
-    /// Gives an anchor back, which drops it from the runtime as well.
+    /// Gives a handle back, and the place with it unless it has a name.
     ///
-    /// Dropping the handle is not enough: a world anchor the provider added is persisted across device
-    /// restarts until it is explicitly removed, so a released anchor that was only dropped from the map would
-    /// stay in the room - and on disk - for every session after this one.
+    /// A world anchor the provider accepted is persisted across device restarts until it is explicitly
+    /// removed, so what happens here depends on whether the app asked for the name: an anchor it never named
+    /// is removed - there is no way to ask for it again, and leaving it would fill the room with places
+    /// nobody can reach - while one it did name is only dropped, because the core's release gives back the
+    /// handle and leaves the name for [`wxr::Session::restore_anchor`] or
+    /// [`wxr::Session::delete_persistent_anchor`] to deal with.
+    ///
+    /// Two handles can name one place, because `restore_anchor` answers a name this session already holds
+    /// with a second handle on the same object; such a name is one the app asked for, so the provider is
+    /// never told to remove it and the second handle keeps working after the first goes.
     pub fn release_anchor(&mut self, anchor: wxr::Anchor) {
-        let Some(world) = &self.world else {
+        let Some(world_anchor) = self.anchors.remove(&anchor.id()) else {
+            // A handle that is still waiting for a copy names no object yet. Dropping the wait is enough:
+            // the completion finds no slot for it and gives the anchor back.
+            self.waiting.remove(&anchor.id());
             return;
         };
-        let Some(world_anchor) = self.anchors.remove(&anchor.id()) else {
+        if self.named.contains(&Self::identifier(&world_anchor)) {
+            return;
+        }
+        let Some(world) = &self.world else {
             return;
         };
         // SAFETY: the provider and the anchor are both live. The completion is a no-op: the anchor has been
