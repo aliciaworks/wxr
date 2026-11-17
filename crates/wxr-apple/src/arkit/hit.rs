@@ -24,16 +24,39 @@ impl ArKit {
         self.has_meshes() || self.has_planes()
     }
 
+    /// Whether a cast could report any of `kinds`.
+    ///
+    /// The two shapes here are the plane rectangles and the mesh triangles; feature points are a third kind
+    /// the framework does not expose at all. A request that asks only for shapes this session never traced has
+    /// nothing to answer with, so the source is refused rather than made; a request that also asks for one of
+    /// the shapes here is answered with that one and the absent kinds simply never appear.
+    pub fn has_hit_test_for(&self, kinds: wxr::HitTestKinds) -> bool {
+        // Nothing asked for is nothing to answer, which is a legitimate source that reports no hits.
+        if kinds.is_empty() {
+            return true;
+        }
+        (kinds.contains(wxr::HitTestKinds::PLANES) && self.has_planes())
+            || (kinds.contains(wxr::HitTestKinds::MESHES) && self.has_meshes())
+    }
+
     /// Where `ray` meets the room, or `None` when it meets nothing.
     ///
     /// `ray` is in the session's own origin, with a direction of length one - the shape
-    /// [`wxr::Session::hit_test_source`] validates it into. The nearest surface wins across both shapes,
-    /// because a plane is a rectangle ARKit recognised on the room a triangle patch was traced from.
+    /// [`wxr::Session::hit_test_source`] validates it into. The nearest surface wins across the shapes asked
+    /// for, because a plane is a rectangle ARKit recognised on the room a triangle patch was traced from.
     ///
-    /// Both lists are read here rather than one of them chosen by which provider is up: a session can have
-    /// either without the other, and a cast wants whichever of them the room was described as.
-    pub fn cast(&self, ray: &wxr::Ray) -> Option<wxr::Pose> {
-        let contact = nearest(&self.meshes(), &self.planes(), ray)?;
+    /// `kinds` narrows which shapes are read: a source asking only for planes does not pay for the triangle
+    /// walk, and one asking only for meshes does not copy the plane anchors.
+    pub fn cast(&self, ray: &wxr::Ray, kinds: wxr::HitTestKinds) -> Option<wxr::Pose> {
+        // Only the shapes asked for are read: a read here copies the room, and a source that said it wants
+        // planes should not pay for the triangles behind them.
+        let meshes = wants(kinds, wxr::HitTestKinds::MESHES).then(|| self.meshes());
+        let planes = wants(kinds, wxr::HitTestKinds::PLANES).then(|| self.planes());
+        let contact = nearest(
+            meshes.as_deref().unwrap_or_default(),
+            planes.as_deref().unwrap_or_default(),
+            ray,
+        )?;
         Some(wxr::Pose {
             position: contact.point,
             // The shortest rotation from +Y to the normal is the whole of the placement: the roll around the
@@ -41,6 +64,11 @@ impl ArKit {
             orientation: Quat::from_rotation_arc(Vec3::Y, contact.normal),
         })
     }
+}
+
+/// Whether a source that asked for `kinds` wants `kind` read, which is what keeps a narrowed cast cheap.
+fn wants(kinds: wxr::HitTestKinds, kind: wxr::HitTestKinds) -> bool {
+    kinds.contains(kind)
 }
 
 /// Where a ray met the room: an outward normal and the point on it, both in the session's origin.
@@ -319,5 +347,21 @@ mod tests {
         );
         let contact = nearest(&[wall(0.0)], &[front], &ray).expect("the ray meets the plane");
         assert!((contact.point - Vec3::new(0.0, 0.0, 0.5)).length() < 1e-5);
+    }
+
+    #[test]
+    fn a_narrowed_source_reads_only_the_shapes_it_asked_for() {
+        assert!(wants(wxr::HitTestKinds::ALL, wxr::HitTestKinds::MESHES));
+        assert!(wants(wxr::HitTestKinds::ALL, wxr::HitTestKinds::PLANES));
+        assert!(!wants(wxr::HitTestKinds::PLANES, wxr::HitTestKinds::MESHES));
+        assert!(!wants(wxr::HitTestKinds::MESHES, wxr::HitTestKinds::PLANES));
+        // Nothing asked for is nothing read, which is the source that can never report a hit.
+        assert!(!wants(wxr::HitTestKinds::NONE, wxr::HitTestKinds::PLANES));
+        // And a plane list emptied by a narrowed request is a cast that meets nothing.
+        let ray = wxr::Ray {
+            origin: Vec3::new(0.0, 0.0, 1.0),
+            direction: Vec3::NEG_Z,
+        };
+        assert!(nearest(&[], &[], &ray).is_none());
     }
 }

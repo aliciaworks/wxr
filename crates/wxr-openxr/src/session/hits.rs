@@ -253,6 +253,7 @@ impl OpenXrSession {
     pub(super) fn hit_test_source_impl(
         &mut self,
         space: wxr::ReferenceSpace,
+        kinds: wxr::HitTestKinds,
         ray: Option<wxr::Ray>,
     ) -> Result<wxr::HitTestSource, wxr::Error> {
         // The space first, for the reason `hits` gives: a handle this session never made is refused whether
@@ -268,6 +269,16 @@ impl OpenXrSession {
                 "hit testing: this runtime has no XR_META_environment_raycast".into(),
             ));
         };
+        // Then the kinds, before the ray: `XR_META_environment_raycast` answers with an unclassified surface
+        // - a point and a normal - and has no way to say whether it was a plane or a mesh, so a request that
+        // narrowed the kinds cannot be honoured. `ALL` and `NONE` are the two that can be: one wants whatever
+        // the runtime finds and the other wants nothing, and both are the same cast.
+        if !kinds.is_empty() && !kinds.contains(wxr::HitTestKinds::ALL) {
+            return Err(wxr::Error::Unsupported(
+                "hit testing: XR_META_environment_raycast cannot say which kind of surface it met"
+                    .into(),
+            ));
+        }
         // Then the ray: a direction that is zero or not finite is not a place to look, and this runtime
         // would take it and answer with a cast made out of NaN.
         let ray =

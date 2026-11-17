@@ -306,14 +306,15 @@ impl wxr::Session for AppleSession {
     /// A ray into the room, which ARKit does not cast itself - so this is the room's own geometry, read the
     /// way `meshes` and `planes` read it and asked where the ray meets it. See [`ArKit::cast`].
     ///
-    /// A space this session did not hand out is refused first, then a session with no shape of the room, and
-    /// only then a ray that names no direction - the same order OpenXR's raycaster answers in.
+    /// A space this session did not hand out is refused first, then a session with none of the shapes asked
+    /// for, and only then a ray that names no direction - the same order OpenXR's raycaster answers in.
     fn hit_test_source(
         &mut self,
         space: wxr::ReferenceSpace,
+        kinds: wxr::HitTestKinds,
         ray: Option<wxr::Ray>,
     ) -> Result<wxr::HitTestSource, wxr::Error> {
-        self.hit_test_source_impl(space, ray)
+        self.hit_test_source_impl(space, kinds, ray)
     }
 
     /// Where that ray lands this frame, in the space given - one hit, the nearest surface.

@@ -435,17 +435,16 @@ impl wxr::Session for OpenXrSession {
     }
 
     /// Ask for a source of hits along a ray - the app's, or the space's own aim - which is
-    /// `XR_META_environment_raycast`.
-    ///
-    /// The ray is not part of the runtime's source: a cast takes the ray, so a source is the space and the
-    /// ray, and `hits` is where it lands. The raycaster is made on the first call, asynchronously, so a
-    /// source made a frame ago may still have nothing behind it.
+    /// `XR_META_environment_raycast`, and where `hits` says it lands. `kinds` is only ever `ALL` or `NONE`:
+    /// the extension hands back a point and a normal without saying what surface it was, so a narrowed
+    /// request is `Unsupported`. The raycaster is made on the first call, asynchronously.
     fn hit_test_source(
         &mut self,
         space: wxr::ReferenceSpace,
+        kinds: wxr::HitTestKinds,
         ray: Option<wxr::Ray>,
     ) -> Result<wxr::HitTestSource, wxr::Error> {
-        self.hit_test_source_impl(space, ray)
+        self.hit_test_source_impl(space, kinds, ray)
     }
 
     fn hits(

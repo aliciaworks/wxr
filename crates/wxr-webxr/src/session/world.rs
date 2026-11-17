@@ -51,6 +51,7 @@ impl WebXrSession {
     pub(super) fn hit_test_source_impl(
         &mut self,
         space: wxr::ReferenceSpace,
+        kinds: wxr::HitTestKinds,
         ray: Option<wxr::Ray>,
     ) -> Result<wxr::HitTestSource, wxr::Error> {
         // The space first, for the reason `hits` gives: a handle this session never handed out is refused
@@ -86,14 +87,14 @@ impl WebXrSession {
         // the request waits on the same promise the space does.
         let resolved = base.borrow().space.clone();
         if let Some(base) = resolved {
-            hit::request(&session, &base, ray, slot.clone());
+            hit::request(&session, &base, kinds, ray, slot.clone());
         } else if let Some(promise) = base.borrow().promise.clone() {
             let fill = slot.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 if let Ok(value) = JsFuture::from(promise).await
                     && let Ok(base) = value.dyn_into::<XrReferenceSpace>()
                 {
-                    hit::request(&session, &base, ray, fill);
+                    hit::request(&session, &base, kinds, ray, fill);
                 }
             });
         } else {

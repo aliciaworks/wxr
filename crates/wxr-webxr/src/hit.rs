@@ -56,15 +56,19 @@ impl Slot {
 /// Ask the browser for a source aiming out of `space`, along `ray` when the app gave one, and fill the slot
 /// when it answers.
 ///
-/// Everything else about the options has a default, so there are two: the space, and WebXR's `offsetRay` - a
-/// ray in that space's own coordinates, which is the one the app described and [`offset`] already made.
+/// Everything else about the options has a default, so there are three: the space, WebXR's `offsetRay` - a
+/// ray in that space's own coordinates, which is the one the app described and [`offset`] already made - and
+/// WebXR's `entityTypes`, which is passed every time because the browser's default is `["plane"]` alone and
+/// the core's [`wxr::HitTestKinds::ALL`] means all three.
 pub fn request(
     session: &XrSession,
     space: &XrReferenceSpace,
+    kinds: wxr::HitTestKinds,
     ray: Option<XrRay>,
     slot: Rc<RefCell<Slot>>,
 ) {
     let options = XrHitTestOptionsInit::new(space);
+    options.set_entity_types(&entity_types(kinds));
     if let Some(ray) = &ray {
         options.set_offset_ray(ray);
     }
@@ -76,6 +80,25 @@ pub fn request(
             slot.borrow_mut().fill(source);
         }
     });
+}
+
+/// The core's kinds as WebXR's `sequence<XRHitTestTrackableType>`.
+///
+/// An empty request is an empty sequence, which the browser reads as no kinds at all and so reports no hits -
+/// which is what [`wxr::HitTestKinds::NONE`] asks for. The three names are the specification's, and a kind the
+/// core has no word for cannot be asked for because there is nothing here to name it with.
+fn entity_types(kinds: wxr::HitTestKinds) -> JsValue {
+    let array = js_sys::Array::new();
+    for (kind, name) in [
+        (wxr::HitTestKinds::POINTS, "point"),
+        (wxr::HitTestKinds::PLANES, "plane"),
+        (wxr::HitTestKinds::MESHES, "mesh"),
+    ] {
+        if kinds.contains(kind) {
+            array.push(&JsValue::from_str(name));
+        }
+    }
+    array.into()
 }
 
 /// The core's ray as the browser's `XRRay`.

@@ -407,6 +407,9 @@ RENAMES = {
     "XRReferenceSpaceType": "SpaceKind",
     "XRJointSpace": "HandJoint",
     "XRGPUSubImage": "SubImage",
+    # The three kinds of surface a hit test may land on, which the core carries as one set rather than as the
+    # specification's enum: a source asks for several at once, and a set is what that is.
+    "XRHitTestTrackableType": "HitTestKinds",
 }
 COLLAPSED = (
     "XRSessionEvent",

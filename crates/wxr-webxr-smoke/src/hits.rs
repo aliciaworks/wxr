@@ -56,7 +56,7 @@ pub(super) fn step(
         // backend has to put on the options rather than cast itself.
         board.hit_source = Some(
             session
-                .hit_test_source(space, Some(asked()))
+                .hit_test_source(space, wxr::HitTestKinds::ALL, Some(asked()))
                 .map_err(|error| format!("a hit-test ray of the app's was refused: {error}"))?,
         );
         say("asked for a hit-test source along a ray of the app's own");

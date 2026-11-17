@@ -69,9 +69,80 @@ impl HitTestSource {
     }
 }
 
+/// What a hit test is allowed to land on, which is WebXR's `XRHitTestTrackableType` as a set.
+///
+/// A plane and a mesh are the same wall at two resolutions: a runtime that recognises surfaces has rectangles,
+/// and one that traces them has triangles. An app placing a picture wants the wall it actually has rather than
+/// a rectangle guessed around it, and this is how it says so - WebXR's `entityTypes`, whose default is
+/// `["plane"]` and which this core makes explicit instead.
+///
+/// The three kinds are not three qualities of answer, and a runtime need not have all of them: ARKit traces
+/// meshes and recognises planes, and neither backend here exposes feature points at all. So this is a
+/// *request*: a backend that has none of the kinds asked for refuses the source with
+/// [`Error::Unsupported`](crate::Error::Unsupported) rather than handing back one that never answers, and a
+/// backend that has some of them answers with those.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct HitTestKinds(u8);
+
+impl HitTestKinds {
+    /// Nothing, which is a source that will never report a hit - a legitimate thing to ask for and a strange
+    /// one to want.
+    pub const NONE: Self = Self(0);
+    /// The runtime's feature points, which WebXR has and which the two native backends here do not expose.
+    pub const POINTS: Self = Self(1 << 0);
+    /// The rectangles a runtime recognised, which is [`crate::Plane`].
+    pub const PLANES: Self = Self(1 << 1);
+    /// The triangles a runtime traced, which is [`crate::Mesh`].
+    pub const MESHES: Self = Self(1 << 2);
+    /// Everything, which is what a caller with no preference asks for and what
+    /// [`HitTestKinds::default`] is.
+    pub const ALL: Self = Self(Self::POINTS.0 | Self::PLANES.0 | Self::MESHES.0);
+
+    /// Whether every kind in `other` is in this set.
+    pub const fn contains(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    /// Whether the two sets have a kind in common, which is what a source's request has to do with what a
+    /// backend can actually report.
+    pub const fn intersects(self, other: Self) -> bool {
+        self.0 & other.0 != 0
+    }
+
+    /// Whether there is nothing here.
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    /// A set with everything that is in either.
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+}
+
+impl Default for HitTestKinds {
+    /// Everything, because a backend can always narrow what it reports and a caller that has not thought about
+    /// the kinds is a caller that wants whatever is in front of it.
+    fn default() -> Self {
+        Self::ALL
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_kinds_are_a_set_and_all_holds_every_one() {
+        assert!(HitTestKinds::ALL.contains(HitTestKinds::PLANES));
+        assert!(HitTestKinds::ALL.contains(HitTestKinds::MESHES.union(HitTestKinds::POINTS)));
+        assert!(!HitTestKinds::PLANES.contains(HitTestKinds::MESHES));
+        assert!(HitTestKinds::PLANES.intersects(HitTestKinds::POINTS.union(HitTestKinds::PLANES)));
+        assert!(!HitTestKinds::POINTS.intersects(HitTestKinds::PLANES));
+        assert!(HitTestKinds::NONE.is_empty());
+        assert!(!HitTestKinds::POINTS.is_empty());
+        assert_eq!(HitTestKinds::default(), HitTestKinds::ALL);
+    }
 
     #[test]
     fn a_ray_is_made_a_unit_length_and_a_direction_that_is_not_one_is_refused() {

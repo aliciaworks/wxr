@@ -339,9 +339,10 @@ impl wxr::Session for WebXrSession {
     fn hit_test_source(
         &mut self,
         space: wxr::ReferenceSpace,
+        kinds: wxr::HitTestKinds,
         ray: Option<wxr::Ray>,
     ) -> Result<wxr::HitTestSource, wxr::Error> {
-        self.hit_test_source_impl(space, ray)
+        self.hit_test_source_impl(space, kinds, ray)
     }
 
     fn hits(

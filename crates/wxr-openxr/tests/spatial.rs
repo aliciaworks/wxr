@@ -131,7 +131,7 @@ fn a_world_modelling_bit_is_the_same_fact_as_its_method() {
         );
     }
 
-    let source = session.hit_test_source(space, None);
+    let source = session.hit_test_source(space, wxr::HitTestKinds::ALL, None);
     assert_eq!(
         source.is_ok(),
         features.contains(wxr::Features::HIT_TEST),

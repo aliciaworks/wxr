@@ -12,15 +12,15 @@
 use wxr::glam::{Mat4, Vec3};
 
 use super::AppleSession;
-use crate::arkit::ArKit;
 
-/// One source: the space its ray is in, and the ray itself.
+/// One source: the space its ray is in, the ray itself, and which shapes it may land on.
 ///
 /// `ray` is `None` when the app gave none, which means the space's own `-Z` - the aim an input source points
 /// along, and the same reading OpenXR's raycaster makes of it.
 #[derive(Clone, Copy)]
 struct Measure {
     space: wxr::ReferenceSpace,
+    kinds: wxr::HitTestKinds,
     ray: Option<wxr::Ray>,
 }
 
@@ -32,9 +32,14 @@ pub(super) struct Hits {
 
 impl Hits {
     /// Keep one more source and answer with its name.
-    fn add(&mut self, space: wxr::ReferenceSpace, ray: Option<wxr::Ray>) -> wxr::HitTestSource {
+    fn add(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        kinds: wxr::HitTestKinds,
+        ray: Option<wxr::Ray>,
+    ) -> wxr::HitTestSource {
         let id = self.sources.len() as u32;
-        self.sources.push(Some(Measure { space, ray }));
+        self.sources.push(Some(Measure { space, kinds, ray }));
         wxr::HitTestSource::new(id)
     }
 
@@ -56,6 +61,7 @@ impl AppleSession {
     pub(super) fn hit_test_source_impl(
         &mut self,
         space: wxr::ReferenceSpace,
+        kinds: wxr::HitTestKinds,
         ray: Option<wxr::Ray>,
     ) -> Result<wxr::HitTestSource, wxr::Error> {
         // The space first, as every entry that takes one does: a handle this session never handed out is
@@ -64,8 +70,14 @@ impl AppleSession {
             return Err(wxr::Error::NoSpace(space.kind));
         }
         // Then the room, before the ray: a session with no shape of it has nothing to ask along a ray, and
-        // that is the truer answer than "your ray is broken".
-        if !self.arkit.as_ref().is_some_and(ArKit::has_hit_test) {
+        // that is the truer answer than "your ray is broken". The kinds are part of the same question - a
+        // source asking only for shapes this session never traced can never answer, and refusing it here is
+        // better than handing back one that reports nothing forever.
+        if !self
+            .arkit
+            .as_ref()
+            .is_some_and(|arkit| arkit.has_hit_test_for(kinds))
+        {
             return Err(wxr::Error::Unsupported("hit testing".into()));
         }
         // Then the ray, which has to name a direction: a zero, NaN or infinite one is not a place to look, and
@@ -77,7 +89,7 @@ impl AppleSession {
                 })?),
                 None => None,
             };
-        Ok(self.hits.add(space, ray))
+        Ok(self.hits.add(space, kinds, ray))
     }
 
     /// Where one source's ray landed this frame, in the space given.
@@ -103,7 +115,11 @@ impl AppleSession {
             return Ok(());
         }
         let ray = world_ray(self.world_from_space(measure.space), measure.ray);
-        let Some(hit) = self.arkit.as_ref().and_then(|arkit| arkit.cast(&ray)) else {
+        let Some(hit) = self
+            .arkit
+            .as_ref()
+            .and_then(|arkit| arkit.cast(&ray, measure.kinds))
+        else {
             return Ok(());
         };
         let space_from_world = wxr_render::pose_from_transform(self.space_from_world(space));
@@ -140,9 +156,10 @@ mod tests {
     #[test]
     fn a_released_source_is_empty_and_the_sources_after_it_keep_their_own_rays() {
         let mut hits = Hits::default();
-        let left = hits.add(space(0), None);
+        let left = hits.add(space(0), wxr::HitTestKinds::ALL, None);
         let right = hits.add(
             space(1),
+            wxr::HitTestKinds::ALL,
             Some(wxr::Ray {
                 origin: Vec3::X,
                 direction: Vec3::NEG_Z,

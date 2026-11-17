@@ -13,7 +13,7 @@ use crate::anchor::{Anchor, AnchorId};
 use crate::depth::{DepthInfo, DepthSensing};
 use crate::feature::Features;
 use crate::frame::{DepthRange, Frame};
-use crate::hit::{Hit, HitTestSource, Ray};
+use crate::hit::{Hit, HitTestKinds, HitTestSource, Ray};
 use crate::input::{Hand, InputId, InputSource};
 use crate::layer::{Binding, Layer, LayerImage, LayerShape, SubImage};
 use crate::light::{LightEstimate, LightProbe};
@@ -376,16 +376,16 @@ pub trait Session: Any {
         Ok(())
     }
 
-    /// Ask for a source of hits along a ray: `Some(ray)` in `space`'s own coordinates, or `None` for the
-    /// space's `-Z`, which is what WebXR's `requestHitTestSource` makes with no `offsetRay`.
-    ///
-    /// A source is made asynchronously and outlives the frame, so it comes back as a handle: a frame or two with
-    /// no source, and `hits` on one that is not ready has none. A backend with no hit testing says so rather
-    /// than handing back a source that never answers. A ray [`Ray::unit`] refuses is refused here too, rather
-    /// than a runtime reporting a hit at a point it made up.
+    /// Ask for a source of hits along a ray - WebXR's `requestHitTestSource`. `ray` is in `space`'s own
+    /// coordinates and `None` means its `-Z`; `kinds` is what it may land on, WebXR's `entityTypes`, and a
+    /// request for kinds this backend cannot produce is [`Error::Unsupported`] rather than a source that
+    /// never answers, so [`HitTestKinds::ALL`] and [`HitTestKinds::NONE`] always work and a narrowed one is
+    /// honoured where it can be. The source is made asynchronously and outlives the frame: a frame or two
+    /// with none, and `hits` on one that is not ready has none. A ray [`Ray::unit`] refuses is refused too.
     fn hit_test_source(
         &mut self,
         _space: ReferenceSpace,
+        _kinds: HitTestKinds,
         _ray: Option<Ray>,
     ) -> Result<HitTestSource, Error> {
         Err(Error::Unsupported("hit testing".into()))
