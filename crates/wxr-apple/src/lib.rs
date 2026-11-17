@@ -45,22 +45,23 @@
 //! CompositorServices (C) ──▶ frames, textures, viewports, per-eye transform and tangents ──▶ session
 //! ARKit (C)              ──▶ world tracking: where the head is ────────────────────────────▶ arkit
 //!                        ├─▶ hand tracking: where the hands and their joints are ─────────▶ session::inputs and session::hand
-//!                        └─▶ planes and scene reconstruction: the room ───────────────────────────▶ session::planes and meshes
+//!                        └─▶ planes and scene reconstruction: the room ──────────────────────▶ session::planes, meshes and hits
 //! GameController (ObjC)  ──▶ controllers: buttons and haptics ─────────────────────────────▶ gamecontroller
 //! Swift (the app)        ──▶ ImmersiveSpace's CompositorLayer closure + the wgpu device ───▶ entry::run
 //! ```
 
-//! **What the platform does not have, said plainly.** Four of the core's optional methods have nothing
-//! behind them here, and three of those are not going to. `depth` and `hit_test_source` are not on the
-//! visionOS ARKit C surface at all - there is no depth provider and no hit-test provider in the framework -
-//! and CompositorServices has one projection layer rather than the composition layers `layer` would need, so
-//! quad, cylinder, equirect and cube have nowhere to go - and `binding` is
-//! the same absence, because a layer whose picture the app supplies needs a layer to supply it to. `light_probe` is the fourth and a different kind of
-//! absence: the API does have an environment probe, but it hands back a *cubemap* rather than the spherical
-//! harmonics the core's `LightEstimate` is, so it maps to WebXR's reflection cubemap - which the core has no
-//! word for yet. Each answers `None`, an empty list or `Error::Unsupported`, which is exactly what
-//! `wxr::Features` exists to say: the capability bits this backend sets are what the platform has, and the
-//! ones it does not set are what it does not.
+//! **What the platform does not have, said plainly.** `environment_depth` has nothing behind it: there is no
+//! depth provider on the visionOS ARKit C surface, and a drawable's depth buffer is the one being drawn into
+//! rather than a measurement of the room. The composition layers behind `layer` are the same absence from the
+//! other side - CompositorServices gives the app one projection layer, so a quad, cylinder, equirect or cube
+//! has nowhere to go, and a layer whose picture the app supplies needs a layer to supply it to. Each answers
+//! `None`, an empty list or `Error::Unsupported`, which is exactly what `wxr::Features` exists to say: the
+//! capability bits this backend sets are what the platform has, and the ones it does not set are what it does
+//! not.
+//!
+//! **Hit testing is not one of those absences.** The framework has no raycast and no hit-test provider
+//! either, but it does have the room - so [`arkit::ArKit::cast`] casts the ray at the triangles scene
+//! reconstruction traced and the rectangles plane detection found, and answers with the nearest surface.
 //!
 //! **Haptics are a split, and worth naming as one.** `pulse` is filled - a controller is a `GCController`,
 //! its act of buzzing is a Core Haptics pattern played on an engine, and `crate::gamecontroller` is where

@@ -314,11 +314,6 @@ DEFAULT_IS_ENOUGH = {
     ("wxr-apple", "depth_sensing"): "as `environment_depth`: no scene-depth binding to sense with",
     ("wxr-apple", "set_depth_active"): "as `environment_depth`: there is no depth sensing here to "
     "pause",
-    ("wxr-apple", "hit_test_source"): "`objc2-ar-kit` has no raycast; ARKit's mesh could be intersected by "
-    "hand, and a hit test the runtime does not itself support is a hit test that answers late",
-    ("wxr-apple", "hits"): "as `hit_test_source`",
-    ("wxr-apple", "release_hit_test_source"): "as `hit_test_source`: no source is handed out here, so no "
-    "caller has a handle to give back, and the no-op default is the whole of what releasing one would do",
     ("wxr-apple", "layer"): "CompositorServices has no compositing layers - the drawable is the frame, and "
     "there is no layer to make, pose, sub-image or release",
     ("wxr-apple", "max_render_layers"): "as `layer`: a platform with no compositing layers has no count of "

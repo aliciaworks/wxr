@@ -37,6 +37,11 @@
 //! world anchor is made through the world-tracking provider, which is what [`ArKit::add_anchor`] does - and
 //! [`ArKit::restore_anchor`] is the other half of that, a name from an earlier run found again or forgotten.
 //!
+//! **A ray is the room asked a different question.** ARKit's C surface has no raycast, but the room above is
+//! the geometry a cast needs: [`ArKit::cast`] intersects a ray with the triangles and the rectangles and
+//! answers with the nearest, which is [`wxr::Session::hit_test_source`] served without a provider - at the
+//! cost of the room being as it was last traced rather than as it is this instant.
+//!
 //! **The room's light is a third description of it, and the only one here that is not a shape.** ARKit's
 //! environment probe photographs the room as a cubemap and pushes it over on a queue of its own; the core
 //! asks for nine spherical harmonics and a brightest direction once a frame. [`ArKit::light`] is that
@@ -75,6 +80,7 @@ use wxr::glam::Mat4;
 use crate::sys;
 
 mod anchor;
+mod hit;
 mod light;
 mod mesh;
 mod persistence;

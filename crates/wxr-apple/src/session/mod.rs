@@ -162,6 +162,8 @@ pub struct AppleSession {
     hands_seen: usize,
     /// Whether the set of inputs changed since the last poll, waiting to be said.
     inputs_changed: bool,
+    /// The hit-test sources an app has asked for: each a space and the ray it casts, or the space's aim.
+    hits: hits::Hits,
 }
 
 impl AppleSession {
@@ -195,6 +197,7 @@ impl AppleSession {
             light_probe: false,
             hands_seen: 0,
             inputs_changed: false,
+            hits: hits::Hits::default(),
         }
     }
 
@@ -314,6 +317,7 @@ impl AppleSession {
 
 mod dispatch;
 mod frame;
+mod hits;
 mod sources;
 mod spaces;
 

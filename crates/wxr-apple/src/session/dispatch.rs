@@ -39,6 +39,11 @@ impl wxr::Session for AppleSession {
         if self.arkit.as_ref().is_some_and(ArKit::has_meshes) {
             features = features.union(wxr::Features::MESH);
         }
+        // Hit testing, which is neither provider: a ray is cast against whichever shape of the room came up,
+        // so either one is enough and the bit says the cast can be made.
+        if self.arkit.as_ref().is_some_and(ArKit::has_hit_test) {
+            features = features.union(wxr::Features::HIT_TEST);
+        }
         // Light estimation, which is ARKit's environment probe rather than either shape provider above: a
         // session can trace a room as triangles and still be unable to photograph it, and the bit is the
         // provider being up rather than a picture having arrived - a room too dark to photograph answers
@@ -296,6 +301,38 @@ impl wxr::Session for AppleSession {
             mesh
         }));
         Ok(())
+    }
+
+    /// A ray into the room, which ARKit does not cast itself - so this is the room's own geometry, read the
+    /// way `meshes` and `planes` read it and asked where the ray meets it. See [`ArKit::cast`].
+    ///
+    /// A space this session did not hand out is refused first, then a session with no shape of the room, and
+    /// only then a ray that names no direction - the same order OpenXR's raycaster answers in.
+    fn hit_test_source(
+        &mut self,
+        space: wxr::ReferenceSpace,
+        ray: Option<wxr::Ray>,
+    ) -> Result<wxr::HitTestSource, wxr::Error> {
+        self.hit_test_source_impl(space, ray)
+    }
+
+    /// Where that ray lands this frame, in the space given - one hit, the nearest surface.
+    ///
+    /// WebXR's `getHitTestResults` is a list, and this backend has at most one thing to put in it: a ray meets
+    /// the room once, at the nearest surface, unless the room has two surfaces in the same place.
+    fn hits(
+        &mut self,
+        source: wxr::HitTestSource,
+        space: wxr::ReferenceSpace,
+        out: &mut Vec<wxr::Hit>,
+    ) -> Result<(), wxr::Error> {
+        self.hits_impl(source, space, out)
+    }
+
+    /// Let a source go. The slot is emptied and `hits` on it answers an empty list, which is the core's shape
+    /// for a released source; there is nothing else to tell ARKit, which never heard of it.
+    fn release_hit_test_source(&mut self, source: wxr::HitTestSource) {
+        self.hits.release(source);
     }
 
     /// A probe of the room's light, which is the provider being up rather than a promise of a picture.
