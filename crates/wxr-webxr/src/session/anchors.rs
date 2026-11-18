@@ -128,6 +128,34 @@ impl WebXrSession {
         crate::anchors::erase(&session, id)
             .map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))
     }
+
+    /// The names the browser is keeping, which is `XRSession.persistentAnchors` - the list
+    /// `restorePersistentAnchor` takes.
+    ///
+    /// An entry that is not a UUID is skipped: the list is the browser's, and one name this core cannot read is
+    /// not a reason to answer none of the others.
+    pub(super) fn persistent_anchor_ids_impl(
+        &mut self,
+        out: &mut Vec<wxr::AnchorId>,
+    ) -> Result<(), wxr::Error> {
+        out.clear();
+        let Some(session) = self.inner.borrow().session.clone() else {
+            return Err(wxr::Error::Unavailable(
+                "the session has not started yet".into(),
+            ));
+        };
+        if !has_feature(&session, "anchors") {
+            return Err(wxr::Error::Unsupported("anchors".into()));
+        }
+        for value in session.persistent_anchors().iter() {
+            if let Some(text) = value.as_string()
+                && let Ok(id) = text.parse()
+            {
+                out.push(id);
+            }
+        }
+        Ok(())
+    }
 }
 
 impl WebXrSession {

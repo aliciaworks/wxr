@@ -26,17 +26,17 @@ column only on a Mac, since that one counts the SDK's own headers rather than an
 
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
-| **Native API reached** - of each backend's own spec | 222/290 | 85/551 | 118/618 |
+| **Native API reached** - of each backend's own spec | 223/290 | 85/551 | 117/618 |
 | *as a percentage* | 77% | 15% | 19% |
-| **WebXR API reached** - of the whole API | 363/452 | 251/452 | 236/452 |
-| *as a percentage* | 80% | 56% | 52% |
+| **WebXR API reached** - of the whole API | 364/452 | 251/452 | 236/452 |
+| *as a percentage* | 81% | 56% | 52% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
 Input, Depth Sensing, Hit Test, Lighting Estimation, Anchors, Plane Detection, the AR Module, DOM Overlays
 and the Gamepads module - counted member by member, with the community-group drafts left out. It is a
 *floor*: the core gives a concept its own name (`requestReferenceSpace` is `space`) and both native backends
 go through the core, so a member a backend serves can still share no name with anything in its source. The
-core itself names 314 of the 452.
+core itself names 315 of the 452.
 
 ## The core is small on purpose
 
@@ -408,9 +408,9 @@ are in it. A native item with no counterpart in the core is one no backend will 
 can reach 100% by design.
 
 The second is the direction that says whether the *unification* is done, and it has two factors. The core
-speaks 69% of WebXR's vocabulary - 314 of the 452 members across every specification - it is the vocabulary all
+speaks 70% of WebXR's vocabulary - 315 of the 452 members across every specification - it is the vocabulary all
 three backends share rather than a mirror of the spec - and of its own `Session` methods the backends define
-**91%**, **83%** and **60%**. So a backend cannot reach the whole of WebXR by implementing
+**92%**, **81%** and **61%**. So a backend cannot reach the whole of WebXR by implementing
 methods: the word has to exist in the core first. Widening the core and filling the methods are the two things
 that move this, and both are work.
 

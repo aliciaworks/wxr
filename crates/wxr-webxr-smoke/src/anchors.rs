@@ -154,6 +154,17 @@ pub(super) fn step(
                     "the anchor's name {id} did not survive its own text"
                 ));
             }
+            // The name is the browser's, and the list is how a later session finds it: what the browser says
+            // it is keeping has to be the name it just gave this anchor, and nothing else.
+            let mut names = Vec::new();
+            session
+                .persistent_anchor_ids(&mut names)
+                .map_err(|error| format!("the browser's persistent names: {error}"))?;
+            if names != [id] {
+                return Err(format!(
+                    "the browser lists {names:?} as its persistent anchors, where the one it named is {id}"
+                ));
+            }
             board.anchor_name = Some(id);
             session.release_anchor(anchor);
             board.anchor_step = 3;
@@ -249,6 +260,15 @@ pub(super) fn step(
                 return Err(format!(
                     "the browser forgot {} name(s), where one was erased",
                     names_deleted()
+                ));
+            }
+            let mut names = Vec::new();
+            session
+                .persistent_anchor_ids(&mut names)
+                .map_err(|error| format!("the browser's names after an erase: {error}"))?;
+            if !names.is_empty() {
+                return Err(format!(
+                    "the browser still lists {names:?} after the only name was erased"
                 ));
             }
             // The name is gone, so a second restore is a request the browser rejects - and the handle it

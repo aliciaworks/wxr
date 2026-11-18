@@ -118,11 +118,10 @@ impl wxr::Session for AppleSession {
 
     /// The near and far planes the scene draws with.
     ///
-    /// The depth buffer this compositor hands over is only useful to it if it knows what the values in it mean,
+    /// The depth buffer this compositor hands over is only useful to it if it knows what the values mean,
     /// and it cannot read that off the picture - so the app says, in metres. The compositor uses it to
-    /// reproject the frame: when the prediction was off it moves the pixels to where the head turned out to
-    /// be, and depth is what tells it how far each of them is. This is the platform the core's depth range was
-    /// written for, and the one where it is already put to work.
+    /// reproject: when the prediction was off it moves the pixels to where the head turned out to be, and
+    /// depth tells it how far each one is. This is the platform the core's depth range was written for.
     fn set_depth_range(&mut self, range: wxr::DepthRange) {
         self.depth_range = Some(range);
     }
@@ -379,9 +378,8 @@ impl wxr::Session for AppleSession {
     /// yet are the same answer, and both are a scene lit by nothing rather than by a guess.
     ///
     /// A handle this session did not hand out gets that same no-estimate answer rather than the room's
-    /// light: the handle is how a caller says which probe, and this session never made that one. It is the
-    /// answer WebXR gives an id outside its own list, and an empty estimate rather than an error because
-    /// the core's `light` has no error a caller could act on here.
+    /// light: the handle names the probe, and this session never made that one. It is the answer WebXR gives
+    /// an id outside its list, and an empty estimate rather than an error - the core's `light` has none.
     fn light(
         &mut self,
         probe: wxr::LightProbe,
@@ -451,16 +449,25 @@ impl wxr::Session for AppleSession {
         self.arkit.as_mut()?.anchor_id(anchor)
     }
 
-    /// A handle for a place ARKit kept under a name from an earlier run - `ar_world_anchors_get_count` and
-    /// the enumerator up, rather than an `ARWorldMap`: a world anchor ARKit has accepted is persisted across
-    /// device restarts until it is removed, and `copy_all_world_anchors` is what lists them.
-    ///
-    /// The handle arrives before the place does, like every anchor here: ARKit answers the copy on a queue of
-    /// its own, so `anchor_pose` is `None` until it has, and stays `None` for a name it does not have.
+    /// A handle for a place ARKit kept under a name from an earlier run, rather than an `ARWorldMap`: a world
+    /// anchor it has accepted persists across restarts until removed, and `copy_all_world_anchors` lists them.
+    /// The handle arrives before the place does, like every anchor here: `anchor_pose` is `None` until the
+    /// copy lands, and stays `None` for a name ARKit does not have.
     fn restore_anchor(&mut self, id: wxr::AnchorId) -> Result<wxr::Anchor, wxr::Error> {
         self.arkit
             .as_mut()
             .and_then(|arkit| arkit.restore_anchor(id))
+            .ok_or_else(unsupported_restore)
+    }
+
+    fn persistent_anchor_ids(&mut self, out: &mut Vec<wxr::AnchorId>) -> Result<(), wxr::Error> {
+        out.clear();
+        let Some(arkit) = self.arkit.as_mut() else {
+            return Err(unsupported_restore());
+        };
+        arkit
+            .persistent_ids(out)
+            .then_some(())
             .ok_or_else(unsupported_restore)
     }
 

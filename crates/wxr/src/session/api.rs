@@ -81,9 +81,8 @@ pub trait Session: Any {
         Visibility::Hidden
     }
 
-    /// The next thing that happened, or `None` if nothing has. Drained one at a time, because two events in
-    /// a row can matter in the order they happened - `Visible` then `ExitRequested` is a session that ran
-    /// and stopped.
+    /// The next thing that happened, or `None` if nothing has. Drained one at a time, because two events in a
+    /// row can matter in order - `Visible` then `ExitRequested` is a session that ran and stopped.
     fn poll(&mut self) -> Option<Event>;
 
     /// What the display shows behind the picture. `Opaque` by default, because a session that does not say is
@@ -243,8 +242,8 @@ pub trait Session: Any {
 
     /// Fill in the views for the frame just begun, in the space given.
     ///
-    /// The last answer is replaced rather than added to - head, eyes and speed together, as [`Frame::reset`]
-    /// says - so asking twice is two answers to one question, and a call that cannot locate leaves neither.
+    /// Replaced rather than added to, as [`Frame::reset`] says - asking twice is two answers, and a call that
+    /// cannot locate leaves neither.
     fn views(&mut self, space: ReferenceSpace, out: &mut Frame) -> Result<(), Error>;
 
     /// Fill in the part of one view's picture the display shows, and let an empty mask mean the whole view.
@@ -259,9 +258,8 @@ pub trait Session: Any {
 
     /// Fill in what the user is holding, in the space given.
     ///
-    /// The vector is emptied first, because it is the caller's and a frame loop keeps one: what it holds when
-    /// this returns is this frame's sources, not the session's history. Empty by default - a runtime with no
-    /// controllers bound has nothing to report rather than having failed.
+    /// Emptied first: what it holds when this returns is this frame's sources, not the session's history. Empty
+    /// by default, because a runtime with no controllers bound has nothing to report rather than having failed.
     fn inputs(&mut self, _space: ReferenceSpace, out: &mut Vec<InputSource>) -> Result<(), Error> {
         out.clear();
         Ok(())
@@ -313,10 +311,8 @@ pub trait Session: Any {
     /// OpenXR's `xrStopHapticFeedback`.
     ///
     /// The other half of [`pulse`](Session::pulse), and a call of its own because a duration is a guess: the app
-    /// learns it was wrong - the level ended, the hand let go - and a motor that runs to the end of a duration
-    /// nobody wants is a controller buzzing at a menu. An id this session never handed out and a source with no
-    /// actuator answer [`Error::Unsupported`], as [`pulse`](Session::pulse) does; one that is simply not buzzing
-    /// is `Ok(())`.
+    /// learns it was wrong - the level ended, the hand let go. An id never handed out and a source with no
+    /// actuator answer [`Error::Unsupported`], as [`pulse`](Session::pulse) does; one not buzzing is `Ok(())`.
     fn stop_pulse(&mut self, _source: InputId) -> Result<(), Error> {
         Err(Error::Unsupported("haptics".into()))
     }
@@ -342,9 +338,8 @@ pub trait Session: Any {
 
     /// Fill in the surfaces the runtime has found, in the space given.
     ///
-    /// WebXR's `XRFrame.detectedPlanes`, and the same shape a frame's views have: what is detected *this* frame
-    /// rather than a list to keep. Empty for a session that has found none and for a backend that has not been
-    /// taught surfaces - which are the same thing to a caller only asking whether there is a table here.
+    /// WebXR's `XRFrame.detectedPlanes`, the shape a frame's views have: what is detected *this* frame, not a
+    /// list to keep. Empty for a session that found none, and for a backend not taught surfaces.
     fn planes(&mut self, _space: ReferenceSpace, out: &mut Vec<Plane>) -> Result<(), Error> {
         out.clear();
         Ok(())
@@ -352,10 +347,10 @@ pub trait Session: Any {
 
     /// Fill in the room the runtime has traced, as triangles, in the space given - WebXR's meshing draft.
     ///
-    /// The same shape a frame's planes have, and for the same reason: what is traced *this* frame, because a
-    /// runtime re-traces a room as it learns more about it and a copy a caller keeps goes wrong where it
-    /// matters - a wall that moved. Empty for a session that has traced nothing and for a backend never taught
-    /// this, which are the same answer to a caller asking whether there is a wall here.
+    /// The same shape a frame's planes have: what is traced *this* frame, because a runtime re-traces a room as
+    /// it learns more and a copy a caller keeps goes wrong where it matters - a wall that moved. Empty for a
+    /// session that has traced nothing and for a backend never taught this, which are the same answer to a
+    /// caller asking whether there is a wall here.
     ///
     /// A mesh is per *geometry* and not per anchor: one anchor can carry a table and the wall behind it.
     /// Whether a session has this at all is [`Features::MESH`], which is not [`Features::PLANES`] - a runtime
@@ -368,8 +363,8 @@ pub trait Session: Any {
     /// Fill in the boundary of a bounded space, as the outline the runtime knows - WebXR's
     /// `XRBoundedReferenceSpace.boundsGeometry`.
     ///
-    /// Points in the space's own X and Z, in metres, in order around a closed loop. Empty for a space with no
-    /// boundary and for a backend that never had one: a floor with no wall drawn around it is not an error.
+    /// Points in the space's own X and Z, in metres, around a closed loop. Empty for a space with no boundary
+    /// and a backend that never had one: a floor with no wall drawn around it is not an error.
     fn bounds(&mut self, _space: ReferenceSpace, out: &mut Vec<Vec2>) -> Result<(), Error> {
         out.clear();
         Ok(())
@@ -456,6 +451,13 @@ pub trait Session: Any {
         None
     }
 
+    /// Fill in the names the runtime keeps from earlier runs - WebXR's `persistentAnchors`, emptied first.
+    /// Empty until it answers or when it keeps none; [`Error::Unsupported`] when it cannot list them.
+    fn persistent_anchor_ids(&mut self, out: &mut Vec<AnchorId>) -> Result<(), Error> {
+        out.clear();
+        Err(Error::Unsupported("anchors from an earlier session".into()))
+    }
+
     /// Ask the runtime where a place it named has ended up, which is WebXR's `restorePersistentAnchor` - the
     /// other half of [`Session::anchor_id`], and asynchronous like every anchor: the handle arrives before the
     /// place is found, so `anchor_pose` is `None` until it is, and stays `None` for a name the runtime does not
@@ -477,9 +479,8 @@ pub trait Session: Any {
     /// `None` for a runtime with no depth sensing, for a view it has none for, for one that has paused it, and
     /// for one that never had any - the same answer, and why [`Features::DEPTH`] says whether this exists.
     ///
-    /// Ask once per frame, like a view: the way a runtime delivers depth is a buffer made for the frame and
-    /// taken back at the end of it, and the metadata says what the values mean. The buffer is the platform's
-    /// own, and the renderer's importer turns it into something to draw with.
+    /// Ask once per frame, like a view: depth is a buffer made for the frame and taken back at its end. The
+    /// buffer is the platform's own, and the renderer's importer turns it into something to draw with.
     fn environment_depth(&mut self, _view: usize) -> Option<(&Self::EnvironmentDepth, DepthInfo)> {
         None
     }

@@ -33,9 +33,8 @@ impl Drop for WebXrSession {
     /// End the browser's session when this one is dropped; dropping the handle is how an app says it is done.
     fn drop(&mut self) {
         if let Some(session) = self.inner.borrow().session.clone() {
-            // Caught: a session dropped from inside its own frame handler is still active, and `end` throws
-            // `InvalidStateError` for that as well as for one that has already ended. An exception out of a
-            // destructor is worse than a session the browser cleans up when the page goes away.
+            // Caught: a session dropped inside its own frame handler is still active, and `end` throws
+            // `InvalidStateError` for that as for an ended one. An exception out of a destructor is worse.
             if throws::end(&session).is_err() {
                 log::debug!("wxr-webxr: the browser would not end the session on drop");
             }
@@ -82,9 +81,8 @@ impl WebXrSession {
             device: Some(device),
             gpu: None,
             image: None,
-            // `Unknown` rather than the default, because a session with no binding has no format and saying
-            // `Rgba8Srgb` would be a plausible size dressed up as a fact - which is the one thing this
-            // backend's `images` has always refused to do.
+            // `Unknown` rather than the default: a session with no binding has no format, and `Rgba8Srgb`
+            // would be a plausible size dressed up as a fact - which this backend's `images` refuses.
             meta: wxr::ImageMeta {
                 format: wxr::ColorFormat::Unknown,
                 ..Default::default()
@@ -372,9 +370,8 @@ impl wxr::Session for WebXrSession {
     }
 
     fn set_foveation(&mut self, amount: f32) {
-        // `fixedFoveation` is a WebIDL `float`, and a `float` conversion rejects NaN and the infinities with a
-        // `TypeError` - an exception through the wasm frame, which is not a knob refusing a value. So NaN, which
-        // is not a request at all, is refused here, and `clamp` makes an infinity finite before the conversion.
+        // `fixedFoveation` is a WebIDL `float`, so NaN and the infinities are a `TypeError` - an exception
+        // through the wasm frame, not a knob refusing a value. NaN is refused here, and `clamp` tames infinity.
         if amount.is_nan() {
             log::debug!("wxr-webxr: no foveation for {amount}, which is not a number");
             return;
@@ -417,7 +414,7 @@ impl wxr::Session for WebXrSession {
     }
 
     fn release_anchor(&mut self, anchor: wxr::Anchor) {
-        self.release_anchor_impl(anchor)
+        self.release_anchor_impl(anchor);
     }
 
     fn anchor_id(&mut self, anchor: wxr::Anchor) -> Option<wxr::AnchorId> {
@@ -426,6 +423,10 @@ impl wxr::Session for WebXrSession {
 
     fn restore_anchor(&mut self, id: wxr::AnchorId) -> Result<wxr::Anchor, wxr::Error> {
         self.restore_anchor_impl(id)
+    }
+
+    fn persistent_anchor_ids(&mut self, out: &mut Vec<wxr::AnchorId>) -> Result<(), wxr::Error> {
+        self.persistent_anchor_ids_impl(out)
     }
 
     fn delete_persistent_anchor(&mut self, id: wxr::AnchorId) -> Result<(), wxr::Error> {
@@ -441,8 +442,7 @@ impl wxr::Session for WebXrSession {
         if self.depth_paused() {
             return None;
         }
-        // From the binding and not the frame, because this session asked for GPU depth - the one that arrives
-        // as something to draw with rather than as bytes to read.
+        // From the binding, not the frame: this session asked for GPU depth, which arrives to draw with.
         let gpu = self.gpu.as_ref()?;
         let view = self.frame_views.get(view)?;
         let (image, info) = depth::information(&gpu.binding, view)?;

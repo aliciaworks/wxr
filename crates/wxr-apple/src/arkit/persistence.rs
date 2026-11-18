@@ -20,7 +20,9 @@
 //! Reading is the same pull shape every other ARKit answer has. [`wxr::Session::restore_anchor`] hands back a
 //! handle now and starts one copy; when the completion lands, the anchor whose identifier was asked for goes
 //! into that slot and `anchor_pose` starts answering. A name the provider does not know leaves the slot empty
-//! for good, which is the core's answer for a name that finds nothing.
+//! for good, which is the core's answer for a name that finds nothing. [`wxr::Session::persistent_anchor_ids`]
+//! asks the same copy for the names alone, and keeps the last completion's list whether or not a handle asked
+//! for one.
 //!
 //! Erasing needs no lookup at all: the call takes the identifier, so forgetting a name is one request rather
 //! than the round trip reading is. The core's answer is `Ok` once the request is made, and a name the provider
@@ -47,6 +49,10 @@ pub(super) struct Listing {
     /// The address is not a reference: it is how the `+1` crosses a thread, and the session's own thread is
     /// the only place it is turned back into a [`Retained`].
     found: Vec<Found>,
+    /// Every name the last completion found, whether or not a handle asked for it: the answer
+    /// [`wxr::Session::persistent_anchor_ids`] gives, kept apart from `found` because `found` is taken by
+    /// [`ArKit::drain`] and these have to outlive that.
+    names: Vec<[u8; 16]>,
     /// How many completions have arrived. A slot asked for before a copy was requested is answered by the
     /// next completion whether or not it finds the anchor, which is what keeps a missing name from waiting
     /// forever.
@@ -134,6 +140,29 @@ impl ArKit {
         // A slot whose deciding completion has come and gone was not in it: the provider does not have that
         // name, and the handle it was given stays empty.
         self.waiting.retain(|_, waiting| waiting.after > completed);
+    }
+
+    /// Every name the provider is keeping, starting a copy when none is out.
+    ///
+    /// Empty until a copy has answered, a frame or two after the first call - the same pull shape
+    /// [`ArKit::restore_anchor`] has. `false` when there is no world tracking and so no provider to ask.
+    pub fn persistent_ids(&mut self, out: &mut Vec<wxr::AnchorId>) -> bool {
+        out.clear();
+        if self.world.is_none() {
+            return false;
+        }
+        // Take what a completion has handed over first, so the frame after it answers is the first that has
+        // the name rather than the one after that.
+        self.drain();
+        {
+            let listing = self
+                .listing
+                .lock()
+                .expect("the anchor mailbox is only written by handlers that cannot panic");
+            out.extend(listing.names.iter().copied().map(wxr::AnchorId::from_bytes));
+        }
+        self.ask_for_all();
+        true
     }
 
     /// A handle for a place ARKit stored under `id`, or `None` when there is no world to look in.
@@ -262,6 +291,9 @@ unsafe extern "C-unwind" fn listed(context: *mut c_void, anchors: Option<&ar_wor
     let mut listing = slot
         .lock()
         .expect("the anchor mailbox is only written by handlers that cannot panic");
+    // The last copy is the list of names: replaced rather than added to, so a name ARKit no longer has stops
+    // being offered the next time a list is asked for.
+    listing.names = found.iter().map(|(bytes, _)| *bytes).collect();
     listing.found.extend(found);
     listing.completed += 1;
     listing.in_flight = false;

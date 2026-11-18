@@ -768,6 +768,14 @@ class XRSession {
   }
 
   /**
+   * The names this session is keeping, which is `persistentAnchors`: the keys of the map
+   * `restorePersistentAnchor` looks in.
+   */
+  get persistentAnchors() {
+    return Array.from(this._persisted.keys());
+  }
+
+  /**
    * Make a new handle for a place this session named earlier, which is `restorePersistentAnchor`.
    *
    * Two throws and one rejection, all in prose: `InvalidStateError` for an ended session,

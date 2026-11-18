@@ -302,6 +302,11 @@ DEFAULT_IS_ENOUGH = {
     "four different shapes: a triangle mesh with its own lifecycle, a component of a spatial entity, and two "
     "whole-room scans. Picking one is picking which headsets this backend can mesh, and it has not been "
     "picked (the same choice, said at length, in `crates/wxr-openxr/src/lib.rs`)",
+    ("wxr-openxr", "persistent_anchor_ids"): "discovery could list what a runtime persisted - "
+    "`xrDiscoverSpacesMETA` with no filters answers every stored entity - but each result is a whole "
+    "`XrSpace` that has to be destroyed again and the answers arrive by event over several frames, so a list "
+    "of names is a second asynchronous state machine this backend has not built. The names it does answer are "
+    "the ones the app wrote down from `anchor_id`",
     ("wxr-apple", "interaction_mode"): "only a browser is ever `ScreenSpace`",
     ("wxr-openxr", "layer_needs_redraw"): "OpenXR is handed the whole layer list at `xrEndFrame`, so a layer "
     "that is not submitted is simply not composited - there is no request for a redraw to answer, and `false` "
