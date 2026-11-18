@@ -170,9 +170,9 @@ impl GameControllers {
                 // ARKit's own estimate of how fast it moves, or nothing when it has no anchor - see
                 // `crate::arkit::accessory`.
                 motion: place.motion,
-                // One place, two poses: the aim is the anchor too - see `crate::arkit::accessory`.
-                grip: place.pose,
-                aim: place.pose,
+                // Two poses: the accessory's grip and aim locations - see `crate::arkit::accessory`.
+                grip: place.grip,
+                aim: place.aim,
                 tracked: place.tracked,
                 buttons,
                 axes: axes(profile.as_deref()),

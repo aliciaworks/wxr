@@ -119,6 +119,13 @@ unsafe extern "C" {
         correction: isize,
         out: *mut f32,
     );
+    /// Writes where one of an accessory's named locations sits inside its anchor into `out`.
+    fn wxr_ar_accessory_anchor_get_anchor_from_location_transform_with_correction(
+        anchor: *const c_void,
+        location: *const std::ffi::c_char,
+        correction: isize,
+        out: *mut f32,
+    );
 }
 
 /// The transform from the view's space to the device's: the eye's own place in device space.
@@ -326,6 +333,36 @@ pub unsafe fn ar_accessory_anchor_get_origin_from_anchor_transform_with_correcti
     unsafe {
         wxr_ar_accessory_anchor_get_origin_from_anchor_transform_with_correction(
             anchor,
+            correction,
+            out.as_mut_ptr(),
+        )
+    };
+    Float4x4(out)
+}
+
+/// Where one of an accessory's named locations sits, as a transform in the anchor's space.
+///
+/// The name is one the accessory reported in
+/// [`ar_accessory_t::location_names`](objc2_ar_kit::ar_accessory_t::location_names): `aim` on every spatial
+/// accessory, `grip` on a pad and not on a stylus. Apple's name reads right to left - the result is the
+/// anchor's coordinate system *from* the location's - so a caller composes it after the anchor's own
+/// transform, not before it.
+///
+/// # Safety
+///
+/// `anchor` must be a live accessory anchor, `location` a NUL-terminated name the accessory reported, and
+/// `correction` one of the values its type defines.
+pub unsafe fn ar_accessory_anchor_get_anchor_from_location_transform_with_correction(
+    anchor: *const c_void,
+    location: *const std::ffi::c_char,
+    correction: isize,
+) -> Float4x4 {
+    let mut out = [0.0f32; 16];
+    // SAFETY: the caller's contract is the shim's, and `out` is sixteen contiguous `f32`s.
+    unsafe {
+        wxr_ar_accessory_anchor_get_anchor_from_location_transform_with_correction(
+            anchor,
+            location,
             correction,
             out.as_mut_ptr(),
         )

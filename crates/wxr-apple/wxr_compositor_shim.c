@@ -98,3 +98,13 @@ void wxr_ar_accessory_anchor_get_origin_from_anchor_transform_with_correction(
         ar_accessory_anchor_get_origin_from_anchor_transform_with_correction(anchor, correction);
     memcpy(out, &transform, sizeof(transform));
 }
+
+// Writes where one of an accessory's named locations is, in the anchor's space, into `out`.
+void wxr_ar_accessory_anchor_get_anchor_from_location_transform_with_correction(
+    ar_accessory_anchor_t anchor, const char *location_name, ar_transform_correction_t correction,
+    float out[16]) {
+    simd_float4x4 transform =
+        ar_accessory_anchor_get_anchor_from_location_transform_with_correction(anchor, location_name,
+                                                                              correction);
+    memcpy(out, &transform, sizeof(transform));
+}
