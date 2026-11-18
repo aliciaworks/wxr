@@ -88,3 +88,13 @@ void wxr_ar_accessory_anchor_get_angular_velocity(ar_accessory_anchor_t anchor, 
     simd_float3 velocity = ar_accessory_anchor_get_angular_velocity(anchor);
     memcpy(out, &velocity, 3 * sizeof(float));
 }
+
+// Writes the transform from an accessory anchor's space to the origin's into `out`, corrected the way the
+// caller asked: `none` is where the accessory actually is, and `rendered` is where to draw it so it lands
+// over the physical object in passthrough.
+void wxr_ar_accessory_anchor_get_origin_from_anchor_transform_with_correction(
+    ar_accessory_anchor_t anchor, ar_transform_correction_t correction, float out[16]) {
+    simd_float4x4 transform =
+        ar_accessory_anchor_get_origin_from_anchor_transform_with_correction(anchor, correction);
+    memcpy(out, &transform, sizeof(transform));
+}

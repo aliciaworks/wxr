@@ -20,8 +20,9 @@
 //! beside this, and only this file turns one back into a [`Retained`] - on the thread that calls
 //! [`Accessories::provider`].
 //!
-//! **One transform, two poses.** The anchor's own transform is the accessory's place and orientation; the
-//! core's grip and aim are both it, the way they are for a hand. The named
+//! **One transform, two poses.** The anchor's transform, asked for *uncorrected* - the plain call is the one
+//! the compositor renders with, moved to land over the physical accessory in passthrough - is its place and
+//! orientation, and the core's grip and aim are both it, the way they are for a hand. The named
 //! locations ARKit also offers - `ar_accessory_location_name_aim` and the grip surface - are where a stylus
 //! points and where a pad is held rather than where the accessory is, and a core with one pair of poses has
 //! nowhere to put the difference. Reading them is `..._get_anchor_from_location_transform_with_correction`,
@@ -40,9 +41,10 @@ use std::sync::Mutex;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_ar_kit::{
-    ar_accessories_t, ar_accessory_anchor_t, ar_accessory_anchors_t, ar_accessory_chirality_t,
-    ar_accessory_t, ar_accessory_tracking_configuration_t, ar_accessory_tracking_provider_t,
-    ar_data_providers_t, ar_error_t, ar_session_t,
+    ar_accessories_t, ar_accessory_anchor_t, ar_accessory_anchor_tracking_state_t,
+    ar_accessory_anchors_t, ar_accessory_chirality_t, ar_accessory_t,
+    ar_accessory_tracking_configuration_t, ar_accessory_tracking_provider_t, ar_data_providers_t,
+    ar_error_t, ar_session_t, ar_transform_correction_t,
 };
 use objc2_game_controller::{GCController, GCDevice};
 use wxr::glam::Mat4;
@@ -60,7 +62,10 @@ pub(crate) struct AccessoryPose {
     /// Whether ARKit is tracking it right now: an accessory on a table is still placed, one the runtime has
     /// lost is not.
     pub(crate) tracked: bool,
-    /// Its place and orientation, in ARKit's world.
+    /// Whether the *position* is a guess because only the orientation is tracked, which is the core's
+    /// `emulated_position` and a different question from `tracked`.
+    pub(crate) emulated_position: bool,
+    /// Its place and orientation, in ARKit's world, unaltered by the rendering correction.
     pub(crate) transform: Mat4,
     /// Metres per second along ARKit's axes, estimated by the runtime rather than differenced here.
     pub(crate) linear_velocity: wxr::glam::Vec3,
@@ -281,10 +286,15 @@ unsafe extern "C-unwind" fn collect(context: *mut c_void, anchor: &ar_accessory_
             device: Retained::as_ptr(&device).cast::<()>() as usize,
             handedness: handedness_of(ar_accessory_anchor_t::held_chirality(anchor)),
             tracked: ar_accessory_anchor_t::is_tracked(anchor),
-            // The generic anchor transform: an accessory anchor is an `ar_anchor_t` like any other, which
-            // is the call `sys` already carries for device and hand anchors.
+            emulated_position: emulated_position_of(ar_accessory_anchor_t::tracking_state(anchor)),
+            // Not the generic anchor call: ARKit's plain accessory transform is the *rendered* correction,
+            // and a pose an app points with is where the accessory actually is.
             transform: Mat4::from_cols_array(
-                &sys::ar_anchor_get_origin_from_anchor_transform(anchor_address).0,
+                &sys::ar_accessory_anchor_get_origin_from_anchor_transform_with_correction(
+                    anchor_address,
+                    ar_transform_correction_t::none.0,
+                )
+                .0,
             ),
             // The runtime's own estimate, which is why it is read rather than differenced between frames:
             // an accessory ARKit is tracking has a speed ARKit knows.
@@ -298,6 +308,12 @@ unsafe extern "C-unwind" fn collect(context: *mut c_void, anchor: &ar_accessory_
     }
     // Every accessory in the collection is one this session asked about, so none is skipped.
     true
+}
+
+/// Whether the position is a guess, from ARKit's richer answer about what it tracks: orientation alone is
+/// the three-degrees-of-freedom case the core's flag is about, and a low accuracy position is still measured.
+fn emulated_position_of(state: ar_accessory_anchor_tracking_state_t) -> bool {
+    state == ar_accessory_anchor_tracking_state_t::orientation_tracked
 }
 
 /// Which hand an accessory is in, from ARKit's answer about the anchor that was held.
@@ -343,6 +359,8 @@ pub(crate) struct Place {
     /// than a zero one, because zero is a claim that it is holding still.
     pub(crate) motion: Option<wxr::Motion>,
     pub(crate) tracked: bool,
+    /// Whether that place is a guess because only the orientation is tracked.
+    pub(crate) emulated_position: bool,
     pub(crate) handedness: wxr::Handedness,
 }
 
@@ -352,6 +370,7 @@ impl Place {
         pose: wxr::Pose::IDENTITY,
         motion: None,
         tracked: false,
+        emulated_position: false,
         handedness: wxr::Handedness::Unknown,
     };
 }
@@ -370,6 +389,7 @@ impl AccessoryPose {
                 angular_velocity: Some(self.angular_velocity),
             }),
             tracked: self.tracked,
+            emulated_position: self.emulated_position,
             handedness: self.handedness,
         }
     }
@@ -424,6 +444,7 @@ mod tests {
             device: 0,
             handedness: wxr::Handedness::Right,
             tracked: true,
+            emulated_position: false,
             transform: Mat4::IDENTITY,
             linear_velocity: wxr::glam::Vec3::X,
             angular_velocity: wxr::glam::Vec3::Y,
@@ -438,6 +459,23 @@ mod tests {
         );
         assert_eq!(motion.angular_velocity, Some(wxr::glam::Vec3::Y));
         assert!(place.tracked);
+        assert!(!place.emulated_position);
         assert_eq!(place.handedness, wxr::Handedness::Right);
+    }
+
+    /// What the four tracking states mean to the core's two flags: an untracked anchor is not tracked, an
+    /// orientation-only one is tracked with a guessed place, and a low-accuracy position is still measured.
+    #[test]
+    fn only_an_orientation_only_anchor_has_a_guessed_place() {
+        use ar_accessory_anchor_tracking_state_t as tracking;
+        let states = [
+            (tracking::untracked, false),
+            (tracking::orientation_tracked, true),
+            (tracking::position_orientation_tracked, false),
+            (tracking::position_orientation_tracked_low_accuracy, false),
+        ];
+        for (state, guessed) in states {
+            assert_eq!(emulated_position_of(state), guessed);
+        }
     }
 }

@@ -113,6 +113,12 @@ unsafe extern "C" {
     fn wxr_ar_accessory_anchor_get_velocity(anchor: *const c_void, out: *mut f32);
     /// Writes an accessory's estimated angular velocity, in radians per second, into `out`.
     fn wxr_ar_accessory_anchor_get_angular_velocity(anchor: *const c_void, out: *mut f32);
+    /// Writes an accessory anchor's transform into `out`, corrected the way `correction` asks.
+    fn wxr_ar_accessory_anchor_get_origin_from_anchor_transform_with_correction(
+        anchor: *const c_void,
+        correction: isize,
+        out: *mut f32,
+    );
 }
 
 /// The transform from the view's space to the device's: the eye's own place in device space.
@@ -297,6 +303,34 @@ pub unsafe fn ar_accessory_anchor_get_angular_velocity(anchor: *const c_void) ->
     // SAFETY: the caller's contract is the shim's, and `out` is three contiguous `f32`s.
     unsafe { wxr_ar_accessory_anchor_get_angular_velocity(anchor, out.as_mut_ptr()) };
     out
+}
+
+/// Where an accessory anchor is, with the caller's choice of correction.
+///
+/// ARKit offers two answers and the plain call is only one of them: the plain
+/// `ar_accessory_anchor_get_origin_from_anchor_transform` is the *rendering* correction, moved so that
+/// content drawn at it lands over the physical accessory in passthrough. A pose an app points a ray with is
+/// the unaltered one - `crate::arkit::accessory` asks for `none` - and a pose an app draws a model at would
+/// be the other. The two are millimetres apart, which is exactly the distance a crosshair cannot afford.
+///
+/// # Safety
+///
+/// `anchor` must be a live accessory anchor object from the generated crate, and `correction` one of the
+/// values its type defines.
+pub unsafe fn ar_accessory_anchor_get_origin_from_anchor_transform_with_correction(
+    anchor: *const c_void,
+    correction: isize,
+) -> Float4x4 {
+    let mut out = [0.0f32; 16];
+    // SAFETY: the caller's contract is the shim's, and `out` is sixteen contiguous `f32`s.
+    unsafe {
+        wxr_ar_accessory_anchor_get_origin_from_anchor_transform_with_correction(
+            anchor,
+            correction,
+            out.as_mut_ptr(),
+        )
+    };
+    Float4x4(out)
 }
 
 #[cfg(test)]

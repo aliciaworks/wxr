@@ -165,8 +165,8 @@ impl GameControllers {
                 haptics: haptics.is_some(),
                 // GameController draws no pad, so a model of it is the app's.
                 skip_rendering: false,
-                // Nothing is estimated: ARKit reports the place it tracked, and nothing else is a place.
-                emulated_position: false,
+                // Whether that place is a guess - orientation without position - is the anchor's answer.
+                emulated_position: place.emulated_position,
                 // ARKit's own estimate of how fast it moves, or nothing when it has no anchor - see
                 // `crate::arkit::accessory`.
                 motion: place.motion,
