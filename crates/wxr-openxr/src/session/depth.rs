@@ -1,26 +1,18 @@
 //! What the runtime measured of the room, which is `XR_META_environment_depth` driven by hand.
 //!
-//! This is the extension whose direction is backwards, and that is the whole shape of it. Every swapchain in
-//! OpenXR goes from the app to the compositor; this one goes the other way - the runtime writes a depth map
-//! into it and the app reads it - and the spec says so in as many words: "This swapchain is different from
-//! regular swapchains in that it provides a data channel from the runtime to the application instead of the
-//! other way around." So it is not an `XrSwapchain`: there is no `xrAcquireSwapchainImage`, and an image is
-//! taken for a frame with `xrAcquireEnvironmentDepthImageMETA` and given back by the frame ending.
+//! It is the extension whose direction is backwards. Every other swapchain goes from the app to the
+//! compositor; this one goes the other way - the runtime writes a depth map into it and the app reads it - so
+//! it is not an `XrSwapchain` at all: an image is taken for a frame with `xrAcquireEnvironmentDepthImageMETA`
+//! and given back by the frame ending.
 //!
-//! The cost of that is a rule with teeth: at most one acquire per frame, and only between `xrBeginFrame` and
+//! The cost is a rule with teeth: at most one acquire per frame, and only between `xrBeginFrame` and
 //! `xrEndFrame`. The core's [`wxr::Session::environment_depth`] is asked once *per view*, and asking twice is
 //! `XR_ERROR_LIMIT_REACHED` - so the acquire happens on the first ask of a frame and both views read the one
 //! measurement. That is why the provider and its swapchain live in [`EnvironmentDepth`] and the measurement
 //! is carried separately: one belongs to the session and one belongs to the frame.
 //!
-//! **What OpenXR does not give, and this file does not invent.** The extension hands back a D16 buffer of
-//! *window* depth plus the near and far planes it was rendered with, where WebXR hands back a
-//! `rawValueToMeters` scalar and a `normDepthBufferFromNormView` transform. Neither platform can answer in the
-//! other's terms, so [`wxr::DepthEncoding`] is a choice a consumer has to read; the planes are reported - see
-//! [`EnvironmentDepth::info`], which also names the one assumption no machine here can check.
-//!
-//! The transform still has no counterpart, and that is not a gap: what WebXR's carries beyond a pose is a
-//! projection along `z`, which a rigid pose cannot carry at all; what it would say is what the encoding says.
+//! **What OpenXR does not give:** a D16 buffer of *window* depth and its planes, where WebXR hands back a
+//! scale and a transform. Neither answers in the other's terms - see [`EnvironmentDepth::info`].
 
 use super::*;
 
@@ -32,13 +24,11 @@ use super::*;
 /// colour. So the number travels, and the importer is the one that names it.
 #[derive(Clone, Copy, Debug)]
 pub struct EnvironmentDepthImage {
-    /// One of the depth swapchain's images, as the runtime names it - a `VkImage`, which on this platform is
-    /// an integer.
+    /// One of the depth swapchain's images, as the runtime names it: a `VkImage`, an integer here.
     pub(crate) image: u64,
     /// What it is, as Vulkan names it.
     pub(crate) format: u32,
-    /// The size of one layer. There are two, one per eye, and they are array layers of this image rather
-    /// than two images - which is why this is one extent and not a list.
+    /// The size of one layer; there are two, one per eye, as array layers of this one image.
     pub(crate) extent: wxr::Extent2d,
 }
 
@@ -57,8 +47,12 @@ pub(super) struct EnvironmentDepth {
     images: Vec<u64>,
     /// What one image is: the format the extension mandates, and the size the runtime chose.
     depth: EnvironmentDepthImage,
-    /// Whether the provider has been started, which the runtime insists happens once and only once.
+    /// Whether the provider is running. The extension refuses a start of one already started, and a stop of
+    /// one already stopped, so this is what keeps a caller that says the same thing every frame from failing.
     started: bool,
+    /// Whether the caller wants depth. A pause clears it and an ask does not set it again, so only
+    /// [`wxr::Session::set_depth_active`] resumes a paused provider - that call is a state, not a hint.
+    wanted: bool,
     /// Whether the near and far planes have been said out loud yet, which is once and not every frame.
     logged: bool,
 }
@@ -66,9 +60,8 @@ pub(super) struct EnvironmentDepth {
 impl EnvironmentDepth {
     /// Make the provider and its swapchain, or say this runtime cannot measure the room.
     ///
-    /// Made and not started: a provider begins producing depth the moment it is started, and a session that
-    /// made one for an app that never asks would be holding a camera for nothing. [`Self::start`] runs on
-    /// the first ask, which is the first evidence that anyone wants it.
+    /// Made and not started: [`Self::start`] runs on the first ask or when the caller says so, because
+    /// producing depth for an app that never looks is holding a camera for nothing.
     pub(super) fn new(session: &xr::Session<xr::Vulkan>, enabled: bool) -> Option<Self> {
         if !enabled {
             log::info!("wxr-openxr: no depth: this runtime has no XR_META_environment_depth");
@@ -201,35 +194,51 @@ impl EnvironmentDepth {
                 extent: wxr::Extent2d::new(state.width, state.height),
             },
             started: false,
+            wanted: true,
             logged: false,
         })
     }
 
-    /// Let the runtime start measuring, which it will not do until it is told to.
+    /// Start or stop the runtime measuring, which is `xrStartEnvironmentDepthProviderMETA` and its stop.
     ///
-    /// Called once, on the first ask, and never reversed: the extension has a stop and this backend does not
-    /// use it, because a depth provider that stopped between two frames is a depth map that went missing in
-    /// the one place a caller is looking.
-    fn start(&mut self) -> bool {
-        if self.started {
-            return true;
+    /// A provider already in the asked state is answered without a call, because the extension refuses both
+    /// of those calls on a provider already in that state - so a caller that says "on" every frame must not
+    /// be a caller that fails on the second one.
+    pub(super) fn set_active(&mut self, active: bool) -> Result<(), wxr::Error> {
+        self.wanted = active;
+        if self.started == active {
+            return Ok(());
         }
         // SAFETY: the provider is live.
-        let result = unsafe { (self.table.start_environment_depth_provider)(self.provider) };
+        let result = unsafe {
+            if active {
+                (self.table.start_environment_depth_provider)(self.provider)
+            } else {
+                (self.table.stop_environment_depth_provider)(self.provider)
+            }
+        };
         if result != openxr_sys::Result::SUCCESS {
-            log::warn!("wxr-openxr: no depth: starting the provider: {result:?}");
-            return false;
+            return Err(wxr::Error::Rejected(format!("{result:?}").into()));
         }
-        self.started = true;
-        true
+        self.started = active;
+        Ok(())
+    }
+
+    /// The first ask of a frame starts the provider, when the caller has not paused it.
+    fn start(&mut self) -> bool {
+        match self.set_active(true) {
+            Ok(()) => true,
+            Err(error) => {
+                log::warn!("wxr-openxr: no depth: starting the provider: {error:?}");
+                false
+            }
+        }
     }
 
     /// This frame's measurement, or nothing if the runtime has none yet.
     ///
-    /// "Nothing" is a real answer and a normal one: a runtime "must return
-    /// XR_ENVIRONMENT_DEPTH_NOT_AVAILABLE_META if no depth frame is available yet", which is what a session
-    /// that has just started looks like. That result code is a *success* code, which is why it is matched by
-    /// name rather than by the call having failed.
+    /// "Nothing" is a normal answer: a runtime "must return XR_ENVIRONMENT_DEPTH_NOT_AVAILABLE_META if no
+    /// depth frame is available yet", which is a success code and so is matched by name, not as a failure.
     pub(super) fn acquire(
         &mut self,
         base_space: openxr_sys::Space,
@@ -238,10 +247,8 @@ impl EnvironmentDepth {
         let acquire_info = openxr_sys::EnvironmentDepthImageAcquireInfoMETA {
             ty: openxr_sys::StructureType::ENVIRONMENT_DEPTH_IMAGE_ACQUIRE_INFO_META,
             next: std::ptr::null(),
-            // The reference frame the returned poses come back in: the space the frame's views were
-            // located in, which is the caller's to choose. The first space the app made was never
-            // necessarily that. The core has no slot for a depth query's space, so what matches the
-            // frame's picture is the answer.
+            // The space the frame's views were located in: what matches the frame's picture is the answer,
+            // and the first space the app made was never necessarily that.
             space: base_space,
             display_time: time,
         };
@@ -251,8 +258,7 @@ impl EnvironmentDepth {
             swapchain_index: 0,
             near_z: 0.0,
             far_z: 0.0,
-            // Two views and never another number: the extension makes the image an array of exactly two, one
-            // per eye, and there is no count to ask for.
+            // Two views and never another number: the extension makes the image an array of exactly two.
             views: [depth_view(); 2],
         };
         // SAFETY: the provider is live and started, the frame is between its begin and its end, and `image`
@@ -268,9 +274,7 @@ impl EnvironmentDepth {
             return None;
         }
         let index = image.swapchain_index as usize;
-        // The two planes are what turns a sample of this buffer into a distance, and they are now carried
-        // into `DepthInfo` rather than dropped - so this line is a statement of what the measurement *is*,
-        // once, because it is the same every frame and a log line per frame is not information.
+        // Said once: the planes are the same every frame, and a log line per frame is not information.
         if !self.logged {
             self.logged = true;
             log::info!(
@@ -299,44 +303,28 @@ impl EnvironmentDepth {
 
     /// What this frame's buffer means, in the core's terms, from the two planes the runtime reported with it.
     ///
-    /// This used to answer with `raw_value_to_meters: 0.0` - a number that meant "nothing" because the core
-    /// had no slot for anything else - and the reasoning was sound for the wrong reason: window depth *is* a
-    /// hyperbolic function of distance, so no scalar exists, and any positive number here would have made a
-    /// consumer compare a fraction against a distance and hide the wrong half of the scene. What the reasoning
-    /// got wrong was that the two planes are unavailable. They are not: `XrEnvironmentDepthImageMETA` reports
-    /// `nearZ` and `farZ` with every acquire, and this backend was reading them, logging them once, and
-    /// throwing them away because [`wxr::DepthInfo`] had nowhere to put them.
+    /// Window depth *is* a hyperbolic function of distance, so there is no `raw_value_to_meters` scalar that
+    /// could describe this buffer - which is why it answers in planes rather than in WebXR's scale.
+    /// `XrEnvironmentDepthImageMETA` reports `nearZ` and `farZ` with every acquire, and they are put where
+    /// [`wxr::DepthEncoding::Window`] expects them. That type's own note carries the one trap, that
+    /// `far_z < near_z` is an infinite frustum rather than a reversed one.
     ///
-    /// So they are put there, as [`wxr::DepthEncoding::Window`], and what it means for a consumer is written
-    /// out in that type's own note rather than here - including the one trap, that `far_z < near_z` is an
-    /// infinite frustum rather than a reversed one, which the extension says and which nothing in this file
-    /// has to decide.
+    /// **The assumption:** `XR_KHR_composition_layer_depth` states the description as a projection **matrix**
+    /// over four numbers - `minDepth`/`maxDepth`/`nearZ`/`farZ` - and this extension reports only the last two.
+    /// The first two are 0 and 1 for any buffer whose near plane sits at zero, which a depth attachment does
+    /// unless something clamped it, and this extension cannot say otherwise. That is the pair
+    /// `depth_submission` uses for the app's own buffer, and it is the one thing here no machine in this
+    /// workspace can check: nothing that runs on it has this extension.
     ///
-    /// **What is still missing from the description:** `XR_KHR_composition_layer_depth` states the whole thing
-    /// as a projection **matrix** - its own words are "the homogeneous transform from view space `z` to window
-    /// space depth" - over four numbers, `minDepth`/`maxDepth`/`nearZ`/`farZ`, and this extension reports only
-    /// the last two. The first two are "the window space depths that correspond to the near and far frustum
-    /// planes, respectively" - so they are 0 and 1 for any buffer whose near plane sits at zero, which is what a
-    /// depth attachment is unless something clamped it, and this extension gives no way to say otherwise. That
-    /// is the same pair `depth_submission` states for the app's own buffer, with the same reason behind it.
-    /// [`wxr::DepthEncoding::Window`] is therefore written with 0 and 1 taken as given, and that assumption is
-    /// the one thing here that no machine in this workspace can check: nothing that runs on it has this
-    /// extension. It is documented at the type so that a reader meets it before believing a distance.
+    /// `norm_depth_buffer_from_norm_view` is identity: the buffer was rendered from this eye's pose with this
+    /// eye's field of view and covers the whole texture, so normalized buffer `x` and `y` *are* normalized view
+    /// ones. WebXR's transform carries a projection along `z` beyond that, which a rigid pose cannot carry -
+    /// which is what the encoding above is for. The eye's field of view and pose are not reported either: the
+    /// core's [`wxr::DepthInfo`] has no slot, and a renderer that wants to un-project asks the frame's views,
+    /// which are the same two.
     ///
-    /// `norm_depth_buffer_from_norm_view` is the transform from normalized view coordinates into the buffer's.
-    /// The buffer is registered to the view - it was rendered from this eye's pose with this eye's field of
-    /// view and covers the whole texture - so normalized buffer `x` and `y` *are* normalized view `x` and
-    /// `y`, and identity is the exact answer for both. What WebXR's transform carries beyond that is a
-    /// projection along `z`, and a rigid pose cannot carry a projection at all; that is what the encoding
-    /// above is about.
-    ///
-    /// The eye's field of view and pose arrive with the measurement and are not reported: the core's
-    /// [`wxr::DepthInfo`] has no slot for them, and a renderer that wants to un-project asks the session's
-    /// views for theirs, which are the same two.
-    ///
-    /// And a `near_z` the runtime never filled in is not a plane, so it is [`wxr::DepthEncoding::Unknown`]
-    /// rather than a frustum at zero - which is the one case where this still answers with nothing, and the
-    /// picture is then the one a session without depth produces.
+    /// A `near_z` the runtime never filled in is not a plane, so it is [`wxr::DepthEncoding::Unknown`] rather
+    /// than a frustum at zero - the one case where this still answers with nothing.
     fn info(&self, near_z: f32, far_z: f32) -> wxr::DepthInfo {
         let encoding = if near_z > 0.0 {
             wxr::DepthEncoding::Window { near_z, far_z }
@@ -355,9 +343,8 @@ impl OpenXrSession {
     /// The room, measured, for the view asked for.
     ///
     /// Both views answer the same thing, and that is not a shortcut: the measurement is one image with two
-    /// array layers, and what would differ per eye is its field of view and pose - which the core's
-    /// [`wxr::DepthInfo`] has nowhere for. A renderer that wants the eye asks the frame's views, which are
-    /// the same ones the measurement was taken in.
+    /// array layers, and what would differ per eye - field of view and pose - has no slot in
+    /// [`wxr::DepthInfo`]. A renderer that wants the eye asks the frame's views, which are the same two.
     pub(super) fn environment_depth_impl(
         &mut self,
         view: usize,
@@ -373,11 +360,14 @@ impl OpenXrSession {
             return None;
         }
         if !self.depth_asked {
-            self.depth_asked = true;
             let depth = self.depth.as_mut()?;
-            if !depth.start() {
+            // A caller that paused depth has said what it wants, and asking for a measurement does not undo
+            // it: only `set_depth_active(true)` does.
+            if !depth.wanted || !depth.start() {
                 return None;
             }
+            // Said only once the runtime is asked: a paused ask did not use the frame's one acquire.
+            self.depth_asked = true;
             // The space the projection layer is drawn in, which is the one the views were located in - the
             // first one the app made was never necessarily that. Taken as the raw handle because the depth
             // provider and this backend's list of spaces are separate things.
@@ -392,6 +382,22 @@ impl OpenXrSession {
         Some((&measured.image, measured.info))
     }
 
+    /// Start or stop the runtime measuring the room, which is WebXR's `resumeDepthSensing` and its pause.
+    ///
+    /// No provider is no depth to pause, which is `Unsupported`, and a request matching the state already
+    /// reported is a no-op, so a caller may say what it wants every frame. A stop drops this frame's
+    /// measurement too.
+    pub(super) fn set_depth_active_impl(&mut self, active: bool) -> Result<(), wxr::Error> {
+        let Some(depth) = self.depth.as_mut() else {
+            return Err(wxr::Error::Unsupported("depth sensing".into()));
+        };
+        depth.set_active(active)?;
+        if !active {
+            self.measured = None;
+        }
+        Ok(())
+    }
+
     /// What this session's depth sensing is, once it has a way to measure.
     pub(super) fn depth_sensing_impl(&self) -> Option<wxr::DepthSensing> {
         let depth = self.depth.as_ref()?;
@@ -404,8 +410,8 @@ impl OpenXrSession {
             // The runtime does not say whether what it produces is what the sensor measured or a surface
             // fitted to it, and this extension has no way to ask.
             ty: None,
-            // And this one is knowable, and it is a fact about *now* rather than about the session: the
-            // provider is made at connect and started at the first ask, so this says which of the two it is.
+            // And this one is knowable, and it is a fact about *now*: the provider is made at connect and
+            // started by the first ask or `set_depth_active`, so this says which of the two it is.
             active: Some(depth.started),
         })
     }
@@ -446,10 +452,8 @@ fn null_swapchain() -> openxr_sys::EnvironmentDepthSwapchainMETA {
 
 /// Undo what had been made when a later step said no.
 ///
-/// Every early return in [`EnvironmentDepth::new`] is a case where one thing was made and the next one
-/// refused, and a provider the app never gets to see is still one the runtime is holding for it. So each
-/// says what it is putting back: the same two calls in the same order as [`Drop for EnvironmentDepth`],
-/// with the stop left out because nothing was started. `None` is the return before a swapchain existed.
+/// The same two calls in the order [`Drop for EnvironmentDepth`] gives them, with the stop left out because
+/// nothing was started. `None` is the return before a swapchain existed.
 fn undo(
     table: &xr::raw::EnvironmentDepthMETA,
     provider: openxr_sys::EnvironmentDepthProviderMETA,
@@ -467,16 +471,12 @@ fn undo(
 
 impl Drop for EnvironmentDepth {
     fn drop(&mut self) {
-        // In the order the spec gives them and not the other way round: the spec says a provider "must not
-        // be destroyed until all of its swapchains have been", and this file has exactly one.
+        // The spec's order: a provider "must not be destroyed until all of its swapchains have been", and
+        // stopping first too - a provider still producing into a swapchain that is about to go is the one
+        // thing here that could race with the runtime rather than merely leak.
         //
-        // Stopping first too, because the extension has a stop for a reason - a provider that is still
-        // producing frames into a swapchain that is about to go is the one thing here that could race with
-        // the runtime rather than merely leak.
-        // SAFETY: all three handles are this session's, each is destroyed exactly once, and the order is the
-        // spec's - swapchain before provider, because a provider must not be destroyed until its swapchains
-        // are. A failure here is nothing to do about: the handles are about to be dropped either way, so
-        // what is said is only that it did not go smoothly.
+        // A failure is nothing to do about: the handles are about to be dropped either way, so what is said
+        // is only that it did not go smoothly.
         let (stopped, swapchain_gone, provider_gone) = unsafe {
             let stopped = if self.started {
                 (self.table.stop_environment_depth_provider)(self.provider)

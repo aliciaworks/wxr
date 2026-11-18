@@ -178,27 +178,45 @@ fn a_world_modelling_bit_is_the_same_fact_as_its_method() {
         );
     }
 
-    // Depth is `Option` even where it exists, because the provider is made at connect and *started* at the
-    // first ask - so the ask is made here either way, and what it proves depends on which runtime this is.
-    //
-    // No image comes back from it even on a headset: the runtime hands one over only between a frame's
-    // begin and its end, and this suite has neither, so the acquire is refused and `environment_depth` answers `None`.
-    // What the ask does prove is the start, which is the whole of what the laziness is for.
+    // Depth is `Option` even where it exists, because the provider is made at connect and started on the
+    // first ask *inside a frame* - and this suite never opens one, so an acquire outside a frame answers
+    // nothing on every runtime. What is testable without a frame is the switch `set_depth_active` drives.
     let first = session.environment_depth(0);
+    assert!(
+        first.is_none(),
+        "depth() answered outside a frame, where the extension allows no acquire"
+    );
     if features.contains(wxr::Features::DEPTH) {
+        session
+            .set_depth_active(true)
+            .expect("a runtime with DEPTH refused to start measuring");
         assert_eq!(
             session.depth_sensing().and_then(|sensing| sensing.active),
             Some(true),
-            "asking for depth did not start the provider"
+            "set_depth_active(true) did not start the provider"
         );
+        session
+            .set_depth_active(true)
+            .expect("starting a started provider refused instead of doing nothing");
+        session
+            .set_depth_active(false)
+            .expect("a runtime with DEPTH refused to pause");
+        assert_eq!(
+            session.depth_sensing().and_then(|sensing| sensing.active),
+            Some(false),
+            "set_depth_active(false) did not stop the provider"
+        );
+        session
+            .set_depth_active(false)
+            .expect("stopping a stopped provider refused instead of doing nothing");
     } else {
-        assert!(
-            first.is_none(),
-            "depth() gave something but DEPTH was not set"
-        );
         assert!(
             session.depth_sensing().is_none(),
             "depth_sensing() answered but DEPTH was not set"
+        );
+        assert!(
+            session.set_depth_active(true).is_err(),
+            "set_depth_active(true) did not refuse on a runtime without DEPTH"
         );
     }
 }

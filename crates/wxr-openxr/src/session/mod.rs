@@ -77,8 +77,7 @@ impl wxr::Session for OpenXrSession {
         self.set_foveation_impl(amount)
     }
 
-    /// The near and far planes the scene draws with, which is `XrCompositionLayerDepthInfoKHR`'s
-    /// `nearZ`/`farZ`. Stored until a frame is submitted, and saying it at all is what turns depth on.
+    /// The near and far planes the scene draws with, from `XrCompositionLayerDepthInfoKHR`; saying it turns depth on.
     fn set_depth_range(&mut self, range: wxr::DepthRange) {
         self.depth_range = Some(range);
     }
@@ -295,8 +294,7 @@ impl wxr::Session for OpenXrSession {
     }
 
     fn release_layer(&mut self, layer: wxr::Layer) {
-        // Dropping the swapchain is the whole of it: OpenXR has no `destroy` to call, and a layer the app stops
-        // naming at `xrEndFrame` has stopped being presented.
+        // Dropping the swapchain is the whole of it: OpenXR has no `destroy`, and a layer no longer named is gone.
         if let Some(slot) = self.layers.get_mut(layer.id() as usize) {
             *slot = None;
         }
@@ -439,9 +437,8 @@ impl wxr::Session for OpenXrSession {
         self.delete_persistent_anchor_impl(id)
     }
 
-    /// Ask for a source of hits along a ray - the app's, or the space's own aim - which is
-    /// `XR_META_environment_raycast`. `kinds` is only ever `ALL` or `NONE`: the extension does not say what
-    /// surface it met, so a narrowed request is `Unsupported`.
+    /// Ask for a source of hits along a ray, which is `XR_META_environment_raycast`. `kinds` is only ever
+    /// `ALL` or `NONE`: the extension does not say what surface it met, so a narrowing is `Unsupported`.
     fn hit_test_source(
         &mut self,
         space: wxr::ReferenceSpace,
@@ -476,6 +473,11 @@ impl wxr::Session for OpenXrSession {
     /// What this session's depth sensing is: one measurement in a runtime-owned buffer, at its resolution.
     fn depth_sensing(&self) -> Option<wxr::DepthSensing> {
         self.depth_sensing_impl()
+    }
+
+    /// Start or stop the runtime measuring the room, which is `XR_META_environment_depth`'s start and stop.
+    fn set_depth_active(&mut self, active: bool) -> Result<(), wxr::Error> {
+        self.set_depth_active_impl(active)
     }
 
     fn end(&mut self, _frame: &mut wxr::Frame) -> Result<(), wxr::Error> {

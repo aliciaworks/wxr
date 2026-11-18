@@ -90,10 +90,11 @@ pub struct OpenXrSession {
     pub(super) raycast: Option<super::Raycaster>,
     /// The runtime's own measurement of the room, when it makes one.
     ///
-    /// Made at connect time and *started* at the first query: a provider begins producing depth the moment
-    /// it is started, and one kept running for an app that never asks would be holding a camera for nothing.
-    /// So `Some` here is "this runtime can measure the room", which is what `Features::DEPTH` means, and
-    /// whether it has begun is [`wxr::Session::environment_depth`]'s business.
+    /// Made at connect time and *started* at the first query or by [`wxr::Session::set_depth_active`]: a
+    /// provider begins producing depth the moment it is started, and one kept running for an app that never
+    /// asks would be holding a camera for nothing. So `Some` here is "this runtime can measure the room",
+    /// which is what `Features::DEPTH` means, and whether it is running is
+    /// [`wxr::Session::depth_sensing`]'s business.
     pub(super) depth: Option<super::EnvironmentDepth>,
     /// What the frame in progress measured of the room, and what its values are worth - read by
     /// [`Self::environment_depth_impl`] and cleared at the end of the frame, because the runtime takes the image

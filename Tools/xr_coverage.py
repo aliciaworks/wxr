@@ -293,9 +293,6 @@ DEFAULT_IS_ENOUGH = {
     ("wxr-openxr", "light_probe"): "as `light`: the ambient direction and colour a probe carries is the "
     "same measurement under another name, and it has the same extension behind it that this backend cannot ask "
     "for",
-    ("wxr-openxr", "set_depth_active"): "the provider behind `Session::environment_depth` is started on the first "
-    "ask and never stopped, for the reason `depth.rs` gives: a depth map that stopped between two frames is "
-    "that went missing where a renderer is looking - so there is no pause to send",
     ("wxr-openxr", "max_render_layers"): "OpenXR names no limit: a frame is one `xrEndFrame` with however "
     "many layers the app puts in it, and a runtime that cannot take them says so by failing the call rather "
     "than by publishing a number to ask first. The `None` is the whole answer, not a query this backend has "

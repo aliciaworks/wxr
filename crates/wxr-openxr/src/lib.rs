@@ -43,7 +43,7 @@
 //! `openxr-sys` structs and raw pointers, in a module of its own under `session/`. Two of them need care that
 //! is not visible from the call site: `XR_META_environment_raycast` cannot be enabled without `XR_EXT_future`
 //! or `xrCreateInstance` refuses the pair, and the depth map can only be taken once between a frame's begin
-//! and its end.
+//! and its end, with the provider itself started and stopped by `Session::set_depth_active`.
 //!
 //! **An anchor's name is three extensions, not one.** `XR_FB_spatial_entity` makes the anchor and says
 //! whether it can be stored (`STORABLE`), and Meta's `XR_META_spatial_entity_persistence` and
