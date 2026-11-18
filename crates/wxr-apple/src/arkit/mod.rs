@@ -1,13 +1,13 @@
 //! ARKit's session, and the providers this leg asks it for.
 //!
 //! One session, because a session is what holds the authorization and the providers: world tracking for
-//! where the head is, hand tracking for where the hands are, and the two that describe the room - planes,
-//! which are the surfaces ARKit recognised, and scene reconstruction, which is the triangles. The
-//! declarations come from the generated `objc2-ar-kit` crate - ARKit read from the SDK that has its visionOS
-//! C module - and only the two functions whose signature *carries* a `simd` type stay hand-written in
-//! [`crate::sys`], because `objc2`'s translator cannot yet express `simd` in a function. Everything else here
-//! is ownership: `Retained` is the `+1` every `create` returns and the `ar_release` that used to be written
-//! out by hand.
+//! where the head is, hand tracking for where the hands are, accessory tracking for where the controllers
+//! are, and the two that describe the room - planes, which are the surfaces ARKit recognised, and scene
+//! reconstruction, which is the triangles. The declarations come from the generated `objc2-ar-kit` crate -
+//! ARKit read from the SDK that has its visionOS C module - and only the functions whose signature *carries*
+//! a `simd` type stay hand-written in [`crate::sys`], because `objc2`'s translator cannot express one.
+//! Everything else here is ownership: `Retained` is the `+1` every `create` returns and the `ar_release`
+//! that used to be written out by hand.
 //!
 //! **World tracking** is what makes a pose mean somewhere. Without it every pose a compositor reports is
 //! relative to the device and the scene follows the wearer instead of staying where it was put; with it
@@ -81,6 +81,7 @@ use wxr::glam::Mat4;
 
 use crate::sys;
 
+pub(crate) mod accessory;
 mod anchor;
 mod authorization;
 mod fidelity;
@@ -91,6 +92,7 @@ mod persistence;
 mod plane;
 mod skeleton;
 
+use accessory::Accessories;
 use authorization::Permissions;
 use fidelity::Fidelity;
 use light::Lights;
@@ -193,6 +195,9 @@ pub struct ArKit {
     /// wearer rather than the room. Absent on every system before visionOS 27, and on a device whose
     /// provider says it is not supported.
     fidelity: Option<Fidelity>,
+    /// Where the controllers are. Unlike every other provider this one is made once a controller has
+    /// loaded, because its configuration names the accessories it tracks.
+    accessories: Option<Accessories>,
     /// What ARKit says this app is allowed to see, which is not the same question as which providers came
     /// up: a wearer who refused the room's permission leaves a provider in place that never answers.
     permissions: Permissions,
@@ -228,7 +233,8 @@ impl ArKit {
             let meshes = Self::start_meshes(&providers);
             let lights = Lights::start(&providers);
             let fidelity = Fidelity::start(&providers);
-            // None of the six is the only way there is no session. A device that can see the room or its
+            let accessories = Accessories::start();
+            // None of the seven is the only way there is no session. A device that can see the room or its
             // light but not track a head still has something to describe, and dropping the session because
             // the two providers this backend happens to need for a pose failed would throw that away too.
             if world.is_none()
@@ -237,6 +243,7 @@ impl ArKit {
                 && meshes.is_none()
                 && lights.is_none()
                 && fidelity.is_none()
+                && accessories.is_none()
             {
                 return None;
             }
@@ -255,6 +262,7 @@ impl ArKit {
                 meshes,
                 lights,
                 fidelity,
+                accessories,
                 permissions,
                 anchors: HashMap::new(),
                 next_anchor: 0,

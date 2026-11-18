@@ -8,7 +8,9 @@
 //! **The two frameworks do not overlap and neither is optional.** Controllers are GameController's and hands
 //! ARKit's, and a session can have either without the other - a Mac with a pad and no hands to track, or a
 //! headset with hands and no pad plugged in. So each half returns early on its own missing framework and
-//! neither returns early for the other's.
+//! neither returns early for the other's. A controller's place is the one thing that needs both: GameController
+//! names the device and ARKit tracks it, so `gamecontroller::read` takes the ARKit half as an `Option` and a
+//! session without it is a controller with buttons and no place.
 //!
 //! **A hand's `InputId` is its index in the order `ArKit::hands` reports, which is left then right.** That
 //! is the same order every frame, because the query fills one left anchor and one right anchor and reports
@@ -38,19 +40,21 @@ impl AppleSession {
         if !self.has_space(space) {
             return Err(wxr::Error::NoSpace(space.kind));
         }
-        let Some(arkit) = &self.arkit else {
-            if self.controllers.read(out) {
-                self.inputs_changed = true;
-            }
-            return Ok(());
-        };
-        if self.controllers.read(out) {
+        // ARKit reports a hand or an accessory in its world, which is `Local`; a caller in another space gets
+        // it brought over, the same way a view is.
+        let space_from_world = self.space_from_world(space);
+        // Controllers first, and whatever ARKit has to say about their place is part of reading them: a pad
+        // is a source whether or not there is a session behind it. A session whose ARKit never came up still
+        // has controllers, and still answers for a space it made.
+        if self
+            .controllers
+            .read(self.arkit.as_mut(), space_from_world, out)
+        {
             self.inputs_changed = true;
         }
-        // ARKit reports a hand in its world, which is `Local`; a caller in another space gets the palm brought
-        // over, the same way a view is.
-        let space_from_world = self.space_from_world(space);
-
+        let Some(arkit) = &self.arkit else {
+            return Ok(());
+        };
         let hands = arkit.hands();
         if hands.len() != self.hands_seen {
             self.hands_seen = hands.len();

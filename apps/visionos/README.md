@@ -13,7 +13,8 @@ app shell the platform insists on.
   loop. The window also opens the space once on appear, so a headless simulator can reach the loop without
   a tap; the button remains the manual path.
 * `Info.plist` — the bundle keys an install needs, including `UIDeviceFamily` (7, the visionOS family),
-  `NSWorldSensingUsageDescription` (world tracking) and `NSHandsTrackingUsageDescription`.
+  `NSWorldSensingUsageDescription` (world tracking), `NSHandsTrackingUsageDescription` and
+  `NSAccessoryTrackingUsageDescription` (where a spatial controller is).
 * `wxr_compositor_shim.c` — a tiny C shim for the CompositorServices and ARKit calls whose C signature
   carries a `simd` vector. See "Why a C shim" below.
 * `build.sh` — builds the Rust `staticlib` for `aarch64-apple-visionos-sim`, compiles the shim, links the

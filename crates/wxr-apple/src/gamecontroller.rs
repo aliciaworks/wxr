@@ -1,22 +1,17 @@
-//! Gamepads: what a controller is on this platform, and the one thing it can be asked to do.
+//! Gamepads: what a controller is on this platform, where it is, and the one thing it can be asked to do.
 //!
 //! visionOS has controllers, and GameController is the framework that has them: a Bluetooth pad is a
-//! `GCController`, and since visionOS 26 a spatial one - a PlayStation VR2 Sense pad is one - is too. What
+//! `GCController`, and since visionOS 26 a spatial one - a PlayStation VR2 Sense pad - is too. What
 //! the core asks of a source is answered here, and the answer that is this platform's alone is
 //! [`wxr::InputSource::haptics`]: `GCDeviceHaptics` is the set of actuators, and a controller whose set is
 //! empty is a controller that does not buzz.
 //!
-//! Only the buzz is here, and stopping one early: where a controller is in the room comes from ARKit's
-//! accessory tracking rather than from GameController - `ar_accessory_anchor_*`, which is the next piece - so a
-//! controller here is a device with buttons and an actuator and no place, which is exactly what a plain
-//! Bluetooth gamepad is.
-//! [`wxr::InputSource::tracked`] is `false` and the poses are the identity, and neither is a placeholder:
-//! they are what "a gamepad" means. A spatial accessory gets a place the day the ARKit half is written, and
-//! then this one says `true`.
+//! A controller's place comes from ARKit's accessory tracking rather than GameController - see
+//! `crate::arkit::accessory` - and the two are joined when the controller is first seen, by loading an
+//! accessory from the same `GCDevice`. A pad ARKit has no accessory for keeps the place it always had:
+//! [`wxr::InputSource::tracked`] is `false` and the poses are the identity.
 //!
-//! `play_pcm` is not here. Apple's haptics are patterns played on an engine rather than samples handed to a
-//! driver, so there is no waveform call for this platform to fill - the shape the core has for one is
-//! OpenXR's and the haptics draft's, and both of them are recorded the same way.
+//! `play_pcm` is not here: Apple's haptics are patterns on an engine, not samples handed to a driver.
 
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -34,6 +29,9 @@ use objc2_game_controller::{
     GCController, GCControllerAxisInput, GCControllerButtonInput, GCDevice, GCExtendedGamepad,
     GCHapticsLocalityDefault,
 };
+
+use crate::arkit::ArKit;
+use crate::arkit::accessory::controller_place;
 
 /// Where a controller's id starts, so that a hand and a controller can never be the same number.
 ///
@@ -89,10 +87,17 @@ impl GameControllers {
     ///
     /// The ids are the order the session first saw them in, which is what makes one stable while a controller
     /// stays connected: `GCController` hands back the same object every frame, so identity is what the list is
-    /// keyed on and there is no second name to invent. A controller that goes away keeps its entry, and its id
-    /// stays spent even if it never comes back - handing the number to a different controller would make a
-    /// press that came from somewhere else look like the same one.
-    pub fn read(&mut self, out: &mut Vec<wxr::InputSource>) -> bool {
+    /// keyed on. A controller that goes away keeps its entry, and its id stays spent even if it never comes
+    /// back - handing the number to a different controller would make a press from somewhere else look like
+    /// the same one.
+    ///
+    /// `arkit` gives a controller its place, and `space_from_world` brings that into the caller's space.
+    pub fn read(
+        &mut self,
+        mut arkit: Option<&mut ArKit>,
+        space_from_world: wxr::glam::Mat4,
+        out: &mut Vec<wxr::InputSource>,
+    ) -> bool {
         // SAFETY: the framework is live, and this is its own list of what is connected to it.
         let connected = unsafe { GCController::controllers() }.to_vec();
         let mut changed = false;
@@ -104,6 +109,12 @@ impl GameControllers {
                 .any(|known| known.controller == *controller)
             {
                 let id = wxr::InputId::new(CONTROLLER_ID_BASE + self.known.len() as u32);
+                // Asked once, when the controller is first seen: a load is a request rather than a state.
+                if let Some(arkit) = arkit.as_deref_mut() {
+                    let device: &ProtocolObject<dyn GCDevice> =
+                        ProtocolObject::from_ref(&**controller);
+                    arkit.load_accessory(device);
+                }
                 self.known.push(Known {
                     controller: controller.clone(),
                     id,
@@ -115,6 +126,8 @@ impl GameControllers {
                 changed = true;
             }
         }
+        // Asked after the loads above, so a controller first seen now is only a frame behind the load.
+        let places = arkit.map(ArKit::accessory_poses).unwrap_or_default();
         for known in &mut self.known {
             let here = connected.contains(&known.controller);
             if known.connected != here {
@@ -140,27 +153,27 @@ impl GameControllers {
             let buttons = buttons(profile.as_deref());
             press_edges(known.id, known.buttons_was, buttons, &mut edges);
             known.buttons_was = buttons;
+            // The anchor ARKit reports names the `GCDevice` it came from, which is this controller.
+            let (grip, tracked, handedness) =
+                controller_place(&places, &known.controller, space_from_world);
             out.push(wxr::InputSource {
                 id: known.id,
-                // A pad has no handedness: it is held in two hands, and which half a button is on is the
-                // profile's business rather than the core's.
-                handedness: wxr::Handedness::Unknown,
+                // What ARKit can say is which hand picked it up, not the pad's own handedness.
+                handedness,
                 target_ray_mode: wxr::TargetRayMode::TrackedPointer,
                 // No skeleton.
                 hand: false,
                 haptics: haptics.is_some(),
                 // GameController draws no pad, so a model of it is the app's.
                 skip_rendering: false,
-                // And nothing to estimate: a pad reports buttons and no place, so there is no pose here for a
-                // runtime to have guessed.
+                // Nothing is estimated: ARKit reports the anchor it tracked, and nothing else is a place.
                 emulated_position: false,
-                // And no speed: a pad has no place, so there is no pose for a velocity to be the derivative
-                // of.
+                // And no speed: an anchor is a transform, not a velocity.
                 motion: None,
-                // No place, because a gamepad has none - see the module comment.
-                grip: wxr::Pose::IDENTITY,
-                aim: wxr::Pose::IDENTITY,
-                tracked: false,
+                // One place, two poses: the aim is the anchor too - see `crate::arkit::accessory`.
+                grip,
+                aim: grip,
+                tracked,
                 buttons,
                 axes: axes(profile.as_deref()),
             });

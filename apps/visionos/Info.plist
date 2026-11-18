@@ -46,5 +46,9 @@
 	<string>wxr uses world sensing to place the immersive scene in your surroundings.</string>
 	<key>NSHandsTrackingUsageDescription</key>
 	<string>wxr uses hand tracking to drive the immersive scene.</string>
+	<!-- Accessory tracking is where a controller's place comes from; a missing key
+	     is a provider ARKit refuses, which leaves a pad as buttons with no pose. -->
+	<key>NSAccessoryTrackingUsageDescription</key>
+	<string>wxr uses accessory tracking to place your controllers in the scene.</string>
 </dict>
 </plist>
