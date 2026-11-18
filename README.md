@@ -410,7 +410,7 @@ can reach 100% by design.
 The second is the direction that says whether the *unification* is done, and it has two factors. The core
 speaks 70% of WebXR's vocabulary - 315 of the 452 members across every specification - it is the vocabulary all
 three backends share rather than a mirror of the spec - and of its own `Session` methods the backends define
-**92%**, **81%** and **61%**. So a backend cannot reach the whole of WebXR by implementing
+**92%**, **83%** and **61%**. So a backend cannot reach the whole of WebXR by implementing
 methods: the word has to exist in the core first. Widening the core and filling the methods are the two things
 that move this, and both are work.
 

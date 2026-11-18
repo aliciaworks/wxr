@@ -32,7 +32,7 @@ use super::*;
 
 /// The two tables that keep a space, and the erase requests waiting for an answer.
 pub(super) struct Persistence {
-    discovery: xr::raw::SpatialEntityDiscoveryMETA,
+    pub(super) discovery: xr::raw::SpatialEntityDiscoveryMETA,
     storage: xr::raw::SpatialEntityPersistenceMETA,
     /// Erase requests the runtime has not answered. Erasing by name names no space, so nothing else is kept.
     erases: Vec<openxr_sys::AsyncRequestIdFB>,
@@ -64,7 +64,7 @@ impl Persistence {
 
 /// Why a session cannot answer a question about names: an anchor is `XR_FB_spatial_entity` and its name is
 /// the META pair, so a runtime missing either half keeps anchors for one session only.
-fn unsupported(what: &str) -> wxr::Error {
+pub(super) fn unsupported(what: &str) -> wxr::Error {
     wxr::Error::Unsupported(
         format!("{what}: this runtime does not keep anchors between sessions").into(),
     )
@@ -102,9 +102,8 @@ impl Anchors {
 
     /// Enable `STORABLE` on a live entity, which is the component every save needs.
     ///
-    /// The status change is asynchronous and its completion is what calls [`Anchors::save`]. The three
-    /// refusals that are not failures each have their own answer: already enabled is where the save wanted
-    /// to be, not supported is final, and a change already pending is a moment to ask again.
+    /// The change is asynchronous and its completion calls [`Anchors::save`]. Already enabled means the
+    /// save is next, a component that is not supported is final, and one already pending asks again.
     fn ask_storable(&mut self, index: usize, space: openxr_sys::Space) {
         if self.persistence.is_none() {
             self.saved(index, Saved::Refused);
@@ -174,9 +173,8 @@ impl Anchors {
 
     /// What a space component status change turned out to be.
     ///
-    /// The only change this backend ever asks for is `STORABLE`, so an answer about another component was
-    /// asked for by somebody else - the app through `as_backend`, or an extension this file does not drive -
-    /// and is not this table's to act on.
+    /// The only change asked for here is `STORABLE`, so an answer about another component belongs to
+    /// whoever asked - the app through `as_backend`, or an extension this file does not drive.
     pub(super) fn complete_status(
         &mut self,
         request: openxr_sys::AsyncRequestIdFB,
@@ -246,7 +244,7 @@ impl Anchors {
     }
 
     /// What a discovery turned out to be, which is the answer [`OpenXrSession::restore_anchor_impl`] is
-    /// waiting on.
+    /// waiting on - or the names a listing was asked for, which wait in the table rather than in a slot.
     ///
     /// Results are taken on *completion* rather than on results-available, which the spec allows and which
     /// is the only order without a race: results can arrive between the two calls of the two-call idiom
@@ -257,6 +255,9 @@ impl Anchors {
         request: openxr_sys::AsyncRequestIdFB,
         result: openxr_sys::Result,
     ) {
+        if self.listing == Some(request) {
+            return self.complete_listing(request, result);
+        }
         let index = self.slots.iter().position(|slot| {
             matches!(
                 slot,
@@ -272,8 +273,8 @@ impl Anchors {
         }
         let mut found = self.retrieve(request).into_iter();
         let first = found.next();
-        // Whatever else came back is a space this session owns now, and there is nowhere in the core's
-        // vocabulary to put a second one: it is dropped, which is `xrDestroySpace`.
+        // Anything else that came back is a space this session owns now, and the core has nowhere to put a
+        // second one: it is dropped, which is `xrDestroySpace`.
         for (space, _) in found {
             // SAFETY: the runtime returned this handle from our query, so it is a space belonging to this
             // session, and the `Arc` inside keeps the session alive until the drop.
@@ -300,8 +301,7 @@ impl Anchors {
                     saved: Saved::Stored,
                 });
             }
-            // A name the runtime does not have: the handle empties and `anchor_pose` answers `None`, which is
-            // what the core says a name with nothing behind it is.
+            // A name the runtime does not have empties the handle, which is the core's answer for one.
             (Some(index), None) => self.slots[index] = None,
             (None, Some((space, _))) => {
                 // The caller released the anchor while the runtime was looking. The space is still ours, so
@@ -332,7 +332,7 @@ impl Anchors {
     }
 
     /// Take the spaces a discovery found, which are this session's from the moment they are retrieved.
-    fn retrieve(
+    pub(super) fn retrieve(
         &self,
         request: openxr_sys::AsyncRequestIdFB,
     ) -> Vec<(openxr_sys::Space, openxr_sys::UuidEXT)> {

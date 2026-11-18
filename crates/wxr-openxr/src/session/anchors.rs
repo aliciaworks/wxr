@@ -18,8 +18,10 @@
 //!
 //! Keeping one *after* the session ends is the other file's business - [`super::persistence`] - because a
 //! name costs two more extensions and two more requests in flight per anchor, and a runtime can have the
-//! first without the second.
+//! first without the second. Listing what a runtime kept is answered here: it is the same discovery a
+//! restore runs, and what comes back is a table of names rather than a place.
 
+use super::persistence::unsupported;
 use super::*;
 
 /// What one slot of the anchor table is.
@@ -76,6 +78,12 @@ pub(super) struct Anchors {
     /// The two extensions that keep a name between runs, when this runtime has both - see
     /// [`super::persistence`].
     pub(super) persistence: Option<super::persistence::Persistence>,
+    /// The listing the runtime is working on, if one is out. A listing is the same discovery a restore uses,
+    /// so one can be in flight beside a restore and the request id is what tells the two completions apart.
+    pub(super) listing: Option<openxr_sys::AsyncRequestIdFB>,
+    /// The names the last completed listing found. Kept rather than taken, so a call made while a refresh is
+    /// out still answers with them - the shape [`wxr::Session::persistent_anchor_ids`] describes.
+    pub(super) listed: Vec<wxr::AnchorId>,
 }
 
 impl Anchors {
@@ -111,6 +119,8 @@ impl Anchors {
             session: session.clone(),
             slots: Vec::new(),
             persistence,
+            listing: None,
+            listed: Vec::new(),
         })
     }
 
@@ -160,6 +170,78 @@ impl Anchors {
             // to store it yet, which is what `anchor_id` does when the app says it wants one.
             saved: Saved::Unstored,
         });
+    }
+
+    /// Answer with what the last listing found and start another, which is how a list of names arrives: a
+    /// query over frames rather than a getter.
+    ///
+    /// No filters is the whole of the query - `xrDiscoverSpacesMETA` answers the spaces stored previously
+    /// "and which comply with the filters passed", and every one complies with none - so what comes back is
+    /// every name the runtime keeps. The results hold spaces as well as names, which
+    /// [`Self::complete_listing`] takes and lets go.
+    pub(super) fn persistent_ids(
+        &mut self,
+        out: &mut Vec<wxr::AnchorId>,
+    ) -> Result<(), wxr::Error> {
+        let Some(persistence) = self.persistence.as_ref() else {
+            return Err(unsupported("anchors from an earlier session"));
+        };
+        // What the last answer found, rather than nothing: a caller polling while a refresh is out has the
+        // names it had a moment ago, which is what every other backend answers in the gap.
+        out.extend(self.listed.iter().copied());
+        // One query at a time: a listing already out is one this call would duplicate, and the names a second
+        // one found would be the same names.
+        if self.listing.is_some() {
+            return Ok(());
+        }
+        let info = openxr_sys::SpaceDiscoveryInfoMETA {
+            ty: openxr_sys::StructureType::SPACE_DISCOVERY_INFO_META,
+            next: std::ptr::null(),
+            // The spec's valid usage only constrains the array when the count is not zero, so nothing is
+            // asked for and every stored entity answers.
+            filter_count: 0,
+            filters: std::ptr::null(),
+        };
+        let mut request: openxr_sys::AsyncRequestIdFB = Default::default();
+        // SAFETY: the session is live and the table is the runtime's own, and `info` and `request` outlive
+        // the call. `filters` is null because the count is zero, which is what the spec allows.
+        let result = unsafe {
+            (persistence.discovery.discover_spaces)(self.session.as_raw(), &info, &mut request)
+        };
+        if result != openxr_sys::Result::SUCCESS {
+            // A query the runtime would not take - a rate limit, most likely - costs this call nothing it
+            // already had: the next call asks again.
+            log::debug!("wxr-openxr: listing anchors: {result:?}");
+            return Ok(());
+        }
+        self.listing = Some(request);
+        Ok(())
+    }
+
+    /// What a listing turned out to be: every name the runtime keeps, and no spaces kept with them.
+    ///
+    /// Each result is a whole `XrSpace` that belongs to this session from the moment it is retrieved, and a
+    /// name is all the core asks for - so every space is dropped here, which is `xrDestroySpace`, and only
+    /// the UUID is left. A failed listing leaves the last answer in place: the names did not stop existing.
+    pub(super) fn complete_listing(
+        &mut self,
+        request: openxr_sys::AsyncRequestIdFB,
+        result: openxr_sys::Result,
+    ) {
+        self.listing = None;
+        if result != openxr_sys::Result::SUCCESS {
+            log::debug!("wxr-openxr: listing anchors: {result:?}");
+            return;
+        }
+        let found = self.retrieve(request);
+        self.listed.clear();
+        self.listed.reserve(found.len());
+        for (space, uuid) in found {
+            self.listed.push(wxr::AnchorId::from_bytes(uuid.data));
+            // SAFETY: the runtime returned this handle from our query, so it is a space belonging to this
+            // session, and the `Arc` inside keeps the session alive until the drop.
+            drop(unsafe { xr::Space::reference_from_raw(self.session.clone(), space) });
+        }
     }
 }
 
@@ -262,5 +344,20 @@ impl OpenXrSession {
         if let Some(slot) = anchors.slots.get_mut(anchor.id() as usize) {
             *slot = None;
         }
+    }
+
+    /// Every name the runtime keeps from earlier runs, which is `xrDiscoverSpacesMETA` under no filters.
+    ///
+    /// Asynchronous like the rest of the discovery path: the first call starts a query and answers with
+    /// nothing, and a call after the completion is the one that has the names.
+    pub(super) fn persistent_anchor_ids_impl(
+        &mut self,
+        out: &mut Vec<wxr::AnchorId>,
+    ) -> Result<(), wxr::Error> {
+        out.clear();
+        let Some(anchors) = self.anchors.as_mut() else {
+            return Err(unsupported("anchors from an earlier session"));
+        };
+        anchors.persistent_ids(out)
     }
 }

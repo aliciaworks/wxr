@@ -38,8 +38,7 @@ mod making;
 impl wxr::Session for OpenXrSession {
     /// The colour image this frame drew into and the depth image it drew with, when the runtime took one.
     type Image = crate::import::SwapchainImage;
-    /// The runtime's own depth map for this frame - `XR_META_environment_depth` measures the room for the
-    /// scene to draw against rather than a layer to submit.
+    /// The runtime's own depth measurement for this frame, from `XR_META_environment_depth`.
     type EnvironmentDepth = EnvironmentDepthImage;
 
     fn presentation(&self) -> wxr::Presentation {
@@ -184,9 +183,8 @@ impl wxr::Session for OpenXrSession {
                 sample_count: 1,
                 width: pixels.width,
                 height: pixels.height,
-                // A cube is six faces of one image and every other shape here is one. The array is one
-                // for all of them: a layer is one picture per eye, which is the reason to hand it to a
-                // compositor rather than draw it twice.
+                // A cube is six faces of one image; every other shape is one. The array is one for all of
+                // them: a layer is one picture per eye, which is the reason to hand it to a compositor.
                 face_count: match shape {
                     wxr::LayerShape::Cube => 6,
                     _ => 1,
@@ -262,10 +260,9 @@ impl wxr::Session for OpenXrSession {
         else {
             return Err(wxr::Error::Unsupported("no such layer".into()));
         };
-        // Kept rather than applied: a composition layer's pose is read at `xrEndFrame`, so placing one is not a
-        // call into the runtime - it is where the next frame will say it is. A cube is the exception: its
-        // composition struct has an orientation and no position, so a translated cube is placed by making a
-        // reference space at that translation and handing the cube that space instead.
+        // Kept rather than applied: a layer's pose is read at `xrEndFrame`, so placing one is not a call into
+        // the runtime - it is where the next frame says it is. A cube is the exception: its composition struct
+        // has an orientation and no position, so one is placed by making a reference space it then uses.
         if matches!(slot.shape, wxr::LayerShape::Cube) && pose.position != wxr::glam::Vec3::ZERO {
             if slot.placed.is_none() || slot.placed_at != Some(pose.position) {
                 let Some(offset) = self.offsets.get(slot.space).copied() else {
@@ -427,6 +424,10 @@ impl wxr::Session for OpenXrSession {
         self.anchor_id_impl(anchor)
     }
 
+    fn persistent_anchor_ids(&mut self, out: &mut Vec<wxr::AnchorId>) -> Result<(), wxr::Error> {
+        self.persistent_anchor_ids_impl(out)
+    }
+
     /// Find a place the runtime stored - `XR_META_spatial_entity_discovery`.
     fn restore_anchor(&mut self, id: wxr::AnchorId) -> Result<wxr::Anchor, wxr::Error> {
         self.restore_anchor_impl(id)
@@ -437,8 +438,7 @@ impl wxr::Session for OpenXrSession {
         self.delete_persistent_anchor_impl(id)
     }
 
-    /// Ask for a source of hits along a ray, which is `XR_META_environment_raycast`. `kinds` is only ever
-    /// `ALL` or `NONE`: the extension does not say what surface it met, so a narrowing is `Unsupported`.
+    /// A ray into the room, which is `XR_META_environment_raycast`; a narrowing is `Unsupported`.
     fn hit_test_source(
         &mut self,
         space: wxr::ReferenceSpace,
