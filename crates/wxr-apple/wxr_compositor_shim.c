@@ -73,3 +73,18 @@ void wxr_ar_world_anchor_get_origin_from_anchor_transform(ar_world_anchor_t anch
     simd_float4x4 transform = ar_world_anchor_get_origin_from_anchor_transform(anchor);
     memcpy(out, &transform, sizeof(transform));
 }
+
+// Writes an accessory's estimated velocity, in metres per second, into `out`.
+//
+// Three floats, not `sizeof(simd_float3)`: the SIMD type is sixteen bytes wide with a fourth lane that is
+// padding, and copying the whole of it into a `float[3]` would write past the end.
+void wxr_ar_accessory_anchor_get_velocity(ar_accessory_anchor_t anchor, float out[3]) {
+    simd_float3 velocity = ar_accessory_anchor_get_velocity(anchor);
+    memcpy(out, &velocity, 3 * sizeof(float));
+}
+
+// Writes an accessory's estimated angular velocity, in radians per second, into `out`.
+void wxr_ar_accessory_anchor_get_angular_velocity(ar_accessory_anchor_t anchor, float out[3]) {
+    simd_float3 velocity = ar_accessory_anchor_get_angular_velocity(anchor);
+    memcpy(out, &velocity, 3 * sizeof(float));
+}

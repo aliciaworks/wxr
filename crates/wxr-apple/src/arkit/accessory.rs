@@ -27,6 +27,12 @@
 //! nowhere to put the difference. Reading them is `..._get_anchor_from_location_transform_with_correction`,
 //! a `simd` call this backend would need another shim for; the honest simplification is that the aim comes
 //! out of the same anchor as the grip, and the docs say so.
+//!
+//! **And how fast it is going.** The anchor also carries ARKit's estimate of its velocity, in metres per
+//! second along ARKit's axes, and of its angular velocity, in radians per second about its own; both go into
+//! [`wxr::InputSource::motion`]. A velocity is a direction per second, so it turns with the caller's space
+//! and is not moved by it, and a speed about the accessory's own axes reads the same however that space is
+//! turned.
 
 use std::ffi::c_void;
 use std::sync::Mutex;
@@ -44,7 +50,7 @@ use wxr::glam::Mat4;
 use super::{ArKit, as_data_provider};
 use crate::sys;
 
-/// Where one accessory is, and which controller it is.
+/// Where one accessory is, how it is moving, and which controller it is.
 pub(crate) struct AccessoryPose {
     /// The `GCDevice` this anchor was loaded from, as the address GameController knows it by. The pointer is
     /// the only name the two frameworks share, and comparing it is how a controller finds its own place.
@@ -56,6 +62,10 @@ pub(crate) struct AccessoryPose {
     pub(crate) tracked: bool,
     /// Its place and orientation, in ARKit's world.
     pub(crate) transform: Mat4,
+    /// Metres per second along ARKit's axes, estimated by the runtime rather than differenced here.
+    pub(crate) linear_velocity: wxr::glam::Vec3,
+    /// Radians per second about the accessory's own axes.
+    pub(crate) angular_velocity: wxr::glam::Vec3,
 }
 
 /// Accessory tracking: the provider, the set it tracks, and the accessories that have loaded but are not in
@@ -261,11 +271,12 @@ unsafe extern "C-unwind" fn collect(context: *mut c_void, anchor: &ar_accessory_
     // SAFETY: the anchor is live for the call, and every call below reads it rather than taking it.
     unsafe {
         let accessory = ar_accessory_anchor_t::accessory(anchor);
-        // An accessory ARKit did not load from a `GCDevice` has no controller to belong to, and a pose
-        // nothing can be matched to is one no caller would see.
+        // A `GCDevice` is a controller's other half, and an accessory with no source device has no
+        // controller to belong to; a pose nothing can be matched to is one no caller would see.
         let Some(device) = ar_accessory_t::source_device(&accessory) else {
             return true;
         };
+        let anchor_address = std::ptr::from_ref(anchor).cast::<c_void>();
         out.push(AccessoryPose {
             device: Retained::as_ptr(&device).cast::<()>() as usize,
             handedness: handedness_of(ar_accessory_anchor_t::held_chirality(anchor)),
@@ -273,10 +284,15 @@ unsafe extern "C-unwind" fn collect(context: *mut c_void, anchor: &ar_accessory_
             // The generic anchor transform: an accessory anchor is an `ar_anchor_t` like any other, which
             // is the call `sys` already carries for device and hand anchors.
             transform: Mat4::from_cols_array(
-                &sys::ar_anchor_get_origin_from_anchor_transform(
-                    std::ptr::from_ref(anchor).cast::<c_void>(),
-                )
-                .0,
+                &sys::ar_anchor_get_origin_from_anchor_transform(anchor_address).0,
+            ),
+            // The runtime's own estimate, which is why it is read rather than differenced between frames:
+            // an accessory ARKit is tracking has a speed ARKit knows.
+            linear_velocity: wxr::glam::Vec3::from_array(sys::ar_accessory_anchor_get_velocity(
+                anchor_address,
+            )),
+            angular_velocity: wxr::glam::Vec3::from_array(
+                sys::ar_accessory_anchor_get_angular_velocity(anchor_address),
             ),
         });
     }
@@ -319,15 +335,43 @@ impl ArKit {
     }
 }
 
+/// Where a controller is and how it moves, in the space being reported in.
+pub(crate) struct Place {
+    /// The pose the core's grip and aim both take - one anchor, and no second point to aim from.
+    pub(crate) pose: wxr::Pose,
+    /// Its speed, when ARKit had an anchor for this controller; a pad nothing tracks has no velocity rather
+    /// than a zero one, because zero is a claim that it is holding still.
+    pub(crate) motion: Option<wxr::Motion>,
+    pub(crate) tracked: bool,
+    pub(crate) handedness: wxr::Handedness,
+}
+
+impl Place {
+    /// The place of a controller nothing tracks: no pose, no speed, and not a hand.
+    const UNPLACED: Self = Self {
+        pose: wxr::Pose::IDENTITY,
+        motion: None,
+        tracked: false,
+        handedness: wxr::Handedness::Unknown,
+    };
+}
+
 impl AccessoryPose {
-    /// The core's grip for this place, brought into the caller's space, with the two facts a source carries
-    /// beside it. The aim is the same pose: one anchor, and no second point on the accessory to aim from.
-    pub(crate) fn grip(&self, space_from_world: Mat4) -> (wxr::Pose, bool, wxr::Handedness) {
-        (
-            wxr_render::pose_from_transform(space_from_world * self.transform),
-            self.tracked,
-            self.handedness,
-        )
+    /// This place in the caller's space, with the two facts a source carries beside it.
+    fn place(&self, space_from_world: Mat4) -> Place {
+        Place {
+            pose: wxr_render::pose_from_transform(space_from_world * self.transform),
+            motion: Some(wxr::Motion {
+                // A velocity is a direction per second, so it is turned with the pose and not moved with
+                // it. Every space this backend reports in is rigid, so there is no scale to undo.
+                linear_velocity: Some(space_from_world.transform_vector3(self.linear_velocity)),
+                // The accessory's own axes travel with it, so a speed about them reads the same however
+                // the caller's space is turned.
+                angular_velocity: Some(self.angular_velocity),
+            }),
+            tracked: self.tracked,
+            handedness: self.handedness,
+        }
     }
 }
 
@@ -341,13 +385,13 @@ pub(crate) fn controller_place(
     places: &[AccessoryPose],
     controller: &GCController,
     space_from_world: Mat4,
-) -> (wxr::Pose, bool, wxr::Handedness) {
+) -> Place {
     let device: &ProtocolObject<dyn GCDevice> = ProtocolObject::from_ref(controller);
     let address = std::ptr::from_ref(device).cast::<()>() as usize;
-    places.iter().find(|place| place.device == address).map_or(
-        (wxr::Pose::IDENTITY, false, wxr::Handedness::Unknown),
-        |place| place.grip(space_from_world),
-    )
+    places
+        .iter()
+        .find(|place| place.device == address)
+        .map_or(Place::UNPLACED, |place| place.place(space_from_world))
 }
 
 #[cfg(test)]
@@ -370,5 +414,30 @@ mod tests {
             handedness_of(ar_accessory_chirality_t::right),
             wxr::Handedness::Right
         );
+    }
+
+    /// A velocity belongs to the direction the place is read in: turning the caller's space turns a speed
+    /// with it, and leaves a speed about the accessory's own axes alone, because those axes turn with it.
+    #[test]
+    fn a_turned_space_turns_a_velocity_and_not_an_axis() {
+        let pose = AccessoryPose {
+            device: 0,
+            handedness: wxr::Handedness::Right,
+            tracked: true,
+            transform: Mat4::IDENTITY,
+            linear_velocity: wxr::glam::Vec3::X,
+            angular_velocity: wxr::glam::Vec3::Y,
+        };
+        let place = pose.place(Mat4::from_rotation_y(std::f32::consts::FRAC_PI_2));
+        let motion = place.motion.expect("an anchor is a place with a speed");
+        assert!(
+            motion
+                .linear_velocity
+                .expect("the linear half")
+                .abs_diff_eq(wxr::glam::Vec3::NEG_Z, 1e-6)
+        );
+        assert_eq!(motion.angular_velocity, Some(wxr::glam::Vec3::Y));
+        assert!(place.tracked);
+        assert_eq!(place.handedness, wxr::Handedness::Right);
     }
 }

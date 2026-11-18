@@ -23,7 +23,7 @@
 //!
 //! ARKit is the other half, and now almost all of it comes from the generated `objc2-ar-kit` crate - ARKit
 //! read from the SDK that has its visionOS C module. What is left here is the calls whose signature
-//! *carries* a `simd` type - each returns a `simd_float4x4` by value, and `objc2`'s translator cannot
+//! *carries* a `simd` type - a matrix or a vector returned by value, and `objc2`'s translator cannot
 //! express `simd` in a function yet - which is why every one of them crosses the shim below rather than
 //! being declared here. That by-value return is also why the types are `repr(C)` and aligned: Apple
 //! writes one with SIMD stores into a slot assumed to be sixteen-byte aligned, and a Rust `[[f32; 4]; 4]`
@@ -32,8 +32,9 @@
 //!
 //! The list has grown once already and will grow again the same way: a generated crate misses a call, the
 //! call is one Apple's own code uses, and the header is what says so. [`ar_skeleton_joint_get_anchor_from_joint_transform`](https://developer.apple.com/documentation/arkit/ar_skeleton_joint_get_anchor_from_joint_transform)
-//! is the most recent, and it is the one that turned hand tracking from a palm into a skeleton - see
-//! `arkit::skeleton`.
+//! is one of them, and it is the one that turned hand tracking from a palm into a skeleton - see
+//! `arkit::skeleton`. The accessory anchor's velocity getters are the most recent: a `simd_float3` crosses
+//! the same shim with three floats written, not sixteen bytes.
 
 use std::ffi::c_void;
 
@@ -107,6 +108,11 @@ unsafe extern "C" {
     ) -> ArWorldAnchor;
     /// Writes where a world anchor is now into `out`.
     fn wxr_ar_world_anchor_get_origin_from_anchor_transform(anchor: *const c_void, out: *mut f32);
+
+    /// Writes an accessory's estimated velocity, in metres per second, into `out`.
+    fn wxr_ar_accessory_anchor_get_velocity(anchor: *const c_void, out: *mut f32);
+    /// Writes an accessory's estimated angular velocity, in radians per second, into `out`.
+    fn wxr_ar_accessory_anchor_get_angular_velocity(anchor: *const c_void, out: *mut f32);
 }
 
 /// The transform from the view's space to the device's: the eye's own place in device space.
@@ -259,6 +265,38 @@ pub unsafe fn ar_world_anchor_get_origin_from_anchor_transform(anchor: *const c_
     // SAFETY: the caller's contract is the shim's, and `out` is sixteen contiguous `f32`s.
     unsafe { wxr_ar_world_anchor_get_origin_from_anchor_transform(anchor, out.as_mut_ptr()) };
     Float4x4(out)
+}
+
+/// How fast an accessory is moving through the room, in metres per second along ARKit's own axes.
+///
+/// An estimate rather than a difference: ARKit knows the accessory's motion from its own tracking, and
+/// subtracting two frames here would be a derivative of a filtered pose - an answer that is both late and
+/// noisy where the runtime's is neither.
+///
+/// # Safety
+///
+/// `anchor` must be a live accessory anchor object from the generated crate.
+pub unsafe fn ar_accessory_anchor_get_velocity(anchor: *const c_void) -> [f32; 3] {
+    let mut out = [0.0f32; 3];
+    // SAFETY: the caller's contract is the shim's, and `out` is three contiguous `f32`s.
+    unsafe { wxr_ar_accessory_anchor_get_velocity(anchor, out.as_mut_ptr()) };
+    out
+}
+
+/// How fast an accessory is turning, in radians per second about its own axes.
+///
+/// The same estimate as the velocity above, and the same shape: a `simd_float3` the shim reads into three
+/// floats. Its axes are the accessory's, which is the frame the core's [`wxr::Motion::angular_velocity`]
+/// asks about.
+///
+/// # Safety
+///
+/// `anchor` must be a live accessory anchor object from the generated crate.
+pub unsafe fn ar_accessory_anchor_get_angular_velocity(anchor: *const c_void) -> [f32; 3] {
+    let mut out = [0.0f32; 3];
+    // SAFETY: the caller's contract is the shim's, and `out` is three contiguous `f32`s.
+    unsafe { wxr_ar_accessory_anchor_get_angular_velocity(anchor, out.as_mut_ptr()) };
+    out
 }
 
 #[cfg(test)]

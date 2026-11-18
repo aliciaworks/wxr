@@ -154,26 +154,26 @@ impl GameControllers {
             press_edges(known.id, known.buttons_was, buttons, &mut edges);
             known.buttons_was = buttons;
             // The anchor ARKit reports names the `GCDevice` it came from, which is this controller.
-            let (grip, tracked, handedness) =
-                controller_place(&places, &known.controller, space_from_world);
+            let place = controller_place(&places, &known.controller, space_from_world);
             out.push(wxr::InputSource {
                 id: known.id,
                 // What ARKit can say is which hand picked it up, not the pad's own handedness.
-                handedness,
+                handedness: place.handedness,
                 target_ray_mode: wxr::TargetRayMode::TrackedPointer,
                 // No skeleton.
                 hand: false,
                 haptics: haptics.is_some(),
                 // GameController draws no pad, so a model of it is the app's.
                 skip_rendering: false,
-                // Nothing is estimated: ARKit reports the anchor it tracked, and nothing else is a place.
+                // Nothing is estimated: ARKit reports the place it tracked, and nothing else is a place.
                 emulated_position: false,
-                // And no speed: an anchor is a transform, not a velocity.
-                motion: None,
+                // ARKit's own estimate of how fast it moves, or nothing when it has no anchor - see
+                // `crate::arkit::accessory`.
+                motion: place.motion,
                 // One place, two poses: the aim is the anchor too - see `crate::arkit::accessory`.
-                grip,
-                aim: grip,
-                tracked,
+                grip: place.pose,
+                aim: place.pose,
+                tracked: place.tracked,
                 buttons,
                 axes: axes(profile.as_deref()),
             });
