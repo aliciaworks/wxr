@@ -147,6 +147,15 @@ impl WebXrSession {
         if !has_feature(&session, "anchors") {
             return Err(wxr::Error::Unsupported("anchors".into()));
         }
+        // The list is newer than the rest of the anchors module, so a browser can have anchors and not this:
+        // asking anyway would be an exception through the frame rather than an answer.
+        if !js_sys::Reflect::has(session.as_ref(), &JsValue::from_str("persistentAnchors"))
+            .unwrap_or(false)
+        {
+            return Err(wxr::Error::Unsupported(
+                "anchors from an earlier session".into(),
+            ));
+        }
         for value in session.persistent_anchors().iter() {
             if let Some(text) = value.as_string()
                 && let Ok(id) = text.parse()
