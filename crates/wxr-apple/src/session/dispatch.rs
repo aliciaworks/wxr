@@ -63,9 +63,8 @@ impl wxr::Session for AppleSession {
             features = features.union(wxr::Features::DEVICE_FIT);
         }
         // Hand tracking, which is the provider rather than the skeleton: a device whose hand provider came up
-        // is a device that reports hands, and whether any given joint is tracked this frame is the question
-        // `Session::hand` answers per joint. Asking for the skeleton of a hand ARKit has lost is an empty
-        // hand, which is what the bit is a warning about rather than a promise against.
+        // is a device that reports hands, and whether a joint is tracked this frame is what `Session::hand`
+        // answers per joint. A hand ARKit has lost is empty, which is what the bit warns about.
         if self.arkit.as_ref().is_some_and(ArKit::has_hands) {
             features = features.union(wxr::Features::HAND_TRACKING);
         }
@@ -139,11 +138,14 @@ impl wxr::Session for AppleSession {
         self.set_render_quality_impl(level);
     }
 
+    fn set_frame_repeat(&mut self, count: u32) {
+        self.set_frame_repeat_impl(count);
+    }
+
     fn images(&self) -> wxr::ImageMeta {
         // The texture is the truth about itself: the layer's configuration is what the app *asked* for, and
         // the compositor is free to hand back something else - so the format, the size and the layer count are
         // read off the thing that will actually be drawn into, when there is one.
-        //
         // Before a frame there is only the configuration, and answering with its format rather than with
         // `Unknown` is what lets a caller build its renderer up front. The extent is a frame's to know and is
         // left at zero until then; nothing draws into it before a drawable says how big it is.
@@ -346,10 +348,9 @@ impl wxr::Session for AppleSession {
         self.hit_test_source_impl(space, kinds, ray)
     }
 
-    /// Where that ray lands this frame, in the space given - one hit, the nearest surface.
-    ///
-    /// WebXR's `getHitTestResults` is a list, and this backend has at most one thing to put in it: a ray meets
-    /// the room once, at the nearest surface, unless the room has two surfaces in the same place.
+    /// Where that ray lands this frame, in the space given - one hit, the nearest surface. WebXR's
+    /// `getHitTestResults` is a list, and this backend has at most one thing to put in it because a ray meets
+    /// the room once, unless the room has two surfaces in the same place.
     fn hits(
         &mut self,
         source: wxr::HitTestSource,
@@ -451,8 +452,7 @@ impl wxr::Session for AppleSession {
 
     /// A handle for a place ARKit kept under a name from an earlier run, rather than an `ARWorldMap`: a world
     /// anchor it has accepted persists across restarts until removed, and `copy_all_world_anchors` lists them.
-    /// The handle arrives before the place does, like every anchor here: `anchor_pose` is `None` until the
-    /// copy lands, and stays `None` for a name ARKit does not have.
+    /// The handle arrives before the place does, like every anchor here: `anchor_pose` is `None` until then.
     fn restore_anchor(&mut self, id: wxr::AnchorId) -> Result<wxr::Anchor, wxr::Error> {
         self.arkit
             .as_mut()

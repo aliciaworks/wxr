@@ -284,6 +284,9 @@ DEFAULT_IS_ENOUGH = {
     ("wxr-webxr", "device_fit"): "nothing in WebXR publishes where the eyes sit in the optics: an "
     "`XRViewerPose` is the head, and the eye offset is not a thing a page can read - fit is a fact about the "
     "display, and a browser surfaces none of it",
+    ("wxr-webxr", "set_frame_repeat"): "a page cannot ask the compositor to show a frame again: "
+    "`updateTargetFrameRate` changes the rate a session asks for rather than how often one frame is drawn, "
+    "and pacing the browser's compositor is not something the spec gives a page",
     ("wxr-openxr", "interaction_mode"): "only a browser is ever `ScreenSpace`",
     ("wxr-openxr", "authorization"): "OpenXR has no permission model of its own: a runtime that is not "
     "allowed a capability fails the call that asks for it, and there is no status to read before that - the "
@@ -296,6 +299,9 @@ DEFAULT_IS_ENOUGH = {
     "running session - which is the same fact `request_viewport_scale` rests on",
     ("wxr-openxr", "device_fit"): "OpenXR has no device-fit query: eye gaze tells a runtime where the eyes "
     "look, not where they sit in the optics, and the registry's gaze extensions are the former only",
+    ("wxr-openxr", "set_frame_repeat"): "an OpenXR app paces itself: `xrWaitFrame` is the call that says "
+    "when the next frame is wanted, and no extension in the registry asks a runtime to hold a frame on the "
+    "display - the refresh rate is the lever this backend already has",
     ("wxr-openxr", "light"): "no multivendor extension exists: the registry's two are ByteDance's "
     "`XR_BD_spatial_light_estimation` and Android's `XR_ANDROID_light_estimation`, and neither is in "
     "`openxr-sys` 0.14, which is what this crate drives its raw calls through. Every other backend's "

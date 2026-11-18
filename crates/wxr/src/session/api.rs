@@ -116,9 +116,8 @@ pub trait Session: Any {
         InteractionMode::WorldSpace
     }
 
-    /// The near and far planes the scene draws with, in metres - see [`DepthRange`] for why a compositor needs
-    /// them and why they are one value rather than two. A pair that does not describe a projection is passed on
-    /// rather than clamped: the app is the only one that knows which end it meant.
+    /// The near and far planes the scene draws with, in metres - [`DepthRange`] says why a compositor needs
+    /// them and why they are one value. A pair that does not describe a projection reaches the runtime as is.
     fn set_depth_range(&mut self, _range: DepthRange) {}
 
     /// How much foveation the compositor should apply, from `0` to `1` - WebXR's `fixedFoveation`. A request,
@@ -139,6 +138,11 @@ pub trait Session: Any {
     /// A *request*, like [`set_foveation`](Session::set_foveation): a runtime that cannot change its rate, or
     /// will not take this one, keeps the rate it has - and that default is the display's own choice.
     fn set_refresh_rate(&mut self, _rate: f32) {}
+
+    /// Ask for each frame to be shown `count` more times before the next one - CompositorServices'
+    /// `cp_layer_renderer_minimum_frame_repeat_count`, where the frame rate is not the app's to set. Zero is
+    /// every frame, one halves the rate, and a platform that cannot repeat anything ignores the request.
+    fn set_frame_repeat(&mut self, _count: u32) {}
 
     /// Ask for a view to be rendered at `scale` of its full resolution - WebXR's `requestViewportScale`, the
     /// app's half of the foveation trade. `None` is ignored, so passing a `recommended_viewport_scale` is safe.
@@ -207,8 +211,7 @@ pub trait Session: Any {
     }
 
     /// Put a layer where it is, in the space it was made in - WebXR's `XRCompositionLayer.transform`, OpenXR's
-    /// layer pose. Per frame for one that moves and once for one that does not: a panel on a wall is placed
-    /// when it is put there, and one the wearer carries from wherever they are.
+    /// layer pose. Per frame for one that moves and once for one that does not.
     fn set_layer_pose(&mut self, _layer: Layer, _pose: Pose) -> Result<(), Error> {
         Err(Error::Unsupported("layers".into()))
     }
@@ -224,8 +227,7 @@ pub trait Session: Any {
 
     /// A space at `offset` inside `space`, for content that belongs to a place rather than to a room: WebXR's
     /// `getOffsetReferenceSpace`, which is how a panel goes on a wall. The offset is in `space`, so what comes
-    /// back moves with it - off a controller follows the controller, off the floor stays put. A backend makes
-    /// it from what it has: a reference space with a pose in it, the browser's own, or a transform it applies.
+    /// back moves with it - off a controller follows the controller, off the floor stays put.
     fn offset_space(
         &mut self,
         space: ReferenceSpace,
@@ -233,8 +235,7 @@ pub trait Session: Any {
     ) -> Result<ReferenceSpace, Error>;
 
     /// Where `space` is seen from `base`, which is WebXR's `XRFrame.getPose` and OpenXR's `xrLocateSpace`.
-    /// The other direction from [`views`](Session::views): that places something in a space, and this asks
-    /// where one space sits inside another - a controller in the floor's, the head in the world. `Ok(None)`
+    /// The other direction from [`views`](Session::views): where one space sits inside another. `Ok(None)`
     /// is a space the runtime cannot place right now; a handle this session never gave out is [`Error::NoSpace`].
     fn locate(
         &mut self,
@@ -272,9 +273,9 @@ pub trait Session: Any {
 
     /// Fill in a hand's skeleton, if the source has one and the runtime is tracking it.
     ///
-    /// WebXR's `XRFrame.getJointPose`, asked once for the whole hand rather than once per joint. A source with
-    /// no skeleton says so with `InputSource::hand`, and a hand half out of view has joints that are not
-    /// tracked: both are an empty [`Hand`], because a missing finger is not a failed frame.
+    /// WebXR's `XRFrame.getJointPose`, asked once for the whole hand rather than once per joint. A source
+    /// with no skeleton says so with `InputSource::hand`, and a hand half out of view has joints that are
+    /// not tracked: both are an empty [`Hand`].
     fn hand(
         &mut self,
         _source: InputId,
@@ -365,10 +366,8 @@ pub trait Session: Any {
     }
 
     /// Fill in the boundary of a bounded space, as the outline the runtime knows - WebXR's
-    /// `XRBoundedReferenceSpace.boundsGeometry`.
-    ///
-    /// Points in the space's own X and Z, in metres, around a closed loop. Empty for a space with no boundary
-    /// and a backend that never had one: a floor with no wall drawn around it is not an error.
+    /// `XRBoundedReferenceSpace.boundsGeometry`. Points in the space's own X and Z, in metres, around a closed
+    /// loop. Empty for a space with no boundary and a backend that never had one, which is not an error.
     fn bounds(&mut self, _space: ReferenceSpace, out: &mut Vec<Vec2>) -> Result<(), Error> {
         out.clear();
         Ok(())

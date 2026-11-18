@@ -28,8 +28,8 @@ use objc2_compositor_services::{
     cp_drawable_target, cp_frame, cp_frame_t, cp_frame_timing,
     cp_layer_renderer_configuration_get_color_format, cp_layer_renderer_get_configuration,
     cp_layer_renderer_get_state, cp_layer_renderer_query_next_frame,
-    cp_layer_renderer_set_render_quality, cp_layer_renderer_state, cp_layer_renderer_t, cp_time,
-    cp_view, cp_view_texture_map,
+    cp_layer_renderer_set_minimum_frame_repeat_count, cp_layer_renderer_set_render_quality,
+    cp_layer_renderer_state, cp_layer_renderer_t, cp_time, cp_view, cp_view_texture_map,
 };
 use objc2_metal::{MTLCommandBuffer, MTLCommandQueue, MTLDevice, MTLPixelFormat, MTLTexture};
 
@@ -326,6 +326,15 @@ impl AppleSession {
         }
         // SAFETY: the layer renderer is live for as long as this session is.
         unsafe { cp_layer_renderer_set_render_quality(&self.renderer, level.clamp(0.0, 1.0)) };
+    }
+
+    /// How many times the compositor may show the same frame again, `count` repeats - so a count of one keeps
+    /// a frame on the display for two frame times. The C call takes an `int`, and this is where the one number
+    /// the core carries is made to fit it.
+    fn set_frame_repeat_impl(&mut self, count: u32) {
+        let count = i32::try_from(count).unwrap_or(i32::MAX);
+        // SAFETY: the layer renderer is live for as long as this session is.
+        unsafe { cp_layer_renderer_set_minimum_frame_repeat_count(&self.renderer, count) };
     }
 
     /// Give the frame back. The textures are the compositor's and were only borrowed for one frame.
