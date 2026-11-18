@@ -126,6 +126,10 @@ impl wxr::Session for AppleSession {
         self.depth_range = Some(range);
     }
 
+    fn set_render_quality(&mut self, level: f32) {
+        self.set_render_quality_impl(level);
+    }
+
     fn images(&self) -> wxr::ImageMeta {
         // The texture is the truth about itself: the layer's configuration is what the app *asked* for, and
         // the compositor is free to hand back something else - so the format, the size and the layer count are
@@ -207,9 +211,8 @@ impl wxr::Session for AppleSession {
         self.locate_impl(space, base)
     }
 
-    /// Taking the compositor's next frame and reading its views, which is a sequence rather than an
-    /// answer: `frame` keeps it, and the ordering there is the compositor's requirement rather than this
-    /// backend's policy.
+    /// Taking the compositor's next frame and reading its views: `frame` keeps it, and the ordering there is
+    /// the compositor's requirement rather than this backend's policy.
     fn begin(&mut self, now: Duration, out: &mut wxr::Frame) -> Result<(), wxr::Error> {
         self.begin_impl(now, out)
     }
@@ -232,9 +235,8 @@ impl wxr::Session for AppleSession {
 
     /// A hand's skeleton, which is ARKit's joints at this frame's poses.
     ///
-    /// A source whose [`wxr::InputSource::hand`] was false has no skeleton to answer with, and asking
-    /// anyway is an empty hand rather than an error - the core says to ask the question first, and a caller
-    /// that did not is a caller with an answer it can live with.
+    /// A source whose [`wxr::InputSource::hand`] was false has no skeleton, and asking anyway is an empty hand
+    /// rather than an error - the core says to ask first, and a caller that did not can live with the answer.
     fn hand(
         &mut self,
         source: wxr::InputId,
@@ -244,10 +246,9 @@ impl wxr::Session for AppleSession {
         self.hand_impl(source, space, out)
     }
 
-    /// A controller's product category, which is the name GameController gives it.
-    ///
-    /// A hand is ARKit's and has no profile in this framework, so it answers with nothing; a pad is a
-    /// `GCController`, whose `productCategory` is what an app switches on to draw the right picture.
+    /// A controller's product category, which is the name GameController gives it. A hand is ARKit's and has
+    /// no profile in this framework, so it answers with nothing; a pad is a `GCController`, whose
+    /// `productCategory` is what an app switches on to draw the right picture.
     fn profiles(&mut self, source: wxr::InputId, out: &mut Vec<String>) -> Result<(), wxr::Error> {
         self.controllers.profiles(source, out);
         Ok(())
@@ -257,8 +258,7 @@ impl wxr::Session for AppleSession {
     ///
     /// A source with no actuator - every hand, and a pad GameController says has none - is `Unsupported`
     /// rather than a quiet nothing, which is the answer `InputSource::haptics` lets a caller avoid asking
-    /// for. `play_pcm` is not implemented on this platform and never will be: Apple's haptics are patterns
-    /// rather than waveforms, so there is nothing for samples to become.
+    /// for. `play_pcm` is not here and never will be: Apple's haptics are patterns, not waveforms.
     fn pulse(
         &mut self,
         source: wxr::InputId,

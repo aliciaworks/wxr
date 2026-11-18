@@ -139,6 +139,10 @@ pub trait Session: Any {
     /// app's half of the foveation trade. `None` is ignored, so passing a `recommended_viewport_scale` is safe.
     fn request_viewport_scale(&mut self, _view: usize, _scale: Option<f32>) {}
 
+    /// Ask the compositor to draw at a share of its full resolution, `0` to `1` - visionOS's
+    /// `cp_layer_renderer_set_render_quality`, a whole-session knob rather than a per-view one. A request.
+    fn set_render_quality(&mut self, _quality: f32) {}
+
     /// The shape of every image this session presents.
     fn images(&self) -> ImageMeta;
 
@@ -149,8 +153,7 @@ pub trait Session: Any {
     fn image(&self, index: usize) -> Option<&Self::Image>;
 
     /// How many layers this session may hand the compositor at once, when the runtime names a number -
-    /// WebXR's `maxRenderLayers`. `None` is not zero: a compositor whose limit is its own business is asked
-    /// by making a layer, and one that takes four would rather say so than fail an app's fifth.
+    /// WebXR's `maxRenderLayers`. `None` is not zero: an unpublished limit is asked by making a layer.
     fn max_render_layers(&self) -> Option<u32> {
         None
     }
@@ -158,8 +161,7 @@ pub trait Session: Any {
     /// Make a picture the compositor places itself - WebXR's and OpenXR's `XRCompositionLayer`s other than the
     /// projection one. It is drawn once (a menu, a video, a 360° photograph) and the runtime puts it where the
     /// shape and the space say. Which shapes a session has is [`Features::LAYER_QUAD`] and its siblings, one
-    /// bit per shape; a session with none answers [`Error::Unsupported`], and `pixels` is the resolution to
-    /// draw at - an aspect that disagrees with the *shape*'s is the picture stretched.
+    /// bit per shape; a session with none answers [`Error::Unsupported`], and `pixels` is the resolution.
     fn layer(
         &mut self,
         _space: ReferenceSpace,
@@ -171,9 +173,8 @@ pub trait Session: Any {
 
     /// What to draw into for a layer this frame, and where in it.
     ///
-    /// `None` while there is nothing to draw into yet - a layer is made asynchronously on every platform that
-    /// has them, and its image is the compositor's for one frame and not the app's to keep - and `None` for a
-    /// backend never taught layers at all: the same answer to a caller that only draws when it has something.
+    /// `None` while there is nothing to draw into yet - a layer is made asynchronously, and its image is the
+    /// compositor's for one frame and not the app's to keep - and for a backend never taught layers either.
     fn layer_image(&mut self, _layer: Layer) -> Option<(&Self::Image, LayerImage)> {
         None
     }
@@ -229,8 +230,7 @@ pub trait Session: Any {
     /// Where `space` is seen from `base`, which is WebXR's `XRFrame.getPose` and OpenXR's `xrLocateSpace`.
     /// The other direction from [`views`](Session::views): that places something in a space, and this asks
     /// where one space sits inside another - a controller in the floor's, the head in the world. `Ok(None)`
-    /// is a space this session handed out that the runtime cannot place right now; a handle it never gave out
-    /// is [`Error::NoSpace`], which is a different fact.
+    /// is a space the runtime cannot place right now; a handle this session never gave out is [`Error::NoSpace`].
     fn locate(
         &mut self,
         space: ReferenceSpace,

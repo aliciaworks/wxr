@@ -278,6 +278,9 @@ DEFAULT_IS_ENOUGH = {
     "session that has found no meshes is a session whose list is empty",
     ("wxr-webxr", "play_pcm"): "no browser has it: `GamepadHapticActuator` documents `pulse`, `playEffect` "
     "and `reset`, and MDN has no `playPCM` page at all - the binding generated into `sys/` is a trap",
+    ("wxr-webxr", "set_render_quality"): "a browser has no session-wide render quality: "
+    "`XRView.requestViewportScale` is one view's and is written, and an `XRWebGLLayer`'s "
+    "`framebufferScaleFactor` is chosen when the layer is made rather than changed while a session runs",
     ("wxr-openxr", "interaction_mode"): "only a browser is ever `ScreenSpace`",
     ("wxr-openxr", "authorization"): "OpenXR has no permission model of its own: a runtime that is not "
     "allowed a capability fails the call that asks for it, and there is no status to read before that - the "
@@ -285,6 +288,9 @@ DEFAULT_IS_ENOUGH = {
     ("wxr-openxr", "request_viewport_scale"): "OpenXR's resolution is the swapchain's to choose, and a "
     "runtime that recommends nothing is a runtime at full resolution - which is what the request would "
     "have been ignored into anyway",
+    ("wxr-openxr", "set_render_quality"): "OpenXR has no render-quality call either: a swapchain's pixels "
+    "are chosen when it is made, and the runtime's recommended view size is the only quality it offers a "
+    "running session - which is the same fact `request_viewport_scale` rests on",
     ("wxr-openxr", "light"): "no multivendor extension exists: the registry's two are ByteDance's "
     "`XR_BD_spatial_light_estimation` and Android's `XR_ANDROID_light_estimation`, and neither is in "
     "`openxr-sys` 0.14, which is what this crate drives its raw calls through. Every other backend's "

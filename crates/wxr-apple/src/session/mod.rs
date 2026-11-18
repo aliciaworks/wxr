@@ -27,8 +27,9 @@ use objc2_compositor_services::{
     cp_axis_direction_convention, cp_drawable, cp_drawable_array, cp_drawable_t,
     cp_drawable_target, cp_frame, cp_frame_t, cp_frame_timing,
     cp_layer_renderer_configuration_get_color_format, cp_layer_renderer_get_configuration,
-    cp_layer_renderer_get_state, cp_layer_renderer_query_next_frame, cp_layer_renderer_state,
-    cp_layer_renderer_t, cp_time, cp_view, cp_view_texture_map,
+    cp_layer_renderer_get_state, cp_layer_renderer_query_next_frame,
+    cp_layer_renderer_set_render_quality, cp_layer_renderer_state, cp_layer_renderer_t, cp_time,
+    cp_view, cp_view_texture_map,
 };
 use objc2_metal::{MTLCommandBuffer, MTLCommandQueue, MTLDevice, MTLPixelFormat, MTLTexture};
 
@@ -308,6 +309,23 @@ impl AppleSession {
         } else {
             (wxr::State::Ready, wxr::Visibility::Hidden)
         }
+    }
+
+    /// The compositor's render level: a share of the resolution the layer configuration allowed, from `0`
+    /// (the least this display supports) to `1` (the most), which the compositor eases to rather than snaps.
+    /// Clamped to that range, and a NaN - which is not a number rather than a small one - leaves the knob as
+    /// it was.
+    ///
+    /// `cp_layer_renderer_set_render_quality` arrived in visionOS 26, which is the SDK this backend is built
+    /// against: a session on an older system has no such call, and an app that must run there should not
+    /// offer the knob.
+    fn set_render_quality_impl(&mut self, level: f32) {
+        if level.is_nan() {
+            log::debug!("wxr-apple: no render level for {level}, which is not a number");
+            return;
+        }
+        // SAFETY: the layer renderer is live for as long as this session is.
+        unsafe { cp_layer_renderer_set_render_quality(&self.renderer, level.clamp(0.0, 1.0)) };
     }
 
     /// Give the frame back. The textures are the compositor's and were only borrowed for one frame.
