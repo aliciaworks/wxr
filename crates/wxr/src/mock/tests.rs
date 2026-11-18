@@ -3,6 +3,7 @@
 use super::*;
 use crate::should_render;
 
+mod anchors;
 mod frames;
 mod haptics;
 mod inputs;
@@ -185,17 +186,6 @@ fn a_backend_without_depth_sensing_answers_none() {
     assert!(session.environment_depth(0).is_none());
     // Not `Features::NONE`: the mock's controllers have actuators now. This test is about the bit it lacks.
     assert!(!session.features().contains(crate::Features::DEPTH));
-
-    // Anchors are the same shape: no way to make one says so rather than naming one that never resolves.
-    let space = session.space(SpaceKind::LocalFloor).expect("a floor");
-    assert!(matches!(
-        session.anchor(space, Pose::IDENTITY),
-        Err(Error::Unsupported(_))
-    ));
-    assert_eq!(
-        session.anchor_pose(crate::Anchor::new(0), space).unwrap(),
-        None
-    );
 }
 
 #[test]
