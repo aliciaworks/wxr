@@ -26,9 +26,9 @@ column only on a Mac, since that one counts the SDK's own headers rather than an
 
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
-| **Native API reached** - of each backend's own spec | 223/290 | 85/551 | 118/618 |
-| *as a percentage* | 77% | 15% | 19% |
-| **WebXR API reached** - of the whole API | 364/452 | 251/452 | 236/452 |
+| **Native API reached** - of each backend's own spec | 223/290 | 85/551 | 124/618 |
+| *as a percentage* | 77% | 15% | 20% |
+| **WebXR API reached** - of the whole API | 364/452 | 251/452 | 237/452 |
 | *as a percentage* | 81% | 56% | 52% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
@@ -398,7 +398,7 @@ its row reads so low.
 
 The denominator is the whole API, extensions included: `xrCreateSession` is one of five hundred commands once
 the drivers' own extensions are counted, and ARKit's C surface is six hundred functions once accessory and
-room tracking are in it. Neither is what this workspace offers an app - that is fourteen `Features`, one
+room tracking are in it. Neither is what this workspace offers an app - that is fifteen `Features`, one
 hand-written answer per backend, small enough to read in `crates/wxr/src/feature.rs`.
 
 The first number is the one about each backend's *own*
@@ -410,7 +410,7 @@ can reach 100% by design.
 The second is the direction that says whether the *unification* is done, and it has two factors. The core
 speaks 70% of WebXR's vocabulary - 315 of the 452 members across every specification - it is the vocabulary all
 three backends share rather than a mirror of the spec - and of its own `Session` methods the backends define
-**90%**, **82%** and **62%**. So a backend cannot reach the whole of WebXR by implementing
+**89%**, **80%** and **62%**. So a backend cannot reach the whole of WebXR by implementing
 methods: the word has to exist in the core first. Widening the core and filling the methods are the two things
 that move this, and both are work.
 

@@ -83,6 +83,7 @@ use crate::sys;
 
 mod anchor;
 mod authorization;
+mod fidelity;
 mod hit;
 mod light;
 mod mesh;
@@ -91,6 +92,7 @@ mod plane;
 mod skeleton;
 
 use authorization::Permissions;
+use fidelity::Fidelity;
 use light::Lights;
 use mesh::collect_mesh;
 use persistence::{Listing, Waiting};
@@ -187,6 +189,10 @@ pub struct ArKit {
     /// shape. Separate from the two above for the same reason they are separate from each other: a session
     /// can trace a room as triangles without ever being able to photograph it.
     lights: Option<Lights>,
+    /// Where the wearer's eyes sit in the display's range, and the only provider here that describes the
+    /// wearer rather than the room. Absent on every system before visionOS 27, and on a device whose
+    /// provider says it is not supported.
+    fidelity: Option<Fidelity>,
     /// What ARKit says this app is allowed to see, which is not the same question as which providers came
     /// up: a wearer who refused the room's permission leaves a provider in place that never answers.
     permissions: Permissions,
@@ -221,7 +227,8 @@ impl ArKit {
             let planes = Self::start_planes(&providers);
             let meshes = Self::start_meshes(&providers);
             let lights = Lights::start(&providers);
-            // None of the five is the only way there is no session. A device that can see the room or its
+            let fidelity = Fidelity::start(&providers);
+            // None of the six is the only way there is no session. A device that can see the room or its
             // light but not track a head still has something to describe, and dropping the session because
             // the two providers this backend happens to need for a pose failed would throw that away too.
             if world.is_none()
@@ -229,6 +236,7 @@ impl ArKit {
                 && planes.is_none()
                 && meshes.is_none()
                 && lights.is_none()
+                && fidelity.is_none()
             {
                 return None;
             }
@@ -246,6 +254,7 @@ impl ArKit {
                 planes,
                 meshes,
                 lights,
+                fidelity,
                 permissions,
                 anchors: HashMap::new(),
                 next_anchor: 0,
@@ -454,6 +463,24 @@ impl ArKit {
     /// happened on ARKit's queue when the photograph arrived, and all this does is take a lock.
     pub fn light(&self) -> Option<wxr::LightEstimate> {
         self.lights.as_ref()?.estimate()
+    }
+
+    /// Whether the provider for device fit came up, which is what `features` asks and what `device_fit`
+    /// answers.
+    ///
+    /// No permission is consulted, and this is the one bit here that is not: the provider has a required
+    /// authorization type of its own, but asking for it is another visionOS 27 call that a system without
+    /// the provider would not survive - and a refused provider reports nothing, which the core's `Unknown`
+    /// already means.
+    pub fn has_device_fit(&self) -> bool {
+        self.fidelity.is_some()
+    }
+
+    /// Where the wearer's eyes sit in the display's range, or `Unknown` for a system that cannot say.
+    pub fn device_fit(&self) -> wxr::DeviceFit {
+        self.fidelity
+            .as_ref()
+            .map_or(wxr::DeviceFit::Unknown, Fidelity::fit)
     }
 }
 

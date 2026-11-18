@@ -281,6 +281,9 @@ DEFAULT_IS_ENOUGH = {
     ("wxr-webxr", "set_render_quality"): "a browser has no session-wide render quality: "
     "`XRView.requestViewportScale` is one view's and is written, and an `XRWebGLLayer`'s "
     "`framebufferScaleFactor` is chosen when the layer is made rather than changed while a session runs",
+    ("wxr-webxr", "device_fit"): "nothing in WebXR publishes where the eyes sit in the optics: an "
+    "`XRViewerPose` is the head, and the eye offset is not a thing a page can read - fit is a fact about the "
+    "display, and a browser surfaces none of it",
     ("wxr-openxr", "interaction_mode"): "only a browser is ever `ScreenSpace`",
     ("wxr-openxr", "authorization"): "OpenXR has no permission model of its own: a runtime that is not "
     "allowed a capability fails the call that asks for it, and there is no status to read before that - the "
@@ -291,6 +294,8 @@ DEFAULT_IS_ENOUGH = {
     ("wxr-openxr", "set_render_quality"): "OpenXR has no render-quality call either: a swapchain's pixels "
     "are chosen when it is made, and the runtime's recommended view size is the only quality it offers a "
     "running session - which is the same fact `request_viewport_scale` rests on",
+    ("wxr-openxr", "device_fit"): "OpenXR has no device-fit query: eye gaze tells a runtime where the eyes "
+    "look, not where they sit in the optics, and the registry's gaze extensions are the former only",
     ("wxr-openxr", "light"): "no multivendor extension exists: the registry's two are ByteDance's "
     "`XR_BD_spatial_light_estimation` and Android's `XR_ANDROID_light_estimation`, and neither is in "
     "`openxr-sys` 0.14, which is what this crate drives its raw calls through. Every other backend's "

@@ -24,6 +24,12 @@ impl wxr::Session for AppleSession {
         self.layer_state().1
     }
 
+    fn device_fit(&mut self) -> wxr::DeviceFit {
+        self.arkit
+            .as_ref()
+            .map_or(wxr::DeviceFit::Unknown, ArKit::device_fit)
+    }
+
     fn features(&self) -> wxr::Features {
         // ARKit's world tracking is a reference space rather than a capability. The surfaces it does have
         // are the providers below - one bit each, because a session can have one without the other.
@@ -50,6 +56,11 @@ impl wxr::Session for AppleSession {
         // with no intensity and zero harmonics, which the core says means nothing was measured.
         if self.arkit.as_ref().is_some_and(ArKit::has_light) {
             features = features.union(wxr::Features::LIGHT_ESTIMATION);
+        }
+        // Device fit, and the one bit about the wearer rather than the room: a session can track a room
+        // perfectly with its optics out of line, and the provider being up is all this can promise.
+        if self.arkit.as_ref().is_some_and(ArKit::has_device_fit) {
+            features = features.union(wxr::Features::DEVICE_FIT);
         }
         // Hand tracking, which is the provider rather than the skeleton: a device whose hand provider came up
         // is a device that reports hands, and whether any given joint is tracked this frame is the question
@@ -119,9 +130,7 @@ impl wxr::Session for AppleSession {
     /// The near and far planes the scene draws with.
     ///
     /// The depth buffer this compositor hands over is only useful to it if it knows what the values mean,
-    /// and it cannot read that off the picture - so the app says, in metres. The compositor uses it to
-    /// reproject: when the prediction was off it moves the pixels to where the head turned out to be, and
-    /// depth tells it how far each one is. This is the platform the core's depth range was written for.
+    /// so the app says, in metres. Reprojection uses it to move pixels when the prediction was off.
     fn set_depth_range(&mut self, range: wxr::DepthRange) {
         self.depth_range = Some(range);
     }
@@ -246,9 +255,8 @@ impl wxr::Session for AppleSession {
         self.hand_impl(source, space, out)
     }
 
-    /// A controller's product category, which is the name GameController gives it. A hand is ARKit's and has
-    /// no profile in this framework, so it answers with nothing; a pad is a `GCController`, whose
-    /// `productCategory` is what an app switches on to draw the right picture.
+    /// A controller's product category, which is the name GameController gives it. A pad is a `GCController`,
+    /// whose `productCategory` is what an app switches on to draw the right picture; a hand has no profile.
     fn profiles(&mut self, source: wxr::InputId, out: &mut Vec<String>) -> Result<(), wxr::Error> {
         self.controllers.profiles(source, out);
         Ok(())
@@ -357,12 +365,8 @@ impl wxr::Session for AppleSession {
         self.hits.release(source);
     }
 
-    /// A probe of the room's light, which is the provider being up rather than a promise of a picture.
-    ///
-    /// The one handle here that does not wait for anything: ARKit's provider is already running by the time
-    /// a session exists, and what is asynchronous is the photograph rather than the probe. Asking for the
-    /// estimate immediately after is not too early - it is the no-intensity one, which is the core's own
-    /// word for a room it has not measured yet.
+    /// A probe of the room's light, which is the provider being up rather than a promise of a picture: the
+    /// photograph is what is asynchronous, so asking for the estimate right after is the no-intensity one.
     fn light_probe(&mut self) -> Result<wxr::LightProbe, wxr::Error> {
         if self.arkit.as_ref().is_some_and(ArKit::has_light) {
             self.light_probe = true;
@@ -373,13 +377,9 @@ impl wxr::Session for AppleSession {
 
     /// What the room's light is this frame, which is ARKit's last photograph as the core's harmonics.
     ///
-    /// Every value if it has one and no intensity with zero harmonics if it does not, which is what the
-    /// core says a runtime with no estimate hands over. A dark room and a room ARKit has not got round to
-    /// yet are the same answer, and both are a scene lit by nothing rather than by a guess.
-    ///
-    /// A handle this session did not hand out gets that same no-estimate answer rather than the room's
-    /// light: the handle names the probe, and this session never made that one. It is the answer WebXR gives
-    /// an id outside its list, and an empty estimate rather than an error - the core's `light` has none.
+    /// A handle this session did not hand out gets the no-estimate answer rather than the room's light: the
+    /// handle names the probe, and this session never made that one - the answer WebXR gives an id outside
+    /// its list.
     fn light(
         &mut self,
         probe: wxr::LightProbe,

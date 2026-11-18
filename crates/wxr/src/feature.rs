@@ -66,6 +66,12 @@ impl Features {
     /// the mask changed is a runtime whose mask a renderer would keep drawing into the wrong shape.
     pub const VISIBILITY_MASK: Self = Self(1 << 13);
 
+    /// How the headset is sitting on the wearer: [`crate::Session::device_fit`].
+    ///
+    /// A visionOS capability today, and the one bit here about the *display* rather than the room: a session
+    /// can track a room perfectly with its optics out of line, and a hint about that is all this can give.
+    pub const DEVICE_FIT: Self = Self(1 << 14);
+
     /// Whether every bit of `other` is in this set.
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0

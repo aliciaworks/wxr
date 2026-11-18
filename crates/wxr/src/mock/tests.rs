@@ -4,6 +4,7 @@ use super::*;
 use crate::should_render;
 
 mod anchors;
+mod display;
 mod frames;
 mod haptics;
 mod inputs;

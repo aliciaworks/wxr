@@ -12,6 +12,7 @@ use glam::Vec2;
 use crate::anchor::{Anchor, AnchorId};
 use crate::authorization::Authorization;
 use crate::depth::{DepthInfo, DepthSensing};
+use crate::device_fit::DeviceFit;
 use crate::feature::Features;
 use crate::frame::{DepthRange, Frame};
 use crate::hit::{Hit, HitTestKinds, HitTestSource, Ray};
@@ -81,6 +82,12 @@ pub trait Session: Any {
         Visibility::Hidden
     }
 
+    /// Where the wearer's eyes sit in the display's range - see [`DeviceFit`]. [`Features::DEVICE_FIT`] says
+    /// whether this session can answer; `Unknown` is both "cannot" and "not measured yet".
+    fn device_fit(&mut self) -> DeviceFit {
+        DeviceFit::Unknown
+    }
+
     /// The next thing that happened, or `None` if nothing has. Drained one at a time, because two events in a
     /// row can matter in order - `Visible` then `ExitRequested` is a session that ran and stopped.
     fn poll(&mut self) -> Option<Event>;
@@ -98,8 +105,7 @@ pub trait Session: Any {
     }
 
     /// Start or stop the runtime measuring the room - WebXR's `resumeDepthSensing` and `pauseDepthSensing`.
-    /// A request: no depth to pause is [`Error::Unsupported`], and asking for the state already reported is a
-    /// no-op, so a caller may say what it wants every frame.
+    /// A request: no depth to pause is [`Error::Unsupported`], and the state already reported is a no-op.
     fn set_depth_active(&mut self, _active: bool) -> Result<(), Error> {
         Err(Error::Unsupported("pausing depth sensing".into()))
     }
@@ -123,9 +129,8 @@ pub trait Session: Any {
     /// list. Empty by default: a session whose platform does not let an app choose has no list to offer.
     fn refresh_rates(&mut self, _out: &mut Vec<f32>) {}
 
-    /// The rate the display is running at, in hertz - WebXR's `XRSession.frameRate`, OpenXR's
-    /// `xrGetDisplayRefreshRateFB`. A request through [`set_refresh_rate`](Session::set_refresh_rate) lands on
-    /// the runtime's own schedule, so this is how a caller learns whether it took. `None` when it cannot say.
+    /// The rate the display is running at in hertz, or `None` - WebXR's `XRSession.frameRate`, OpenXR's
+    /// `xrGetDisplayRefreshRateFB`. It lags a request, so this is how a caller learns whether one took.
     fn refresh_rate(&mut self) -> Option<f32> {
         None
     }
@@ -347,14 +352,13 @@ pub trait Session: Any {
 
     /// Fill in the room the runtime has traced, as triangles, in the space given - WebXR's meshing draft.
     ///
-    /// The same shape a frame's planes have: what is traced *this* frame, because a runtime re-traces a room as
-    /// it learns more and a copy a caller keeps goes wrong where it matters - a wall that moved. Empty for a
-    /// session that has traced nothing and for a backend never taught this, which are the same answer to a
-    /// caller asking whether there is a wall here.
+    /// What is traced *this* frame, because a runtime re-traces a room as it learns more and a copy a caller
+    /// keeps goes wrong where it matters - a wall that moved. Empty for a session that traced nothing and for
+    /// a backend never taught it, the same answer to a caller asking whether there is a wall here.
     ///
     /// A mesh is per *geometry* and not per anchor: one anchor can carry a table and the wall behind it.
-    /// Whether a session has this at all is [`Features::MESH`], which is not [`Features::PLANES`] - a runtime
-    /// can trace meshes and have no planes at all, and ARKit's are two providers.
+    /// Whether a session has this at all is [`Features::MESH`], not [`Features::PLANES`] - a runtime can
+    /// trace meshes and have no planes, and ARKit's are two providers.
     fn meshes(&mut self, _space: ReferenceSpace, out: &mut Vec<Mesh>) -> Result<(), Error> {
         out.clear();
         Ok(())
@@ -371,11 +375,10 @@ pub trait Session: Any {
     }
 
     /// Ask for a source of hits along a ray - WebXR's `requestHitTestSource`. `ray` is in `space`'s own
-    /// coordinates and `None` means its `-Z`; `kinds` is what it may land on, WebXR's `entityTypes`, and a
-    /// request for kinds this backend cannot produce is [`Error::Unsupported`] rather than a source that
-    /// never answers, so [`HitTestKinds::ALL`] and [`HitTestKinds::NONE`] always work and a narrowed one is
-    /// honoured where it can be. The source is made asynchronously and outlives the frame: a frame or two
-    /// with none, and `hits` on one that is not ready has none. A ray [`Ray::unit`] refuses is refused too.
+    /// coordinates and `None` means its `-Z`; `kinds` is what it may land on, and kinds this backend cannot
+    /// produce are [`Error::Unsupported`] rather than a source that never answers - so [`HitTestKinds::ALL`]
+    /// and [`HitTestKinds::NONE`] always work. Made asynchronously: a frame or two with none, and `hits` on
+    /// one not ready has none. A ray [`Ray::unit`] refuses is refused too.
     fn hit_test_source(
         &mut self,
         _space: ReferenceSpace,
@@ -416,12 +419,10 @@ pub trait Session: Any {
         Ok(())
     }
 
-    /// Ask the runtime to keep a place fixed in the room, which is WebXR's `XRFrame.createAnchor`.
-    ///
-    /// `space` and `pose` are where the place is now; what comes back is a name for it, and the runtime keeps it
-    /// where it was as its understanding of the room changes. Made asynchronously, so it is a handle the way a
-    /// hit-test source is - and a backend with no anchors says so rather than handing back one that never
-    /// answers. Whether a session has them at all is [`Features::ANCHORS`].
+    /// Ask the runtime to keep a place fixed in the room, which is WebXR's `XRFrame.createAnchor`: `space`
+    /// and `pose` are where it is now, and the runtime keeps it there as its understanding of the room
+    /// changes. Asynchronous, so it is a handle the way a hit-test source is, and a backend with no anchors
+    /// says so rather than handing back one that never answers. [`Features::ANCHORS`] says whether they exist.
     fn anchor(&mut self, _space: ReferenceSpace, _pose: Pose) -> Result<Anchor, Error> {
         Err(Error::Unsupported("anchors".into()))
     }
@@ -458,10 +459,9 @@ pub trait Session: Any {
         Err(Error::Unsupported("anchors from an earlier session".into()))
     }
 
-    /// Ask the runtime where a place it named has ended up, which is WebXR's `restorePersistentAnchor` - the
-    /// other half of [`Session::anchor_id`], and asynchronous like every anchor: the handle arrives before the
-    /// place is found, so `anchor_pose` is `None` until it is, and stays `None` for a name the runtime does not
-    /// have. A runtime that keeps no names between sessions is [`Error::Unsupported`].
+    /// Ask the runtime where a place it named has ended up, which is WebXR's `restorePersistentAnchor`: the
+    /// other half of [`Session::anchor_id`], asynchronous like every anchor, so `anchor_pose` is `None` until
+    /// the place is found and stays `None` for a name the runtime does not have. No names kept: `Unsupported`.
     fn restore_anchor(&mut self, _id: AnchorId) -> Result<Anchor, Error> {
         Err(Error::Unsupported("anchors from an earlier session".into()))
     }
