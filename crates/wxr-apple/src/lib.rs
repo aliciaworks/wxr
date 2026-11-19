@@ -85,6 +85,7 @@ pub mod entry;
 pub mod ffi;
 pub mod import;
 pub mod metal;
+pub mod metalfx;
 pub mod session;
 pub mod sys;
 
@@ -94,4 +95,5 @@ pub use arkit::ArKit;
 pub use compositor::Compositor;
 pub use entry::run;
 pub use import::Images;
+pub use metalfx::SpatialScaler;
 pub use session::{AppleBackend, AppleSession};

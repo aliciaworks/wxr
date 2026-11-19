@@ -43,3 +43,8 @@ log = { workspace = true }
 # Blocking the wgpu handshake for the device this crate makes for an app: `request_adapter` and
 # `request_device` are futures, and the C ABI entry has no executor to await them on.
 pollster = "1"
+
+# MetalFX is in the device SDK and not in the simulator's, so this is a dependency of the device build only.
+# A simulator build has no framework to link, which is why the module it feeds has a stand-in.
+[target.'cfg(all(target_vendor = "apple", not(target_abi = "sim")))'.dependencies]
+objc2-metal-fx = "0.3.2"
