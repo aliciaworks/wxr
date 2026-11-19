@@ -72,6 +72,12 @@ impl wxr::Session for OpenXrSession {
         self.set_refresh_rate_impl(rate)
     }
 
+    /// Ask for app space warp; the frame that carries it also has to carry motion vectors, which
+    /// `Import::target_motion` is how the app draws.
+    fn set_space_warp(&mut self, enabled: bool) {
+        self.space_warp = enabled;
+    }
+
     fn set_foveation(&mut self, amount: f32) {
         self.set_foveation_impl(amount)
     }
@@ -199,7 +205,11 @@ impl wxr::Session for OpenXrSession {
             .into_iter()
             // A layer has no depth of its own: the app's depth is the projection layer's, because that is the
             // picture the compositor reprojects - the panels over it are already where they are.
-            .map(|color| crate::import::SwapchainImage { color, depth: None })
+            .map(|color| crate::import::SwapchainImage {
+                color,
+                depth: None,
+                motion: None,
+            })
             .collect();
         let id = self.layers.len() as u32;
         self.layers.push(Some(Layer {
@@ -497,4 +507,5 @@ mod display;
 mod events;
 mod frames;
 mod sources;
+mod space_warp;
 mod spaces;

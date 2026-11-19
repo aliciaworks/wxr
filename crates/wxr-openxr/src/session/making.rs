@@ -122,6 +122,13 @@ impl OpenXrSession {
             .depth_layer
             .then(|| depth_submission::DepthSwapchain::make(&session, &formats, extent))
             .flatten();
+        // Space warp is a pair with depth: the compositor synthesises from a motion vector and a distance,
+        // so a runtime without the depth extension has nothing to pair this with and the swapchain is not
+        // made at all.
+        let motion = backend
+            .space_warp
+            .then(|| space_warp::MotionSwapchain::make(&session, &formats, extent))
+            .flatten();
 
         // Inputs are declared here and not in the constructor: they need a session, and a runtime that will
         // not take them is a session without hands rather than a session that failed.
@@ -192,6 +199,8 @@ impl OpenXrSession {
             depth_asked: false,
             visibility_masks: VisibilityMasks::new(backend.visibility_mask),
             target_depth,
+            motion,
+            space_warp: false,
             depth_range: None,
             frame_image: None,
             // Cloned, and the last field - see its documentation for why it is both.

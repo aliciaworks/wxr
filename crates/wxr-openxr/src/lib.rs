@@ -116,6 +116,9 @@ pub struct OpenXr {
     /// reaches the compositor - the direction [`SpatialExtensions::depth`] is not. Fixed at the same moment,
     /// so a session that will submit no depth says so before it exists.
     depth_layer: bool,
+    /// Whether the instance was made with `XR_FB_space_warp`, which is how the compositor is allowed to
+    /// synthesise intermediate frames from the app's motion vectors. Fixed at the same moment.
+    space_warp: bool,
     /// Which haptic extensions it was made with, fixed at the same moment and read by the capability bit and
     /// by the two output calls.
     haptics: HapticExtensions,
@@ -194,6 +197,9 @@ impl OpenXr {
         // rule again, and whether the session has a swapchain to give it is decided in
         // `session/depth_submission.rs`.
         extensions.khr_composition_layer_depth = supported.khr_composition_layer_depth;
+        // And the frame between two of ours: Meta's space warp, which needs the depth above as its pair. Only
+        // from a runtime that lists it, like the rest.
+        extensions.fb_space_warp = supported.fb_space_warp;
         // The display's rate: Meta's extension, and asked for the same way - only from a runtime that lists
         // it. A runtime without it is a runtime whose display runs at one rate, which is a fact and not a
         // failure.
@@ -356,6 +362,7 @@ impl OpenXr {
             prefer_hdr: false,
             layers,
             depth_layer: extensions.khr_composition_layer_depth,
+            space_warp: extensions.fb_space_warp,
             refresh_rate: extensions.fb_display_refresh_rate,
             haptics,
             spatial,

@@ -35,6 +35,9 @@ pub struct SwapchainImage {
     pub color: u64,
     /// The depth image the app draws into, one array layer per eye, when there is one to draw into.
     pub depth: Option<u64>,
+    /// The motion-vector image the app draws into for space warp, one array layer per eye, when the runtime
+    /// hands one over.
+    pub motion: Option<u64>,
 }
 
 /// The compositor's images, as the renderer's importer.
@@ -96,6 +99,30 @@ impl wxr_render::Import for Images {
             wgpu::TextureUses::DEPTH_STENCIL_WRITE,
             wgpu::TextureUsages::RENDER_ATTACHMENT,
             image.depth?,
+        )
+    }
+
+    /// The motion vectors the app drew, which the compositor synthesises from - `XR_FB_space_warp`'s
+    /// per-eye image, drawn the same way the depth is.
+    fn target_motion(
+        &self,
+        device: &wgpu::Device,
+        meta: wxr::ImageMeta,
+        image: &Self::Image,
+    ) -> Option<wgpu::Texture> {
+        let size = wgpu::Extent3d {
+            width: meta.extent.width,
+            height: meta.extent.height,
+            depth_or_array_layers: meta.layers,
+        };
+        wrap(
+            device,
+            "openxr motion vectors",
+            size,
+            wgpu::TextureFormat::Rg16Float,
+            wgpu::TextureUses::COLOR_TARGET,
+            wgpu::TextureUsages::RENDER_ATTACHMENT,
+            image.motion?,
         )
     }
 

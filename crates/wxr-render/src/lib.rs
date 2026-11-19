@@ -150,6 +150,22 @@ pub trait Import {
         None
     }
 
+    /// The motion vectors the app drew, which the compositor synthesises intermediate frames from -
+    /// `XR_FB_space_warp`'s per-eye image, the other half of the pair with `target_depth`.
+    ///
+    /// Two components and no more, in metres of screen space rather than in texels: how a vector is encoded
+    /// is the renderer's and the runtime's agreement, and the extension's convention is the only one it
+    /// takes. `None` - the default - is a session that does not synthesise, and a renderer that asked would
+    /// be drawing into nothing.
+    fn target_motion(
+        &self,
+        _device: &wgpu::Device,
+        _meta: wxr::ImageMeta,
+        _image: &Self::Image,
+    ) -> Option<wgpu::Texture> {
+        None
+    }
+
     /// The room's depth for a view, as a texture to test fragments against, when the session measured one.
     ///
     /// [`Import::target_depth`] above is the buffer a pass is *drawn into*; this is the measurement of the real

@@ -115,6 +115,15 @@ impl OpenXrSession {
             self.abandon_frame();
             return Err(error);
         }
+        // The motion vectors are the other half of space warp and are taken in the same frame as the depth:
+        // one without the other is a synthesised frame with nothing to synthesise from, so the pair is the
+        // unit here as well.
+        if self.space_warp
+            && let Err(error) = self.acquire_target_motion()
+        {
+            self.abandon_frame();
+            return Err(error);
+        }
         // Both images are now this frame's, which is the pair `image` hands the renderer.
         self.record_frame_images();
 
@@ -161,6 +170,7 @@ impl OpenXrSession {
             let _ = self.swapchain.release_image();
         }
         let _ = self.release_target_depth();
+        let _ = self.release_target_motion();
         for layer in self.layers.iter_mut().flatten() {
             if layer.held.take().is_some() {
                 let _ = layer.swapchain.release_image();
@@ -292,11 +302,23 @@ impl OpenXrSession {
             .target_depth
             .as_ref()
             .is_some_and(|depth| depth.held.is_some());
+        // And the motion image, read before the release and only meaningful when the app asked for space
+        // warp: a frame that carries an image nobody wrote would be synthesised from nothing.
+        let motion_held = self
+            .motion
+            .as_ref()
+            .is_some_and(|motion| motion.held.is_some());
+        let warping = self.space_warp && motion_held && depth_held;
         let mut failed = None;
         if let Err(error) = self.swapchain.release_image() {
             failed = Some(wxr::Error::Present(format!("{error:?}").into()));
         }
         if let Err(error) = self.release_target_depth()
+            && failed.is_none()
+        {
+            failed = Some(error);
+        }
+        if let Err(error) = self.release_target_motion()
             && failed.is_none()
         {
             failed = Some(error);
@@ -332,8 +354,19 @@ impl OpenXrSession {
             (true, Some(range)) => self.target_depth.as_ref().map(|depth| (depth, range)),
             _ => None,
         };
-        let (views, chain) =
-            depth_submission::projection_views(&self.swapchain, &self.located, extent, submitted);
+        // Space warp is a request on top of a submission: it is chained only when the app asked and both
+        // images are this frame's, so a session that never asked keeps a plain projection layer.
+        let warp = match (warping, submitted, self.motion.as_ref()) {
+            (true, Some((depth, range)), Some(motion)) => Some((motion, depth, range)),
+            _ => None,
+        };
+        let (views, chain, _warp_chain) = depth_submission::projection_views(
+            &self.swapchain,
+            &self.located,
+            extent,
+            submitted,
+            warp,
+        );
         // The same space the eyes were located in. The first space an app made was not necessarily the one
         // it asked for its views in, and a projection layer whose space disagrees with its view poses is a
         // scene at the wrong place - which is invisible until someone offsets a space and then very visible.

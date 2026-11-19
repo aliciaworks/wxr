@@ -148,6 +148,15 @@ pub trait Session: Any {
     /// app's half of the foveation trade. `None` is ignored, so passing a `recommended_viewport_scale` is safe.
     fn request_viewport_scale(&mut self, _view: usize, _scale: Option<f32>) {}
 
+    /// Ask the compositor to synthesise intermediate frames from our own motion vectors and depth -
+    /// Meta's `XR_FB_space_warp`.
+    ///
+    /// A request, and a two-sided one: it is only honest when the app draws motion vectors into the image
+    /// the session hands it (see `wxr_render::Import::target_motion`) and submits depth, because the
+    /// compositor would otherwise synthesise from an image nobody wrote. False - the default - leaves every
+    /// frame as it is; a runtime without the extension ignores the request.
+    fn set_space_warp(&mut self, _enabled: bool) {}
+
     /// Ask the compositor to draw at a share of its full resolution, `0` to `1` - visionOS's
     /// `cp_layer_renderer_set_render_quality`, a whole-session knob rather than a per-view one. A request.
     fn set_render_quality(&mut self, _quality: f32) {}

@@ -115,6 +115,11 @@ pub struct OpenXrSession {
     /// `XR_KHR_composition_layer_depth`, or one that offers no swapchain format the renderer draws into - see
     /// [`super::depth_submission`].
     pub(super) target_depth: Option<super::depth_submission::DepthSwapchain>,
+    /// The motion vectors the app draws for [`super::space_warp`], when the runtime synthesises frames.
+    pub(super) motion: Option<super::space_warp::MotionSwapchain>,
+    /// Whether the app asked for space warp. The image is acquired either way; the layer carries it only
+    /// when this is set and both images are this frame's.
+    pub(super) space_warp: bool,
     /// What the app's depth values mean, which is `XrCompositionLayerDepthInfoKHR`'s `nearZ`/`farZ`. `None`
     /// until the app says, and a frame with no planes submits no depth: the numbers are unbounded otherwise,
     /// so a compositor given them would move the picture by an unknown amount.

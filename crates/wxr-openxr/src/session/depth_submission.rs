@@ -159,7 +159,15 @@ impl OpenXrSession {
             return;
         };
         let depth = self.target_depth.as_ref().and_then(DepthSwapchain::image);
-        self.frame_image = Some(crate::import::SwapchainImage { color, depth });
+        let motion = self
+            .motion
+            .as_ref()
+            .and_then(super::space_warp::MotionSwapchain::image);
+        self.frame_image = Some(crate::import::SwapchainImage {
+            color,
+            depth,
+            motion,
+        });
     }
 }
 
@@ -173,9 +181,15 @@ pub(super) fn projection_views<'a>(
     located: &[xr::View],
     extent: xr::Extent2Di,
     depth: Option<(&DepthSwapchain, wxr::DepthRange)>,
+    motion: Option<(
+        &super::space_warp::MotionSwapchain,
+        &DepthSwapchain,
+        wxr::DepthRange,
+    )>,
 ) -> (
     Vec<xr::CompositionLayerProjectionView<'a, xr::Vulkan>>,
     Vec<openxr_sys::CompositionLayerDepthInfoKHR>,
+    Vec<openxr_sys::CompositionLayerSpaceWarpInfoFB>,
 ) {
     // Built to its full length before any view points at it: a `Vec` that grows moves its elements, and a
     // `next` taken before the last push would be a pointer to wherever that element used to be.
@@ -186,6 +200,21 @@ pub(super) fn projection_views<'a>(
                 .collect()
         })
         .unwrap_or_default();
+    // Built in full before the depth chain points at it, for the same reason the depth chain is built
+    // before the views: a `Vec` that grows moves its elements, and a `next` is a raw pointer.
+    let warp: Vec<openxr_sys::CompositionLayerSpaceWarpInfoFB> = motion
+        .map(|(motion, depth, range)| {
+            (0..located.len())
+                .map(|index| super::space_warp::info(motion, depth, index, extent, range))
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut chain = chain;
+    for (index, info) in chain.iter_mut().enumerate() {
+        if let Some(warp) = warp.get(index) {
+            info.next = warp as *const _ as *const _;
+        }
+    }
     let views = located
         .iter()
         .enumerate()
@@ -211,11 +240,18 @@ pub(super) fn projection_views<'a>(
                     raw.next = info as *const _ as *const _;
                     xr::CompositionLayerProjectionView::from_raw(raw)
                 },
-                None => built,
+                None => match warp.get(index) {
+                    Some(info) => unsafe {
+                        let mut raw = built.into_raw();
+                        raw.next = info as *const _ as *const _;
+                        xr::CompositionLayerProjectionView::from_raw(raw)
+                    },
+                    None => built,
+                },
             }
         })
         .collect();
-    (views, chain)
+    (views, chain, warp)
 }
 
 /// One eye's line in that chain: which image its depth is in, and what the values in it mean.
