@@ -257,16 +257,16 @@ impl wxr::Session for AppleSession {
         self.hand_impl(source, space, out)
     }
 
-    /// A controller's product category, which is the name GameController gives it. A pad is a `GCController`,
-    /// whose `productCategory` is what an app switches on to draw the right picture; a hand has no profile.
+    /// A device's product category, which is the name GameController gives it: a pad is a `GCController` and
+    /// a stylus a `GCStylus`, and it is what an app switches on to draw the right picture; a hand has none.
     fn profiles(&mut self, source: wxr::InputId, out: &mut Vec<String>) -> Result<(), wxr::Error> {
         self.controllers.profiles(source, out);
         Ok(())
     }
 
-    /// A buzz on a controller, which is a Core Haptics pattern played on an engine for it.
+    /// A buzz on a device, which is a Core Haptics pattern played on an engine for it.
     ///
-    /// A source with no actuator - every hand, and a pad GameController says has none - is `Unsupported`
+    /// A source with no actuator - every hand, and a device GameController says has none - is `Unsupported`
     /// rather than a quiet nothing, which is the answer `InputSource::haptics` lets a caller avoid asking
     /// for. `play_pcm` is not here and never will be: Apple's haptics are patterns, not waveforms.
     fn pulse(

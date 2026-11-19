@@ -1,6 +1,7 @@
-//! Accessories: where a controller is, which is the half GameController does not have.
+//! Accessories: where a controller or a stylus is, which is the half GameController does not have.
 //!
-//! A pad reports buttons and an actuator; ARKit's accessory tracking is what says where it is in the room.
+//! A device reports buttons - and, on a stylus, pressure - and an actuator; ARKit's accessory tracking is
+//! what says where it is in the room.
 //! The two halves are joined by a `GCDevice`: `ar_accessory_load_from_device_f` asks ARKit to make an
 //! accessory of one, and every accessory anchor ARKit then reports names the device it came from, which is
 //! the same object GameController hands out - so a pointer is the one name the two frameworks share, and
@@ -42,7 +43,7 @@ mod provider;
 
 use objc2::runtime::ProtocolObject;
 use objc2_ar_kit::{ar_accessory_anchor_tracking_state_t, ar_accessory_chirality_t};
-use objc2_game_controller::{GCController, GCDevice};
+use objc2_game_controller::GCDevice;
 use wxr::glam::Mat4;
 
 pub(crate) use provider::Accessories;
@@ -162,18 +163,17 @@ impl AccessoryPose {
     }
 }
 
-/// A controller's place, from the poses ARKit reported: the anchor whose device is this controller, or the
-/// unplaced source a pad is when nothing tracks it.
+/// A device's place, from the poses ARKit reported: the anchor whose device this is, or the unplaced source a
+/// pad is when nothing tracks it.
 ///
 /// The lookup is a pointer comparison because the `GCDevice` is the only name the two frameworks share - see
-/// [`AccessoryPose::device`] - and a controller with no accessory of its own is not an error: it is a pad
-/// ARKit has nothing to say about.
+/// [`AccessoryPose::device`] - and a device with no accessory of its own is not an error: it is a pad ARKit
+/// has nothing to say about.
 pub(crate) fn controller_place(
     places: &[AccessoryPose],
-    controller: &GCController,
+    device: &ProtocolObject<dyn GCDevice>,
     space_from_world: Mat4,
 ) -> Place {
-    let device: &ProtocolObject<dyn GCDevice> = ProtocolObject::from_ref(controller);
     let address = std::ptr::from_ref(device).cast::<()>() as usize;
     places
         .iter()

@@ -46,7 +46,7 @@
 //! ARKit (C)              ──▶ world tracking: where the head is ────────────────────────────▶ arkit
 //!                        ├─▶ hand tracking: where the hands and their joints are ─────────▶ session::inputs and session::hand
 //!                        └─▶ planes and scene reconstruction: the room ──────────────────────▶ session::planes, meshes and hits
-//! GameController (ObjC)  ──▶ controllers: buttons and haptics ─────────────────────────────▶ gamecontroller
+//! GameController (ObjC)  ──▶ controllers and styli: buttons, pressure and haptics ────────────▶ gamecontroller
 //! Swift (the app)        ──▶ ImmersiveSpace's CompositorLayer closure + the wgpu device ───▶ entry::run
 //! ```
 

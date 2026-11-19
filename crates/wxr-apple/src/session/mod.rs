@@ -131,8 +131,8 @@ pub struct AppleSession {
     /// ARKit, when it came up. `None` means every pose is relative to the wearer's head and there are no
     /// hands.
     arkit: Option<ArKit>,
-    /// The controllers GameController knows about. A different framework from ARKit and the only place this
-    /// platform's haptics are, which is why it is here rather than inside [`ArKit`].
+    /// The controllers and styli GameController knows about. A different framework from ARKit and the only
+    /// place this platform's haptics are, which is why it is here rather than inside [`ArKit`].
     controllers: GameControllers,
     /// The colour format the layer was configured with.
     ///

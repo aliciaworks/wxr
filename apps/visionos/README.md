@@ -14,7 +14,7 @@ app shell the platform insists on.
   a tap; the button remains the manual path.
 * `Info.plist` — the bundle keys an install needs, including `UIDeviceFamily` (7, the visionOS family),
   `NSWorldSensingUsageDescription` (world tracking), `NSHandsTrackingUsageDescription` and
-  `NSAccessoryTrackingUsageDescription` (where a spatial controller is).
+  `NSAccessoryTrackingUsageDescription` (where a spatial controller or stylus is).
 * `wxr_compositor_shim.c` — a tiny C shim for the CompositorServices and ARKit calls whose C signature
   carries a `simd` vector. See "Why a C shim" below.
 * `build.sh` — builds the Rust `staticlib` for `aarch64-apple-visionos-sim`, compiles the shim, links the
