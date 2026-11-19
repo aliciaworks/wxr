@@ -365,7 +365,10 @@ unsafe extern "C-unwind" fn collect(context: *mut c_void, anchor: &ar_accessory_
             .unwrap_or_default();
         found.poses.push(AccessoryPose {
             device: Retained::as_ptr(&device).cast::<()>() as usize,
-            handedness: super::handedness_of(ar_accessory_anchor_t::held_chirality(anchor)),
+            handedness: super::handedness_of(
+                ar_accessory_anchor_t::held_chirality(anchor),
+                ar_accessory_t::inherent_chirality(&accessory),
+            ),
             tracked: ar_accessory_anchor_t::is_tracked(anchor),
             emulated_position: super::emulated_position_of(ar_accessory_anchor_t::tracking_state(
                 anchor,

@@ -55,7 +55,8 @@ pub(crate) struct AccessoryPose {
     /// The `GCDevice` this anchor was loaded from, as the address GameController knows it by. The pointer is
     /// the only name the two frameworks share, and comparing it is how a controller finds its own place.
     pub(crate) device: usize,
-    /// Which hand the accessory is being held in, or `Unknown` for one that is not held.
+    /// Which hand the accessory belongs to: the one holding it now, or for one set down the one it is
+    /// designed for. `Unknown` only when ARKit answers neither.
     pub(crate) handedness: wxr::Handedness,
     /// Whether ARKit is tracking it right now: an accessory on a table is still placed, one the runtime has
     /// lost is not.
@@ -80,13 +81,28 @@ fn emulated_position_of(state: ar_accessory_anchor_tracking_state_t) -> bool {
     state == ar_accessory_anchor_tracking_state_t::orientation_tracked
 }
 
-/// Which hand an accessory is in, from ARKit's answer about the anchor that was held.
-fn handedness_of(chirality: ar_accessory_chirality_t) -> wxr::Handedness {
-    match chirality {
+/// Which hand an accessory belongs to, from the two answers ARKit gives about it.
+///
+/// `held` is the hand holding it now and `inherent` is the hand the hardware is made for. The first is what
+/// the wearer is doing and the second is what the accessory is, and one on a table has only the second - so
+/// the held answer wins when there is one, and the inherent one is the fallback. Apple's own enum says the
+/// two are one question: `left` is "left-handed accessory, or non-handed accessory held in left hand".
+fn handedness_of(
+    held: ar_accessory_chirality_t,
+    inherent: ar_accessory_chirality_t,
+) -> wxr::Handedness {
+    match (chirality_of(held), chirality_of(inherent)) {
+        (wxr::Handedness::Unknown, designed) => designed,
+        (held, _) => held,
+    }
+}
+
+/// One of ARKit's chirality answers as the core's word for it.
+fn chirality_of(answer: ar_accessory_chirality_t) -> wxr::Handedness {
+    match answer {
         ar_accessory_chirality_t::left => wxr::Handedness::Left,
         ar_accessory_chirality_t::right => wxr::Handedness::Right,
-        // `unspecified`, and anything ARKit adds later: a non-handed accessory, or one on a table and in
-        // nobody's hand.
+        // `unspecified`, and anything ARKit adds later: a non-handed accessory in nobody's hand.
         _ => wxr::Handedness::Unknown,
     }
 }
@@ -186,20 +202,47 @@ mod tests {
     use super::*;
 
     /// The three answers ARKit can give, and the core's word for each: a held pad is the hand that holds it,
-    /// and one nobody holds is not a hand at all.
+    /// and one nobody holds and nobody made for a hand is not a hand at all.
     #[test]
     fn a_held_accessory_is_the_hand_holding_it() {
+        use ar_accessory_chirality_t as chirality;
         assert_eq!(
-            handedness_of(ar_accessory_chirality_t::unspecified),
+            handedness_of(chirality::unspecified, chirality::unspecified),
             wxr::Handedness::Unknown
         );
         assert_eq!(
-            handedness_of(ar_accessory_chirality_t::left),
+            handedness_of(chirality::left, chirality::unspecified),
             wxr::Handedness::Left
         );
         assert_eq!(
-            handedness_of(ar_accessory_chirality_t::right),
+            handedness_of(chirality::right, chirality::unspecified),
             wxr::Handedness::Right
+        );
+    }
+
+    /// A pad set down is still the pad it is: the held answer is empty and the answer about the hardware is
+    /// not, so the source an app binds by keeps its hand while it rests on a table.
+    #[test]
+    fn a_pad_that_is_set_down_keeps_the_hand_it_is_made_for() {
+        use ar_accessory_chirality_t as chirality;
+        assert_eq!(
+            handedness_of(chirality::unspecified, chirality::right),
+            wxr::Handedness::Right
+        );
+        assert_eq!(
+            handedness_of(chirality::unspecified, chirality::left),
+            wxr::Handedness::Left
+        );
+    }
+
+    /// Held beats designed: a non-handed pad picked up in the left hand is the left source, and so is a
+    /// right-handed accessory held on the wrong side.
+    #[test]
+    fn the_hand_holding_it_wins_over_the_hand_it_was_made_for() {
+        use ar_accessory_chirality_t as chirality;
+        assert_eq!(
+            handedness_of(chirality::left, chirality::right),
+            wxr::Handedness::Left
         );
     }
 

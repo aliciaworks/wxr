@@ -224,7 +224,8 @@ impl GameControllers {
             let haptics = known.device.haptics().is_some();
             out.push(wxr::InputSource {
                 id: known.id,
-                // What ARKit can say is which hand picked it up, not the device's own handedness.
+                // The hand holding it, or the one it is designed for when it is set down - see
+                // `crate::arkit::accessory`.
                 handedness: place.handedness,
                 target_ray_mode: wxr::TargetRayMode::TrackedPointer,
                 // No skeleton.
