@@ -9,12 +9,35 @@ use std::ffi::c_void;
 use std::time::Duration;
 
 use objc2_ar_kit::{
-    ar_plane_alignment_t, ar_plane_anchor_t, ar_plane_extent_t, ar_plane_geometry_t,
-    ar_surface_classification_t,
+    ar_plane_alignment_t, ar_plane_anchor_t, ar_plane_detection_configuration_t, ar_plane_extent_t,
+    ar_plane_geometry_t, ar_surface_classification_t,
 };
 use wxr::glam::{Mat4, Vec2};
 
 use crate::sys;
+
+/// Ask ARKit for every way a surface can lie, including the tilted ones its default leaves out.
+///
+/// A plane detection configuration starts with horizontal and vertical only, so a ramp, a leaning screen or
+/// the sloped underside of a stair is a surface ARKit sees and this backend never hears about. `slanted` is
+/// that third case, and the core has a word for it, so asking costs nothing a session did not want: one that
+/// only places on floors filters on [`wxr::SurfaceKind::Floor`], and one that wants the whole room gets it.
+///
+/// # Safety
+///
+/// `configuration` must be a live configuration that has not yet been given to a provider.
+pub(super) unsafe fn align(configuration: &ar_plane_detection_configuration_t) {
+    // SAFETY: the caller guarantees the configuration is live, and setting its alignments is not
+    // destructive - the provider reads them when it is made, which is why this has to happen first.
+    unsafe {
+        ar_plane_detection_configuration_t::set_alignment(
+            configuration,
+            ar_plane_alignment_t::horizontal
+                | ar_plane_alignment_t::vertical
+                | ar_plane_alignment_t::slanted,
+        );
+    }
+}
 
 /// One plane anchor, as the core's [`wxr::Plane`].
 ///
@@ -59,11 +82,7 @@ unsafe fn plane_of(anchor: &ar_plane_anchor_t) -> wxr::Plane {
             // The mesh's rim, which is the polygon Apple says the geometry encloses, and not the extent's
             // four corners: an L-shaped table has six or more points.
             outline: outline_of(&geometry, anchor_from_extent),
-            orientation: match alignment {
-                a if a == ar_plane_alignment_t::horizontal => wxr::PlaneOrientation::Horizontal,
-                a if a == ar_plane_alignment_t::vertical => wxr::PlaneOrientation::Vertical,
-                _ => wxr::PlaneOrientation::Unknown,
-            },
+            orientation: orientation(alignment),
             // The anchor's classification rather than the geometry's: the geometry is the shape, and what
             // the shape is a picture of is the anchor's answer. `surface_classification` is the call Apple
             // points the older `plane_classification` at; the two lists differ only in the newer one adding
@@ -190,6 +209,20 @@ fn boundary(indices: &[u32], vertices: usize) -> Option<Vec<usize>> {
     (rim.len() == next.len()).then_some(rim)
 }
 
+/// How ARKit says the surface lies, in the core's terms.
+///
+/// Three of ARKit's four bits are answers and the fourth (`none`) is not a surface at all, which is the
+/// `Unknown` a runtime that did not classify one also gives. A plane anchor carries exactly one alignment,
+/// which is why the bit set the provider is asked for is not the shape of the answer.
+fn orientation(alignment: ar_plane_alignment_t) -> wxr::PlaneOrientation {
+    match alignment {
+        a if a == ar_plane_alignment_t::horizontal => wxr::PlaneOrientation::Horizontal,
+        a if a == ar_plane_alignment_t::vertical => wxr::PlaneOrientation::Vertical,
+        a if a == ar_plane_alignment_t::slanted => wxr::PlaneOrientation::Slanted,
+        _ => wxr::PlaneOrientation::Unknown,
+    }
+}
+
 /// What ARKit's classification of a plane is, in the core's terms.
 ///
 /// `none` is both "not classified" and "not any of these", which the core says the same way: a caller that
@@ -271,6 +304,32 @@ mod tests {
         let pose = rectangle_pose(identity(), sys::Float4x4(turned.to_cols_array()));
         assert!((pose.orientation * wxr::glam::Vec3::Y - wxr::glam::Vec3::Y).length() < 1e-6);
         assert!((pose.orientation * wxr::glam::Vec3::X - wxr::glam::Vec3::NEG_Z).length() < 1e-6);
+    }
+
+    /// A surface ARKit knows is tilted is tilted rather than unknown, and a bit set is not an answer.
+    #[test]
+    fn each_alignment_is_its_own_word() {
+        assert_eq!(
+            orientation(ar_plane_alignment_t::horizontal),
+            wxr::PlaneOrientation::Horizontal
+        );
+        assert_eq!(
+            orientation(ar_plane_alignment_t::vertical),
+            wxr::PlaneOrientation::Vertical
+        );
+        assert_eq!(
+            orientation(ar_plane_alignment_t::slanted),
+            wxr::PlaneOrientation::Slanted
+        );
+        // `none` is not a plane ARKit detected; the bits that ask for planes are not the answer either.
+        assert_eq!(
+            orientation(ar_plane_alignment_t::none),
+            wxr::PlaneOrientation::Unknown
+        );
+        assert_eq!(
+            orientation(ar_plane_alignment_t::horizontal | ar_plane_alignment_t::vertical),
+            wxr::PlaneOrientation::Unknown
+        );
     }
 
     /// A square of two triangles: the rim is the four corners, not the diagonal that both triangles share.

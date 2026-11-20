@@ -7,7 +7,12 @@ use glam::Vec2;
 use crate::mesh::SurfaceKind;
 use crate::space::Pose;
 
-/// How a surface lies, which is WebXR's `XRPlaneOrientation`.
+/// How a surface lies, which is WebXR's `XRPlaneOrientation` and the one case ARKit names separately.
+///
+/// WebXR has two and says a surface its runtime cannot put in either is null; ARKit says `slanted` for the
+/// same surfaces - a ramp, a screen leaning back - and the core carries that word rather than flattening it,
+/// because a runtime that knows a surface is tilted is saying more than one that did not classify it at all.
+/// A backend with only WebXR's two never reports `Slanted`.
 ///
 /// `Unknown` is a runtime that found the surface and will not say which way up it is - a real answer, and not a
 /// failure: a plane to avoid walking through is worth having before it is worth drawing on.
@@ -15,6 +20,8 @@ use crate::space::Pose;
 pub enum PlaneOrientation {
     Horizontal,
     Vertical,
+    /// Neither horizontal nor vertical - ARKit's `ar_plane_alignment_slanted`.
+    Slanted,
     #[default]
     Unknown,
 }

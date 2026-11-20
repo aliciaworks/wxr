@@ -328,6 +328,7 @@ impl ArKit {
                 return None;
             }
             let configuration = ar_plane_detection_configuration_t::new();
+            plane::align(&configuration);
             let provider = ar_plane_detection_provider_t::new(&configuration);
             ar_data_providers_t::add_data_provider(providers, as_data_provider(&provider));
             Some(Planes { provider })
