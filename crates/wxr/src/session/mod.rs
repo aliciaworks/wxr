@@ -13,7 +13,8 @@
 //! core's: a generic method is not in a trait object's table. An erased session is a session of one platform
 //! anyway - [`Session::Image`] and [`Session::EnvironmentDepth`] already name its types - so a program holding
 //! one knows which backend it has, and every question it can ask without that is one [`Session`] answers on the
-//! object itself.
+//! object itself. [`should_render`] is the other half: a question any session can
+//! answer, and it takes one unsized.
 
 mod api;
 mod backend;

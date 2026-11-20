@@ -39,13 +39,7 @@ pub trait Session: Any {
     type EnvironmentDepth;
 
     /// The backend's own session, when a program needs the platform the core deliberately does not speak -
-    /// the core's `as_hal`, explained in the module docs.
-    ///
-    /// `Self: Sized` is the vtable's rule and not this method's: a generic method is not in a trait object's
-    /// table. A session a caller holds concretely can be asked; one held as a trait object cannot, and does not
-    /// need to - an erased session's associated types already name one platform's images, so a program that has
-    /// one knows which backend it has. [`should_render`](crate::should_render) is the other half of the shape:
-    /// a question any session can answer, and it takes one unsized.
+    /// the core's `as_hal`; the module docs say why, and what a session held as a trait object loses.
     fn as_backend<T: 'static>(&self) -> Option<&T>
     where
         Self: Sized,
@@ -148,12 +142,10 @@ pub trait Session: Any {
     /// app's half of the foveation trade. `None` is ignored, so passing a `recommended_viewport_scale` is safe.
     fn request_viewport_scale(&mut self, _view: usize, _scale: Option<f32>) {}
 
-    /// Ask the compositor to synthesise intermediate frames from our own motion vectors and depth -
-    /// Meta's `XR_FB_space_warp`.
-    ///
-    /// A request, and a two-sided one: it is only honest when the app draws motion vectors into the image
-    /// the session hands it (see `wxr_render::Import::target_motion`) and submits depth, because the
-    /// compositor would otherwise synthesise from an image nobody wrote. False - the default - leaves every
+    /// Ask the compositor to synthesise intermediate frames from our own motion vectors and depth - Meta's
+    /// `XR_FB_space_warp`. A request with two sides: it is only honest when the app draws motion vectors into
+    /// the image the session hands it (see `wxr_render::Import::target_motion`) and submits depth, because
+    /// otherwise the compositor synthesises from an image nobody wrote. False - the default - leaves every
     /// frame as it is; a runtime without the extension ignores the request.
     fn set_space_warp(&mut self, _enabled: bool) {}
 
@@ -407,10 +399,9 @@ pub trait Session: Any {
         Ok(())
     }
 
-    /// Let a source of hits go, which is WebXR's `XRHitTestSource.cancel`. `hits` on a released one is an
-    /// empty list rather than an error. What is behind it differs: WebXR has a `cancel()` to call and a
-    /// promise in flight to keep cancelled when it lands, while OpenXR's raycaster has no per-source object,
-    /// so there is only this backend's slot to clear.
+    /// Let a source of hits go, which is WebXR's `XRHitTestSource.cancel`; `hits` on a released one is an
+    /// empty list rather than an error. WebXR has a `cancel()` and a promise in flight to cancel, while
+    /// OpenXR's raycaster has no per-source object - only this backend's slot to clear.
     fn release_hit_test_source(&mut self, _source: HitTestSource) {}
 
     /// Ask for a probe of the room's light, which is WebXR's `requestLightProbe`. A handle the way a hit-test
@@ -482,13 +473,12 @@ pub trait Session: Any {
     }
 
     /// What the runtime measured of the real world for the view at `index`, and the buffer itself - WebXR's
-    /// `XRFrame.getDepthInformation`, OpenXR's environment depth.
+    /// `XRFrame.getDepthInformation`, OpenXR's environment depth. `None` for a runtime with no depth sensing,
+    /// for a view it has none for, for one that has paused it, and for one that never had any - the same
+    /// answer, and why [`Features::DEPTH`] says whether this exists.
     ///
-    /// `None` for a runtime with no depth sensing, for a view it has none for, for one that has paused it, and
-    /// for one that never had any - the same answer, and why [`Features::DEPTH`] says whether this exists.
-    ///
-    /// Ask once per frame, like a view: depth is a buffer made for the frame and taken back at its end. The
-    /// buffer is the platform's own, and the renderer's importer turns it into something to draw with.
+    /// Ask once per frame, like a view: depth is a buffer made for the frame and taken back at its end; it is
+    /// the platform's own, and the renderer's importer turns it into something to draw with.
     fn environment_depth(&mut self, _view: usize) -> Option<(&Self::EnvironmentDepth, DepthInfo)> {
         None
     }
@@ -497,11 +487,10 @@ pub trait Session: Any {
     fn end(&mut self, frame: &mut Frame) -> Result<(), Error>;
 
     /// Ask the runtime to end this session, which is WebXR's `XRSession.end` and OpenXR's
-    /// `xrRequestExitSession` - the app saying it is finished rather than the handle being dropped.
-    ///
-    /// Not [`end`](Session::end), which hands back one frame: this is what a system menu does, and the
-    /// runtime answers with an ending of its own - a [`StateChanged`](Event::StateChanged) event on the next
-    /// `poll`. A backend with no request to make keeps the runtime's lifecycle and says so.
+    /// `xrRequestExitSession` - the app saying it is finished rather than the handle being dropped. Not
+    /// [`end`](Session::end), which hands back one frame: this is what a system menu does, and the runtime
+    /// answers with an ending of its own - a [`StateChanged`](Event::StateChanged) on the next `poll`. A
+    /// backend with no request to make keeps the runtime's lifecycle and says so.
     fn request_exit(&mut self) -> Result<(), Error> {
         Err(Error::Unsupported("ending the session".into()))
     }
