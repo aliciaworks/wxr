@@ -287,6 +287,9 @@ DEFAULT_IS_ENOUGH = {
     ("wxr-webxr", "set_frame_repeat"): "a page cannot ask the compositor to show a frame again: "
     "`updateTargetFrameRate` changes the rate a session asks for rather than how often one frame is drawn, "
     "and pacing the browser's compositor is not something the spec gives a page",
+    ("wxr-webxr", "set_space_warp"): "synthesis is `XR_FB_space_warp`, an OpenXR extension with no WebXR "
+    "counterpart: a page hands the browser a colour image and, if the session has depth sensing, a depth "
+    "one - there is no motion-vector image to write and no request that would ask a browser to interpolate",
     ("wxr-openxr", "interaction_mode"): "only a browser is ever `ScreenSpace`",
     ("wxr-openxr", "authorization"): "OpenXR has no permission model of its own: a runtime that is not "
     "allowed a capability fails the call that asks for it, and there is no status to read before that - the "
@@ -325,6 +328,10 @@ DEFAULT_IS_ENOUGH = {
     "is the answer rather than a call this backend has not made",
     ("wxr-apple", "layer_needs_redraw"): "the compositor draws each frame the app hands it, and owns the "
     "timing of every drawable; nothing in that model asks an app to redraw one layer",
+    ("wxr-apple", "set_space_warp"): "CompositorServices has no motion-vector image and no synthesis call: "
+    "a drawable is a colour texture, its depth, and the view information, so there is nothing to write a "
+    "vector into and no request to turn one into an intermediate frame - the extension this asks after is "
+    "Meta's and exists in no Apple header",
     ("wxr-apple", "request_exit"): "there is no runtime session to leave: a CompositorServices session is "
     "the app's own window, and the app ends it by ending the window - so the default is the whole of the "
     "answer rather than a call this backend has not made",
