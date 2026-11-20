@@ -2,11 +2,14 @@
 //!
 //! ARKit's C surface has no raycast - RealityKit has hit testing and a CompositorServices app is not in
 //! RealityKit - so the room itself is the geometry: scene reconstruction's triangles and, for a device that
-//! traced fewer of them, the plane anchors' rectangles. Both are already read by [`super::mesh`] and
+//! traced fewer of them, the plane anchors' surfaces. Both are already read by [`super::mesh`] and
 //! [`super::plane`] for `meshes` and `planes`; this asks them a different question, so the two reads are the
 //! same read and the answer is the room as it was last traced rather than as it is at the instant of the call.
 //! That is one frame of staleness on a room that changes when somebody moves the furniture, and it is worth
 //! writing down because a caller placing content on a hit is placing it on the room as reconstructed.
+//!
+//! A plane is tested against the rim ARKit traced when there is one and against the extent's rectangle when
+//! there is not: the rim is the surface, and a corner the mesh cut off is a place the ray passes through.
 //!
 //! **The normal is the placement.** WebXR's `XRHitTestResult` pose puts the surface's outward normal on +Y,
 //! and a caller that puts a picture on a wall reads that axis. A triangle's winding is the runtime's and this
@@ -165,7 +168,10 @@ fn intersect_triangle(origin: Vec3, direction: Vec3, [a, b, c]: [Vec3; 3]) -> Op
     Some((distance, normal.normalize()))
 }
 
-/// Where a unit ray meets a plane anchor's rectangle, with the plane's own +Y as the normal.
+/// Where a unit ray meets a plane anchor's surface, with the plane's own +Y as the normal.
+///
+/// The surface is the rim the plane reports when it has one, and the extent's rectangle when it does not -
+/// the box is the fallback for a runtime that reports only a size, not a second guess at the shape.
 fn intersect_plane(plane: &wxr::Plane, ray: &wxr::Ray) -> Option<Contact> {
     let place = plane.pose.transform();
     let to_plane = place.inverse();
@@ -181,9 +187,16 @@ fn intersect_plane(plane: &wxr::Plane, ray: &wxr::Ray) -> Option<Contact> {
         return None;
     }
     let point = origin + direction * distance;
-    // The extent is a box and the pose is its centre, so both halves are half the extent - and the plane's
-    // own axes are X and Z, which is what makes the extent a `Vec2`.
-    if point.x.abs() > plane.extent.x * 0.5 || point.z.abs() > plane.extent.y * 0.5 {
+    // The outline is a closed loop in the plane's own X and Z; a point on it is inside when a ray out of it
+    // crosses an odd number of the loop's edges, which is the rule that also handles the concave corner a
+    // rectangle test cannot see. With no outline the extent is the shape, and it is centred on the pose.
+    let on_surface = match plane.outline.as_deref() {
+        Some(outline) if !outline.is_empty() => {
+            inside(outline, wxr::glam::Vec2::new(point.x, point.z))
+        }
+        _ => point.x.abs() <= plane.extent.x * 0.5 && point.z.abs() <= plane.extent.y * 0.5,
+    };
+    if !on_surface {
         return None;
     }
     Some(Contact {
@@ -191,6 +204,29 @@ fn intersect_plane(plane: &wxr::Plane, ray: &wxr::Ray) -> Option<Contact> {
         normal: facing((plane.pose.orientation * Vec3::Y).normalize(), ray),
         distance,
     })
+}
+
+/// Whether a point in a plane's own X and Z is inside its outline.
+///
+/// The loop's winding is the runtime's and is not read: the crossing rule counts edges a ray out of the point
+/// meets, so the order only has to be a loop and the shape may be concave.
+fn inside(outline: &[wxr::glam::Vec2], point: wxr::glam::Vec2) -> bool {
+    let Some(&last) = outline.last() else {
+        return false;
+    };
+    let mut inside = false;
+    let mut previous = last;
+    for &current in outline {
+        if (current.y > point.y) != (previous.y > point.y)
+            && point.x
+                < (previous.x - current.x) * (point.y - current.y) / (previous.y - current.y)
+                    + current.x
+        {
+            inside = !inside;
+        }
+        previous = current;
+    }
+    inside
 }
 
 /// `normal` turned to the side the ray came from, which is the side a placement faces.
@@ -229,6 +265,14 @@ mod tests {
             orientation: wxr::PlaneOrientation::Horizontal,
             kind: wxr::SurfaceKind::None,
             last_changed: None,
+        }
+    }
+
+    /// The same, with the shape the runtime traced around it.
+    fn shaped(pose: wxr::Pose, extent: Vec2, outline: Vec<Vec2>) -> wxr::Plane {
+        wxr::Plane {
+            outline: Some(outline),
+            ..plane(pose, extent)
         }
     }
 
@@ -319,6 +363,30 @@ mod tests {
         assert!((contact.point - Vec3::new(0.5, 0.0, 0.5)).length() < 1e-5);
         assert!((contact.normal - Vec3::Y).length() < 1e-5);
         assert!(nearest(&[], std::slice::from_ref(&floor), &outside).is_none());
+    }
+
+    /// A plane that reports a shape is tested against the shape, not its box: an L's missing corner is a
+    /// place the ray goes through, and the box would have said it landed.
+    #[test]
+    fn a_plane_with_an_outline_is_its_shape_and_not_its_box() {
+        // A two-metre square with the quadrant at +X and +Z cut away.
+        let outline = vec![
+            Vec2::new(-1.0, -1.0),
+            Vec2::new(1.0, -1.0),
+            Vec2::new(1.0, 0.0),
+            Vec2::new(0.0, 0.0),
+            Vec2::new(0.0, 1.0),
+            Vec2::new(-1.0, 1.0),
+        ];
+        let floor = shaped(wxr::Pose::IDENTITY, Vec2::new(2.0, 2.0), outline);
+        let down = |x: f32, z: f32| wxr::Ray {
+            origin: Vec3::new(x, 2.0, z),
+            direction: Vec3::NEG_Y,
+        };
+        assert!(nearest(&[], std::slice::from_ref(&floor), &down(0.5, -0.5)).is_some());
+        assert!(nearest(&[], std::slice::from_ref(&floor), &down(-0.5, 0.5)).is_some());
+        // Both inside the extent and outside the L.
+        assert!(nearest(&[], std::slice::from_ref(&floor), &down(0.5, 0.5)).is_none());
     }
 
     #[test]
