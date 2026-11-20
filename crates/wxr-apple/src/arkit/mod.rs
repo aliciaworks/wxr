@@ -345,6 +345,7 @@ impl ArKit {
                 return None;
             }
             let configuration = ar_scene_reconstruction_configuration_t::new();
+            mesh::classify(&configuration);
             let provider = ar_scene_reconstruction_provider_t::new(&configuration);
             ar_data_providers_t::add_data_provider(providers, as_data_provider(&provider));
             Some(Meshes { provider })

@@ -10,7 +10,8 @@ use std::time::Duration;
 
 use objc2_ar_kit::{
     ar_geometry_element_t, ar_geometry_primitive_type_t, ar_geometry_source_t, ar_mesh_anchor_t,
-    ar_mesh_classification_t, ar_mesh_geometry_t,
+    ar_mesh_classification_t, ar_mesh_geometry_t, ar_scene_reconstruction_configuration_t,
+    ar_scene_reconstruction_mode_t,
 };
 use objc2_metal_visionos::{MTLBuffer, MTLVertexFormat};
 use wxr::glam::{Mat4, Vec3};
@@ -161,6 +162,27 @@ fn index_count(
         return None;
     }
     primitives.checked_mul(3)
+}
+
+/// Ask ARKit for a mesh that carries a label per face, which is the source [`kind_of`] reads.
+///
+/// A scene reconstruction configuration starts in `default` mode - the triangles and nothing said about what
+/// they are - and in that mode `ar_mesh_geometry_get_classification` returns no source at all. So the mode is
+/// asked for before the provider is made rather than assumed: without it every mesh arrives unlabelled, and a
+/// reader that is perfectly correct has nothing to read.
+///
+/// # Safety
+///
+/// `configuration` must be a live configuration that has not yet been given to a provider.
+pub(super) unsafe fn classify(configuration: &ar_scene_reconstruction_configuration_t) {
+    // SAFETY: the caller guarantees the configuration is live, and setting its mode is not destructive - the
+    // provider reads it when it is made, which is why this has to happen first.
+    unsafe {
+        ar_scene_reconstruction_configuration_t::set_scene_reconstruction_mode(
+            configuration,
+            ar_scene_reconstruction_mode_t::classification,
+        );
+    }
 }
 
 /// What ARKit says the mesh is, as the core's word.
