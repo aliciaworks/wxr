@@ -55,7 +55,7 @@ impl AppleSession {
         let Some(arkit) = &self.arkit else {
             return Ok(());
         };
-        let hands = arkit.hands();
+        let hands = arkit.hands(self.anchor_time);
         if hands.len() != self.hands_seen {
             self.hands_seen = hands.len();
             self.inputs_changed = true;
@@ -137,7 +137,7 @@ impl AppleSession {
         // A hand ARKit is no longer tracking has joints at the last place it saw them, which is not where
         // the hand is. `out` is already empty, so an untracked hand is the empty skeleton the core says a
         // hand out of view is, rather than a stale one that looks tracked.
-        if let Some((true, hand)) = arkit.hand(*handedness, space_from_world) {
+        if let Some((true, hand)) = arkit.hand(*handedness, space_from_world, self.anchor_time) {
             *out = hand;
         }
         Ok(())

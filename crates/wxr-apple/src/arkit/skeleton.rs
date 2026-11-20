@@ -34,17 +34,24 @@
 //! WebXR's hand has twenty-five: `forearm_wrist` and `forearm_arm` are the two over, and they are dropped
 //! rather than folded into the wrist, because the core's [`wxr::HandJoint`] is WebXR's set and a forearm is
 //! not a joint of a hand. The rest correspond one for one.
+//!
+//! **And a hand is asked for at the frame's time, not the latest one.** The provider can fill both anchors
+//! for a timestamp, and Apple's header names exactly the frame's trackable anchor time for it - the same
+//! time controllers are predicted to, and for the same reason: a latest anchor is where the hand was when
+//! ARKit last updated it, and the picture is drawn later than that. So a frame hands `fill` its time and
+//! reads the palm, the joints and the tracked flag from the anchors that come back; a frame with no time, or
+//! a prediction ARKit refuses, reads the latest anchors instead.
 
 use std::ffi::c_void;
 
 use objc2::rc::Retained;
 use objc2_ar_kit::{
-    ar_hand_anchor_t, ar_hand_skeleton_joint_name_t, ar_hand_skeleton_t,
-    ar_hand_tracking_provider_t, ar_skeleton_joint_t, ar_trackable_anchor_t,
+    ar_hand_anchor_query_status_t, ar_hand_anchor_t, ar_hand_skeleton_joint_name_t,
+    ar_hand_skeleton_t, ar_hand_tracking_provider_t, ar_skeleton_joint_t, ar_trackable_anchor_t,
 };
 use wxr::glam::Mat4;
 
-use super::{ArKit, as_trackable_anchor};
+use super::{ArKit, Hands, as_trackable_anchor};
 use crate::sys;
 
 /// ARKit's name for each of the core's joints, in the core's order.
@@ -87,6 +94,32 @@ const JOINTS: [ar_hand_skeleton_joint_name_t; wxr::HandJoint::COUNT] = [
 /// something with fingers rather than a stick figure, so a joint with no radius is a joint that draws as a
 /// point - which makes a constant the better answer than a zero, and 8 mm is an average finger.
 const RADIUS: f32 = 0.008;
+
+/// Fill both hand anchors for one frame, and say whether ARKit answered.
+///
+/// The pair is filled by one call because the provider updates the two together, and the call is the
+/// prediction one when the frame knows its trackable anchor time: the header's own example is
+/// `ar_hand_tracking_provider_query_anchors_at_timestamp(provider, left, right)` with that time, because a
+/// latest anchor is where the hand was when ARKit last updated it and not where it will be drawn. A query
+/// ARKit refuses - a provider that stopped between frames, or a time it will not predict - falls back to the
+/// latest anchors, which is a hand a frame stale rather than no hand at all.
+fn fill(hands: &Hands, at: Option<f64>) -> bool {
+    // SAFETY: the provider and both anchors are live, and the anchors are this session's to fill.
+    unsafe {
+        if let Some(at) = at {
+            let status = ar_hand_tracking_provider_t::query_anchors_at_timestamp(
+                &hands.provider,
+                at,
+                &hands.left,
+                &hands.right,
+            );
+            if status == ar_hand_anchor_query_status_t::success {
+                return true;
+            }
+        }
+        ar_hand_tracking_provider_t::latest_anchors(&hands.provider, &hands.left, &hands.right)
+    }
+}
 
 /// One hand's skeleton, in `origin_from_hand`'s space.
 ///
@@ -147,15 +180,13 @@ impl ArKit {
     /// Empty when there is no hand provider, when it has nothing yet, or when the query failed - all three
     /// of which are a frame with no hands rather than a frame to stop over. Handedness comes from which
     /// anchor it is, because the call hands over a left one and a right one and says so in its arguments.
-    pub fn hands(&self) -> Vec<(wxr::Handedness, Mat4, bool)> {
+    ///
+    /// `at` is the frame's trackable anchor time, and both anchors are predicted to it: see `fill`.
+    pub fn hands(&self, at: Option<f64>) -> Vec<(wxr::Handedness, Mat4, bool)> {
         let Some(hands) = &self.hands else {
             return Vec::new();
         };
-        // SAFETY: the provider and both anchors are live, and the anchors are ours to fill.
-        let latest = unsafe {
-            ar_hand_tracking_provider_t::latest_anchors(&hands.provider, &hands.left, &hands.right)
-        };
-        if !latest {
+        if !fill(hands, at) {
             return Vec::new();
         }
         [
@@ -183,20 +214,20 @@ impl ArKit {
     /// `handedness` is which hand, and an [`wxr::Handedness::Unknown`] is a source that is not a hand at
     /// all: no answer rather than an arbitrary one, because guessing which of two hands a caller meant
     /// would put the wrong fingers in it.
+    ///
+    /// `at` is the same time the palm was asked for, so the skeleton and the palm are one prediction of one
+    /// anchor rather than two readings of it a frame apart.
     pub fn hand(
         &self,
         handedness: wxr::Handedness,
         space_from_world: Mat4,
+        at: Option<f64>,
     ) -> Option<(bool, wxr::Hand)> {
         let hands = self.hands.as_ref()?;
         // SAFETY: the provider and both anchors are live, and the anchors are ours to fill. This is the
-        // same query `hands` makes, repeated rather than cached: the anchors ARKit fills are the ones the
-        // provider's *latest* update wrote, and a frame that asked for inputs and then asked for a
-        // skeleton wants the skeleton of that same update.
-        let latest = unsafe {
-            ar_hand_tracking_provider_t::latest_anchors(&hands.provider, &hands.left, &hands.right)
-        };
-        if !latest {
+        // same query `hands` makes, repeated rather than cached: a frame that asked for inputs and then
+        // asked for a skeleton wants that frame's anchors, and a query at the same time fills them the same.
+        if !fill(hands, at) {
             return None;
         }
         let anchor = match handedness {
