@@ -189,8 +189,9 @@ real `GPUTexture`, and what it proves is the whole path from `XRGPUBinding` to t
 **`wxr-apple`** was going to need a Swift shim, and does not. Two things were learned from Apple's own
 documentation rather than assumed:
 
-- `cp_view_get_transform` and `cp_view_get_tangents` are C functions that `objc2-compositor-services` does
-  not bind, so `sys` declares them from Apple's C guide - which calls both. The eyes do not need Swift.
+- `cp_view_get_transform` and `cp_drawable_compute_projection` are C functions that
+  `objc2-compositor-services` does not bind, so `sys` declares them from Apple's C guide - which calls both.
+  The eyes do not need Swift.
 - ARKit's visionOS *Swift* API has no Objective-C presence, which is true, and does not mean ARKit is
   unreachable: "ARKit in visionOS C API" is a complete second surface for C and C++ engines. `arkit` is that
   session, its world tracking and its hand tracking.

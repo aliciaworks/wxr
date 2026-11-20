@@ -96,13 +96,12 @@ pub fn angles(projection: Mat4) -> FieldOfView {
     }
 }
 
-/// A field of view from its four half-angle tangents, which is how a compositor that reports tangents
-/// reports it.
+/// A field of view from its four half-angle tangents, in the order left, right, up, down.
 ///
-/// Apple's CompositorServices hands a view's opening over as `tangents` - the tangents of the four
-/// half-angles, in the order left, right, up, down - and a tangent is a field of view with an `atan` in
-/// front of it. It lives here rather than in the Apple backend because the arithmetic is not Apple's: a
-/// tangent is a distance over a distance, and any runtime that reports one gets the same answer.
+/// A tangent is a distance over a distance, which is what a frustum's edge at one unit out is, so a runtime
+/// that reports its opening this way gets the same four angles as one that reports a projection matrix - see
+/// [`angles`] for the other read of the same fact. It lives here rather than in any one backend because the
+/// arithmetic is not a platform's.
 pub fn angles_from_tangents(tangents: [f32; 4]) -> FieldOfView {
     let [left, right, up, down] = tangents;
     FieldOfView {

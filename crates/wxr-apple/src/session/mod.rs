@@ -2,8 +2,8 @@
 //!
 //! `cp_layer_renderer_query_next_frame` hands out a frame, the frame hands out a drawable, the drawable
 //! hands out one colour texture per image and one view per eye, and the view says where that eye is
-//! (`cp_view_get_transform`), how it opens (`cp_view_get_tangents`) and which part of which texture it goes
-//! in (the texture map). That is the whole of the frame loop, and every part of it is C - which is the
+//! (`cp_view_get_transform`), how it opens (`cp_drawable_compute_projection`) and which part of which texture
+//! it goes in (the texture map). That is the whole of the frame loop, and every part of it is C - which is the
 //! correction this module is built on: the eye transforms are not a Swift property that needs a shim, they
 //! are [`crate::sys::cp_view_get_transform`], and the C API has been there all along.
 //!

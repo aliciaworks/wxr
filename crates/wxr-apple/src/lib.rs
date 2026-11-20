@@ -42,7 +42,7 @@
 //! a pass drawn into one uses `wxr_render::Depth::Reverse`.
 //!
 //! ```text
-//! CompositorServices (C) ──▶ frames, textures, viewports, per-eye transform and tangents ──▶ session
+//! CompositorServices (C) ──▶ frames, textures, viewports, per-eye transform and projection ──▶ session
 //! ARKit (C)              ──▶ world tracking: where the head is ────────────────────────────▶ arkit
 //!                        ├─▶ hand tracking: where the hands and their joints are ─────────▶ session::inputs and session::hand
 //!                        └─▶ planes and scene reconstruction: the room ──────────────────────▶ session::planes, meshes and hits

@@ -1,8 +1,9 @@
 //! The C functions that neither binding crate declares.
 //!
 //! `objc2-compositor-services` is generated from Apple's headers and binds most of CompositorServices - but
-//! not the four calls this backend needs to place an eye. `cp_view_get_transform`, `cp_view_get_tangents`,
-//! `cp_drawable_set_depth_range` and `cp_drawable_set_device_anchor` are real: Apple's own C guide,
+//! not the four calls this backend needs to place an eye. `cp_view_get_transform`,
+//! `cp_drawable_compute_projection`, `cp_drawable_set_depth_range` and `cp_drawable_set_device_anchor` are
+//! real: Apple's own C guide,
 //! [Drawing fully immersive content using Metal](https://developer.apple.com/documentation/compositorservices/drawing-fully-immersive-content-using-metal),
 //! calls them, and WebKit soft-links `cp_view_get_transform` for exactly the reason this file exists. So
 //! they are declared here from those signatures, with the note that says why they are not in the crate
@@ -16,10 +17,13 @@
 //!   keep rather than a thing to fear: a wrong signature compiles here and fails on a device, and there is no
 //!   device here.
 //!
-//! One of the four is a call Apple has moved on from, and its header says so in words: `cp_view_get_tangents`
-//! is `API_DEPRECATED("Use cp_drawable_compute_projection instead", visionos(1.0, 2.0))` and unavailable on
-//! macOS. The replacement is in `objc2-compositor-services` already, so this is the one declaration here
-//! that is expected to be *deleted* rather than corrected, and `projection` is where that swap would land.
+//! **The opening is a projection matrix and not tangents.** `cp_view_get_tangents` is
+//! `API_DEPRECATED("Use cp_drawable_compute_projection instead", visionos(1.0, 2.0))`, unavailable on macOS,
+//! and refused outright by a mixed-reality layer ("For mixed reality experiences please use
+//! cp_drawable_compute_projection"), so this backend asks the drawable for the matrix and reads the four
+//! angles back out of it with `wxr_render::angles`. That is why the call takes the drawable and a view index
+//! rather than the view: the matrix depends on the depth range the drawable was given, which `set_depth_range`
+//! below can change.
 //!
 //! ARKit is the other half, and now almost all of it comes from the generated `objc2-ar-kit` crate - ARKit
 //! read from the SDK that has its visionOS C module. What is left here is the calls whose signature
