@@ -271,8 +271,8 @@ impl OpenXrSession {
         };
         // Then the kinds, before the ray: `XR_META_environment_raycast` answers with an unclassified surface
         // - a point and a normal - and has no way to say whether it was a plane or a mesh, so a request that
-        // narrowed the kinds cannot be honoured. `ALL` and `NONE` are the two that can be: one wants whatever
-        // the runtime finds and the other wants nothing, and both are the same cast.
+        // narrowed the kinds cannot be honoured. `ALL` wants whatever the runtime finds and `NONE` wants
+        // nothing, and neither narrows anything; the difference is that only the first is a cast.
         if !kinds.is_empty() && !kinds.contains(wxr::HitTestKinds::ALL) {
             return Err(wxr::Error::Unsupported(
                 "hit testing: XR_META_environment_raycast cannot say which kind of surface it met"
@@ -288,6 +288,16 @@ impl OpenXrSession {
                 })?),
                 None => None,
             };
+        // `NONE` is a source that must never report a hit, and this extension has no filter that would make
+        // its one cast answer empty - it answers with whatever surface is in front of the ray. So the slot is
+        // stored empty, which is the state a released source is in too, and `hits` reads both as no answer.
+        // The handle is a real one all the same: an app that asked for nothing gets an empty list rather than
+        // a refusal, and a session that only ever asked for nothing never makes a raycaster.
+        if kinds.is_empty() {
+            let id = raycast.sources.len() as u32;
+            raycast.sources.push(None);
+            return Ok(wxr::HitTestSource::new(id));
+        }
         // The first source is what makes the raycaster, and then it is a frame or two before any of them
         // answer - which is the core's "a frame or two with no source" rather than a silent failure.
         raycast.start();
