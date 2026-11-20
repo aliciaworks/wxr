@@ -66,6 +66,12 @@ impl AppleSession {
             let seconds =
                 cp_time::to_cf_time_interval(cp_frame_timing::presentation_time(timing)).max(0.0);
             self.predicted = Duration::from_secs_f64(seconds);
+            // And the time this frame's ARKit anchors are asked about, which is not the presentation one: the
+            // compositor's header names `trackable_anchor_time` for predicting a trackable anchor, and says
+            // the offset between the two is variable, so it is read per frame rather than derived.
+            self.anchor_time = Some(cp_time::to_cf_time_interval(
+                cp_frame_timing::trackable_anchor_time(timing),
+            ));
 
             // Where the head will be when this is shown, predicted for the presentation time. It is kept
             // because the drawable that is told about it does not exist yet.

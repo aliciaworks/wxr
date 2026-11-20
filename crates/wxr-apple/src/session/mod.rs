@@ -144,6 +144,10 @@ pub struct AppleSession {
     /// views are built from it, and it is what was handed to the compositor to reproject against.
     origin: Option<Mat4>,
     predicted: Duration,
+    /// The Mach absolute time this frame's ARKit anchors are predicted for, from
+    /// `cp_frame_timing_get_trackable_anchor_time`: the compositor's own answer to which time a trackable
+    /// anchor is asked about, and a different time from the presentation one. `None` between frames.
+    anchor_time: Option<f64>,
     /// What `poll` reported last, on both axes, so that a state the layer is simply still in is not news
     /// twice.
     reported: (wxr::State, wxr::Visibility),
@@ -192,6 +196,7 @@ impl AppleSession {
             configured,
             origin: None,
             predicted: Duration::ZERO,
+            anchor_time: None,
             reported: (wxr::State::Ready, wxr::Visibility::Hidden),
             lost: false,
             spaces: Vec::new(),
@@ -342,6 +347,7 @@ impl AppleSession {
         self.textures.clear();
         self.eyes.clear();
         self.origin = None;
+        self.anchor_time = None;
         self.drawable = std::ptr::null_mut();
         self.frame = std::ptr::null_mut();
         self.updated = false;

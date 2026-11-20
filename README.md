@@ -26,10 +26,10 @@ column only on a Mac, since that one counts the SDK's own headers rather than an
 
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
-| **Native API reached** - of each backend's own spec | 223/290 | 85/551 | 148/618 |
+| **Native API reached** - of each backend's own spec | 223/290 | 85/551 | 151/618 |
 | *as a percentage* | 77% | 15% | 24% |
-| **WebXR API reached** - of the whole API | 364/452 | 251/452 | 237/452 |
-| *as a percentage* | 81% | 56% | 52% |
+| **WebXR API reached** - of the whole API | 364/452 | 252/452 | 240/452 |
+| *as a percentage* | 81% | 56% | 53% |
 
 The whole API is **452 members across the dozen WebXR specifications** - the Device API plus Layers, Hand
 Input, Depth Sensing, Hit Test, Lighting Estimation, Anchors, Plane Detection, the AR Module, DOM Overlays

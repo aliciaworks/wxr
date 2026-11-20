@@ -48,7 +48,7 @@ impl AppleSession {
         // has controllers, and still answers for a space it made.
         if self
             .controllers
-            .read(self.arkit.as_mut(), space_from_world, out)
+            .read(self.arkit.as_mut(), self.anchor_time, space_from_world, out)
         {
             self.inputs_changed = true;
         }

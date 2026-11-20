@@ -38,6 +38,14 @@
 //! [`wxr::InputSource::motion`]. A velocity is a direction per second, so it turns with the caller's space
 //! and is not moved by it, and a speed about the accessory's own axes reads the same however that space is
 //! turned.
+//!
+//! **And where it will be when the frame is drawn.** A latest anchor is where the accessory was when ARKit
+//! last updated it, which is a frame or more before the picture that uses it - so a frame that knows its
+//! trackable anchor time asks ARKit to predict each tracked anchor to it, and reads the place from the
+//! predicted one. `cp_frame_timing_get_trackable_anchor_time` is the compositor's own answer to which time
+//! that is, and the header names exactly this use for it. What prediction does not change is identity: the
+//! accessory, the hand and the tracking state are the latest anchor's, and a prediction ARKit refuses leaves
+//! the latest anchor as the answer rather than no pose at all.
 
 mod provider;
 
@@ -121,13 +129,14 @@ impl ArKit {
     /// Where the accessories are, after the provider has been given whatever loaded since the last call.
     ///
     /// `&mut self` because the provider is made here rather than at startup: the set it tracks is not known
-    /// until ARKit has answered a load.
-    pub(crate) fn accessory_poses(&mut self) -> Vec<AccessoryPose> {
+    /// until ARKit has answered a load. `at` predicts each tracked anchor to that Mach absolute time; `None`
+    /// is a caller outside a frame, which gets the latest anchors.
+    pub(crate) fn accessory_poses(&mut self, at: Option<f64>) -> Vec<AccessoryPose> {
         let Some(accessories) = &mut self.accessories else {
             return Vec::new();
         };
         accessories.provider(&self._session, &self._providers);
-        accessories.poses()
+        accessories.poses(at)
     }
 }
 

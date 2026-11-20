@@ -157,10 +157,13 @@ impl GameControllers {
     /// back - handing the number to a different device would make a press from somewhere else look like
     /// the same one.
     ///
-    /// `arkit` gives a device its place, and `space_from_world` brings that into the caller's space.
+    /// `arkit` gives a device its place, and `space_from_world` brings that into the caller's space. `at` is
+    /// the Mach absolute time ARKit should predict that place for - the frame's trackable anchor time - and
+    /// `None` leaves it at the latest anchor.
     pub fn read(
         &mut self,
         mut arkit: Option<&mut ArKit>,
+        at: Option<f64>,
         space_from_world: wxr::glam::Mat4,
         out: &mut Vec<wxr::InputSource>,
     ) -> bool {
@@ -201,7 +204,9 @@ impl GameControllers {
             }
         }
         // Asked after the loads above, so a device first seen now is only a frame behind the load.
-        let places = arkit.map(ArKit::accessory_poses).unwrap_or_default();
+        let places = arkit
+            .map(|arkit| arkit.accessory_poses(at))
+            .unwrap_or_default();
         for known in &mut self.known {
             let here = connected.iter().any(|device| known.device.same(device));
             if known.connected != here {

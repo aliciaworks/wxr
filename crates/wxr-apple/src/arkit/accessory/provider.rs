@@ -42,6 +42,10 @@ pub(crate) struct Accessories {
     /// Which locations each loaded accessory named, by the address its anchor reports - the accessory both
     /// frameworks know it by, and the key a frame looks a place up with.
     named: HashMap<usize, Named>,
+    /// The anchor a prediction is written into, made on the first frame that asks for one: ARKit fills an
+    /// anchor of the caller's rather than answering with a fresh one, and a frame predicts one accessory at a
+    /// time.
+    predicted: Option<Retained<ar_accessory_anchor_t>>,
 }
 
 impl Accessories {
@@ -67,6 +71,7 @@ impl Accessories {
             tracked,
             loaded: Box::leak(Box::new(Mutex::new(Vec::new()))),
             named: HashMap::new(),
+            predicted: None,
         })
     }
 
@@ -140,21 +145,34 @@ impl Accessories {
         self.provider.as_deref()
     }
 
-    /// Where the accessories are, as the latest anchors the provider holds.
+    /// Where the accessories are, as the latest anchors the provider holds, predicted for an instant.
     ///
     /// A pull rather than an update stream: the anchors are current when asked, and a frame wants this
     /// frame's place rather than the last push. An accessory the provider tracks but ARKit is not tracking
     /// still has an anchor, with `tracked` false - which is what the core's own flag says.
-    pub(super) fn poses(&self) -> Vec<AccessoryPose> {
+    ///
+    /// `at` is the Mach absolute time the frame's trackable anchors are asked about, and every tracked anchor
+    /// is predicted to it: the latest anchor is where the accessory was when ARKit last saw it, which is a
+    /// frame or more before the picture drawn from it. `None` asks for the latest anchors unchanged.
+    pub(super) fn poses(&mut self, at: Option<f64>) -> Vec<AccessoryPose> {
         let Some(provider) = &self.provider else {
             return Vec::new();
         };
-        // SAFETY: the provider is live, and the enumeration only reads the anchors it is handed.
+        let prediction = at.map(|at| {
+            // SAFETY: the anchor creator returns `+1`, which the `Retained` takes from here.
+            let out = self
+                .predicted
+                .get_or_insert_with(|| unsafe { ar_accessory_anchor_t::new() });
+            Prediction { provider, at, out }
+        });
+        // SAFETY: the provider is live, and the enumeration only reads the anchors it is handed - and writes
+        // into the one prediction anchor, one accessory at a time.
         unsafe {
             let anchors = ar_accessory_tracking_provider_t::latest_anchors(provider);
             let mut found = Anchors {
                 poses: Vec::new(),
                 named: &self.named,
+                prediction,
             };
             ar_accessory_anchors_t::enumerate_anchors_f(
                 &anchors,
@@ -250,10 +268,20 @@ unsafe extern "C-unwind" fn note_location(
     true
 }
 
-/// The state one enumeration of anchors reads: where the poses go, and what each accessory named.
+/// One frame's prediction: the provider to ask, the time to ask for, and the one anchor answers go into.
+#[derive(Clone, Copy)]
+struct Prediction<'a> {
+    provider: &'a ar_accessory_tracking_provider_t,
+    at: f64,
+    out: &'a ar_accessory_anchor_t,
+}
+
+/// The state one enumeration of anchors reads: where the poses go, what each accessory named, and whether
+/// each anchor is predicted before it is read.
 struct Anchors<'a> {
     poses: Vec<AccessoryPose>,
     named: &'a HashMap<usize, Named>,
+    prediction: Option<Prediction<'a>>,
 }
 
 /// One of an accessory's named locations, in ARKit's world.
@@ -348,7 +376,26 @@ unsafe extern "C-unwind" fn collect(context: *mut c_void, anchor: &ar_accessory_
         let Some(device) = ar_accessory_t::source_device(&accessory) else {
             return true;
         };
-        let address = std::ptr::from_ref(anchor).cast::<c_void>();
+        // The anchor the geometry is read from: the latest one, or this frame's prediction of it. Identity,
+        // the hand and the tracking state stay the latest anchor's, because none of them is what a prediction
+        // changes; the place, the locations and the velocities come from the one the frame is drawn for.
+        let geometry = match found.prediction {
+            Some(prediction)
+                if ar_accessory_anchor_t::is_tracked(anchor)
+                    && ar_accessory_tracking_provider_t::predict_anchor_at_timestamp(
+                        prediction.provider,
+                        anchor,
+                        prediction.at,
+                        prediction.out,
+                    ) =>
+            {
+                prediction.out
+            }
+            // No frame to predict for, or ARKit would not predict this one: the latest anchor is the honest
+            // answer, and a controller a frame stale is better than one that is not there.
+            _ => anchor,
+        };
+        let address = std::ptr::from_ref(geometry).cast::<c_void>();
         // Not the generic anchor call: ARKit's plain accessory transform is the *rendered* correction,
         // and a pose an app points with is where the accessory actually is.
         let world_from_anchor = Mat4::from_cols_array(
