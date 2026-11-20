@@ -6,10 +6,10 @@
 //! all is that looking for planes takes time - which is why one call to [`wxr::Session::planes`] is one
 //! *step* and an empty list is a pass that has not finished yet.
 //!
-//! What is not here is the polygon. `XR_EXT_plane_detection` will hand back each plane's outer contour and
-//! its holes, and [`wxr::Plane`] is a bounding box with an extent - which is the shape all three backends
-//! have, and deliberately not the outline the other two have and this one would. Asking the runtime for
-//! contours it would then throw away is why `PlaneDetectorFlagsEXT` is empty rather than `ENABLE_CONTOUR`.
+//! What is here is the contour as well as the box: `XR_EXT_plane_detection` hands back each plane's outer
+//! boundary as a polygon buffer, and [`wxr::Plane::outline`] is where the core keeps a shape the runtime
+//! reports rather than a rectangle it inferred. The detector is made with `ENABLE_CONTOUR` for it, and the
+//! first buffer is the outer boundary - the rest are holes, which the core's single loop does not carry.
 
 use super::*;
 
@@ -72,9 +72,10 @@ impl PlaneDetector {
         let create_info = openxr_sys::PlaneDetectorCreateInfoEXT {
             ty: openxr_sys::StructureType::PLANE_DETECTOR_CREATE_INFO_EXT,
             next: std::ptr::null(),
-            // No contours: the core's plane is a bounding box, and this is where the decision to not ask
-            // for the outline is recorded - see the module.
-            flags: openxr_sys::PlaneDetectorFlagsEXT::EMPTY,
+            // The contour, because the core carries the shape as well as the box now. A runtime that does not
+            // fill polygon buffers reports a count of zero on each plane, which is a `None` outline rather
+            // than a create that failed - so asking costs a runtime that has it nothing it would not spend.
+            flags: openxr_sys::PlaneDetectorFlagsEXT::ENABLE_CONTOUR,
         };
         let mut detector = null_detector();
         // SAFETY: every pointer here points at a value that outlives the call, and the session and the
@@ -262,6 +263,9 @@ impl PlaneDetector {
                 // OpenXR measures the extent along the pose's X and Y and the core along its X and Z - so
                 // the two numbers carry over unchanged, which is what `convert::surface`'s rotation is for.
                 extent: wxr::glam::Vec2::new(location.extents.width, location.extents.height),
+                // The first polygon buffer is the outer boundary and the rest are holes; the core's outline
+                // is one closed loop, so the holes are the shape's business and not a caller's.
+                outline: self.polygon(location.plane_id, location.polygon_buffer_count),
                 orientation: orientation(location.orientation),
                 kind: kind(location.semantic_type),
                 // The detector reports a pose and an extent and no clock, and the core's `None` is that
@@ -269,6 +273,68 @@ impl PlaneDetector {
                 last_changed: None,
             });
         }
+    }
+
+    /// The outer contour of one plane, when the pass produced one.
+    ///
+    /// `buffers` is the count the location reported, and index zero is the outer boundary: a plane with none
+    /// is a runtime that has no contour for it - or one that was made without `ENABLE_CONTOUR`, which this
+    /// backend does not do - and asking for an index past the count is invalid usage rather than an empty
+    /// answer.
+    ///
+    /// The two-call idiom again, and the second call's count is the truth: a runtime is free to write fewer
+    /// vertices than it promised, and the buffer is cut to what it actually filled.
+    fn polygon(&self, plane_id: u64, buffers: u32) -> Option<Vec<wxr::glam::Vec2>> {
+        if buffers == 0 {
+            return None;
+        }
+        let mut polygon = empty_polygon();
+        // SAFETY: the detector is live and `polygon` is an out-struct with a null vertex array and a zero
+        // capacity, which is what the runtime is told to expect when it is only being asked for a count.
+        let result = unsafe {
+            (self.table.get_plane_polygon_buffer)(self.detector, plane_id, 0, &mut polygon)
+        };
+        if result != openxr_sys::Result::SUCCESS {
+            log::debug!("wxr-openxr: asking for a plane contour: {result:?}");
+            return None;
+        }
+        let count = polygon.vertex_count_output as usize;
+        if count == 0 {
+            return None;
+        }
+        let mut vertices = vec![openxr_sys::Vector2f::default(); count];
+        polygon.vertex_capacity_input = count as u32;
+        polygon.vertices = vertices.as_mut_ptr();
+        // SAFETY: the buffer holds exactly `vertex_capacity_input` elements and outlives the call.
+        let result = unsafe {
+            (self.table.get_plane_polygon_buffer)(self.detector, plane_id, 0, &mut polygon)
+        };
+        if result != openxr_sys::Result::SUCCESS {
+            log::debug!("wxr-openxr: reading a plane contour: {result:?}");
+            return None;
+        }
+        vertices.truncate((polygon.vertex_count_output as usize).min(vertices.len()));
+        Some(
+            vertices
+                .into_iter()
+                // The contour is in the plane's own space, which OpenXR measures along X and Y and the core
+                // along X and Z - the same turn `convert::surface` makes of the pose.
+                .map(|vertex| {
+                    crate::convert::surface_point(wxr::glam::Vec2::new(vertex.x, vertex.y))
+                })
+                .collect(),
+        )
+    }
+}
+
+/// An empty polygon buffer: the shape the runtime fills a count into and then a list of vertices into.
+fn empty_polygon() -> openxr_sys::PlaneDetectorPolygonBufferEXT {
+    openxr_sys::PlaneDetectorPolygonBufferEXT {
+        ty: openxr_sys::StructureType::PLANE_DETECTOR_POLYGON_BUFFER_EXT,
+        next: std::ptr::null_mut(),
+        vertex_capacity_input: 0,
+        vertex_count_output: 0,
+        vertices: std::ptr::null_mut(),
     }
 }
 

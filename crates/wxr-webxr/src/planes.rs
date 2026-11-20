@@ -52,10 +52,12 @@ pub fn detected(
         let Some(pose) = frame.get_pose(&plane.plane_space(), reference) else {
             continue;
         };
+        let (outline, extent) = shape(&plane);
         into.push(wxr::Plane {
             id: ids.id(&plane),
             pose: crate::transform(pose.transform()),
-            extent: extent(&plane),
+            extent,
+            outline,
             orientation: match plane.orientation() {
                 Some(XrPlaneOrientation::Horizontal) => wxr::PlaneOrientation::Horizontal,
                 Some(XrPlaneOrientation::Vertical) => wxr::PlaneOrientation::Vertical,
@@ -100,24 +102,28 @@ fn last_changed(milliseconds: f64) -> Option<Duration> {
     Duration::try_from_secs_f64(milliseconds / 1000.0).ok()
 }
 
-/// The bounding box of the plane's outline, which WebXR reports instead of a size.
+/// The plane's outline, and the bounding box of it that WebXR reports instead of a size.
 ///
 /// The points are in the plane's own space, so the box is across X and along Z and the width and height fall
-/// out of the extremes. An outline that is empty or not there is a zero extent, which is a surface a caller can
-/// still avoid - the extent is a size, not a promise.
-fn extent(plane: &XrPlane) -> wxr::glam::Vec2 {
-    let mut min = wxr::glam::Vec2::splat(f32::MAX);
-    let mut max = wxr::glam::Vec2::splat(f32::MIN);
+/// out of the extremes. The two are read together because they are two answers about one shape: an outline and
+/// an extent that disagreed would put content beside the surface it is meant to sit on. A polygon that is
+/// empty or not there is no outline and a zero extent, which is a surface a caller can still avoid - the
+/// extent is a size, not a promise.
+fn shape(plane: &XrPlane) -> (Option<Vec<wxr::glam::Vec2>>, wxr::glam::Vec2) {
+    let mut points = Vec::new();
     for point in plane.polygon().iter() {
         let Ok(point) = point.dyn_into::<DomPointReadOnly>() else {
             continue;
         };
-        let (x, z) = (point.x() as f32, point.z() as f32);
-        min = min.min(wxr::glam::Vec2::new(x, z));
-        max = max.max(wxr::glam::Vec2::new(x, z));
+        points.push(wxr::glam::Vec2::new(point.x() as f32, point.z() as f32));
     }
-    if min.x > max.x || min.y > max.y {
-        return wxr::glam::Vec2::ZERO;
+    let Some(&first) = points.first() else {
+        return (None, wxr::glam::Vec2::ZERO);
+    };
+    let (mut min, mut max) = (first, first);
+    for point in &points[1..] {
+        min = min.min(*point);
+        max = max.max(*point);
     }
-    max - min
+    (Some(points), max - min)
 }

@@ -136,6 +136,16 @@ pub(crate) fn surface(pose: wxr::Pose) -> wxr::Pose {
     }
 }
 
+/// A point in a surface's own plane, in the core's terms.
+///
+/// The frame rotation [`surface`] applies to the pose applies to the points inside it too: OpenXR's in-plane Y
+/// is the core's -Z, and X is X in both. Reading a contour without it puts every point on the wrong side of
+/// the surface's X axis - a shape of the right size the wrong way round, which on a floor is an outline that
+/// is still on the floor and no longer where the runtime said.
+pub(crate) fn surface_point(point: wxr::glam::Vec2) -> wxr::glam::Vec2 {
+    wxr::glam::Vec2::new(point.x, -point.y)
+}
+
 #[cfg(test)]
 mod tests {
     use wxr::glam::Vec3;
@@ -215,5 +225,15 @@ mod tests {
                 .abs()
                 < SLACK
         );
+    }
+
+    /// A point in a surface turns with the frame the surface is in, so OpenXR's +Y is the core's -Z and X is
+    /// the same axis in both. A contour read without the turn keeps its shape and lands mirrored across the
+    /// plane's X axis.
+    #[test]
+    fn a_surface_point_turns_with_its_frame() {
+        let core = surface_point(wxr::glam::Vec2::new(1.0, 2.0));
+        assert!((core - wxr::glam::Vec2::new(1.0, -2.0)).length() < SLACK);
+        assert!((surface_point(wxr::glam::Vec2::X) - wxr::glam::Vec2::X).length() < SLACK);
     }
 }

@@ -225,6 +225,7 @@ mod tests {
             id: 0,
             pose,
             extent,
+            outline: None,
             orientation: wxr::PlaneOrientation::Horizontal,
             kind: wxr::SurfaceKind::None,
             last_changed: None,
@@ -313,10 +314,11 @@ mod tests {
             origin: Vec3::new(1.5, 2.0, 0.0),
             direction: Vec3::NEG_Y,
         };
-        let contact = nearest(&[], &[floor], &inside).expect("half a metre is on the floor");
+        let contact = nearest(&[], std::slice::from_ref(&floor), &inside)
+            .expect("half a metre is on the floor");
         assert!((contact.point - Vec3::new(0.5, 0.0, 0.5)).length() < 1e-5);
         assert!((contact.normal - Vec3::Y).length() < 1e-5);
-        assert!(nearest(&[], &[floor], &outside).is_none());
+        assert!(nearest(&[], std::slice::from_ref(&floor), &outside).is_none());
     }
 
     #[test]

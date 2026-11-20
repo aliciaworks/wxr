@@ -50,6 +50,10 @@ unsafe fn plane_of(anchor: &ar_plane_anchor_t) -> wxr::Plane {
                 ar_plane_extent_t::width(&extent),
                 ar_plane_extent_t::height(&extent),
             ),
+            // ARKit reports a plane as a rectangle with an extent, and this backend does not read the finer
+            // mesh geometry that could carry another shape - so the box is the whole answer and the outline
+            // is left absent rather than filled in from it. A surface traced as triangles is a `wxr::Mesh`.
+            outline: None,
             orientation: match alignment {
                 a if a == ar_plane_alignment_t::horizontal => wxr::PlaneOrientation::Horizontal,
                 a if a == ar_plane_alignment_t::vertical => wxr::PlaneOrientation::Vertical,

@@ -26,8 +26,8 @@ column only on a Mac, since that one counts the SDK's own headers rather than an
 
 | | WebXR | OpenXR | visionOS |
 | --- | ---: | ---: | ---: |
-| **Native API reached** - of each backend's own spec | 223/290 | 85/551 | 155/618 |
-| *as a percentage* | 77% | 15% | 25% |
+| **Native API reached** - of each backend's own spec | 223/290 | 86/551 | 155/618 |
+| *as a percentage* | 77% | 16% | 25% |
 | **WebXR API reached** - of the whole API | 364/452 | 252/452 | 240/452 |
 | *as a percentage* | 81% | 56% | 53% |
 
@@ -63,8 +63,9 @@ viewer's - and `TrackedPose` is that answer with the speed WebXR reports on the 
 is `XRRenderState.depthNear` and `depthFar`, the one number a renderer and a compositor have to agree on,
 because a compositor that reprojects a frame with depth cannot read the planes out of the picture.
 
-AR is the other half of what WebXR has: `Plane` and `Session::planes` are the surfaces a runtime has detected,
-`Ray`, `HitTestSource` and `Session::hits` are a ray and where it lands on them, and `LightProbe` and
+AR is the other half of what WebXR has: `Plane` and `Session::planes` are the surfaces a runtime has detected -
+a box every runtime can fill, and the outline of the shape when the runtime reports one rather than an
+extent alone - `Ray`, `HitTestSource` and `Session::hits` are a ray and where it lands on them, and `LightProbe` and
 `LightEstimate` are the room's light - nine spherical-harmonic coefficients and a primary light, so a virtual
 object is lit by the room rather than by a guess. Both are asked for by
 `SessionMode::ImmersiveAr` - a runtime told the session is drawn over the world is the one that offers them -
