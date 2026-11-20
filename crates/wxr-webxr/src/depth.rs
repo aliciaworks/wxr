@@ -26,8 +26,18 @@ pub fn information(binding: &XrgpuBinding, view: &XrView) -> Option<(JsValue, wx
     if width == 0 || height == 0 {
         return None;
     }
+    let texture = information.texture();
+    // The format is the texture's, and it is the one thing that decides whether a shader can read this at all.
+    // `float32` is `r32float`, a single floating-point channel the occlusion pass samples as one number;
+    // `unsigned-short` is `r16uint`, which is an integer channel with a `textureLoad` and a cast in front of
+    // it, and it is what a browser that would not grant `float32` hands over. Reading that as a float would be
+    // a distance from some other number entirely, so the answer is no depth - the same answer as a session
+    // that measured nothing, and a frame a scene draws everything into.
+    if depth_format(&texture).as_deref() != Some("r32float") {
+        return None;
+    }
     Some((
-        information.texture(),
+        texture,
         wxr::DepthInfo {
             size: wxr::Extent2d::new(width, height),
             // One scalar and one multiply, which is what the specification says this is: the buffer's values
@@ -42,4 +52,14 @@ pub fn information(binding: &XrgpuBinding, view: &XrView) -> Option<(JsValue, wx
             ),
         },
     ))
+}
+
+/// The `GPUTextureFormat` of a browser depth texture, as the browser spells it.
+///
+/// A `GPUTexture` is deliberately not one of the generated types - it belongs to wgpu and to the page - so its
+/// fields are read by name, which is the same read `session::image_meta` makes of a colour texture.
+fn depth_format(texture: &JsValue) -> Option<String> {
+    js_sys::Reflect::get(texture, &JsValue::from_str("format"))
+        .ok()?
+        .as_string()
 }

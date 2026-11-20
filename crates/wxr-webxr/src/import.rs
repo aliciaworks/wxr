@@ -43,7 +43,7 @@ impl wxr_render::Import for Images {
         info: wxr::DepthInfo,
         depth: &Self::EnvironmentDepth,
     ) -> Option<wgpu::Texture> {
-        Some(wrap_depth(device, info, depth.clone()))
+        wrap_depth(device, info, depth.clone())
     }
 
     /// The depth buffer that came with the layer, which is the one the compositor reprojects with.
@@ -64,20 +64,36 @@ impl wxr_render::Import for Images {
 
 /// The room's depth as a wgpu texture, which is a `GPUTexture` like the colour one but read instead of drawn
 /// into.
+///
+/// The descriptor says how many layers it has, because the specification lets a native depth buffer be one
+/// array layer per view and a renderer picks an eye's layer from that number. Declaring one on a buffer of two
+/// would give the right eye the left one's depth - an occlusion shifted by an interpupillary distance, which is
+/// visible at every edge in the room.
+///
+/// The format is not read here: [`crate::depth::information`] answers only for `r32float`, so a texture this is
+/// handed is one and a descriptor that says so is the truth.
 fn wrap_depth(
     device: &wgpu::Device,
     info: wxr::DepthInfo,
     texture: wasm_bindgen::JsValue,
-) -> wgpu::Texture {
+) -> Option<wgpu::Texture> {
+    let layers = js_sys::Reflect::get(
+        &texture,
+        &wasm_bindgen::JsValue::from_str("depthOrArrayLayers"),
+    )
+    .ok()
+    .and_then(|value| value.as_f64())
+    .map(|layers| layers.max(1.0) as u32)
+    .unwrap_or(1);
     let texture: wgpu::webgpu::GpuTexture = texture.unchecked_into();
-    device.create_texture_from_webgpu_handle(
+    Some(device.create_texture_from_webgpu_handle(
         texture,
         &wgpu::TextureDescriptor {
             label: Some("webxr depth"),
             size: wgpu::Extent3d {
                 width: info.size.width,
                 height: info.size.height,
-                depth_or_array_layers: 1,
+                depth_or_array_layers: layers,
             },
             mip_level_count: 1,
             sample_count: 1,
@@ -90,7 +106,7 @@ fn wrap_depth(
             view_formats: &[],
         },
         None,
-    )
+    ))
 }
 
 /// One browser texture as a wgpu one, with the descriptor saying what it really is.

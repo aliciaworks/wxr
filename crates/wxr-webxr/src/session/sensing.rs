@@ -125,10 +125,14 @@ impl WebXrSession {
         // Depth is granted by a feature and readable only through the binding that gives a texture: a browser
         // that granted it and no binding is a depth this backend cannot hand over. The usage matters too,
         // because a CPU-optimised session delivers bytes rather than the texture
-        // [`wxr::Session::EnvironmentDepth`] is.
+        // [`wxr::Session::EnvironmentDepth`] is. And so does the format: `unsigned-short` is an `r16uint`
+        // texture, which the occlusion pass cannot sample, and a session that granted that is a session with
+        // a measurement the renderer has no way to read. `depth` answers `None` for it; the bit says the same
+        // thing before an app asks.
         if has_feature(&session, "depth-sensing")
             && self.gpu.is_some()
             && session.depth_usage() != XrDepthUsage::CpuOptimized
+            && session.depth_data_format() == XrDepthDataFormat::Float32
         {
             features = features.union(wxr::Features::DEPTH);
         }
