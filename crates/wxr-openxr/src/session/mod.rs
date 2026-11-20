@@ -148,163 +148,27 @@ impl wxr::Session for OpenXrSession {
         self.bounds_impl(space, out)
     }
 
+    /// Make a picture the compositor places itself, which is `xrCreateSwapchain` for the shape's extension.
     fn layer(
         &mut self,
         space: wxr::ReferenceSpace,
         shape: wxr::LayerShape,
         pixels: wxr::Extent2d,
     ) -> Result<wxr::Layer, wxr::Error> {
-        // One extension per non-quad shape, enabled when the instance is made or not at all - so the refusal
-        // is per shape and reads what the capability bits report.
-        let enabled = match shape {
-            wxr::LayerShape::Quad { .. } => true,
-            wxr::LayerShape::Cylinder { .. } => self.layers_enabled.cylinder,
-            wxr::LayerShape::Equirect { .. } => self.layers_enabled.equirect,
-            wxr::LayerShape::Cube => self.layers_enabled.cube,
-        };
-        if !enabled {
-            return Err(wxr::Error::Unsupported(
-                format!(
-                    "{} layers: this runtime does not have the extension",
-                    shape.name()
-                )
-                .into(),
-            ));
-        }
-        // The kind this session recorded for the id, not the public half: a translated cube is placed by making
-        // a reference space of that kind. Both halves are checked first, so a changed kind is `NoSpace`.
-        let Some(space_id) = self.space_index(space) else {
-            return Err(wxr::Error::NoSpace(space.kind));
-        };
-        let space_kind = self.kinds[space_id];
-        let swapchain = self
-            .session
-            .create_swapchain(&xr::SwapchainCreateInfo {
-                create_flags: xr::SwapchainCreateFlags::EMPTY,
-                usage_flags: xr::SwapchainUsageFlags::COLOR_ATTACHMENT
-                    | xr::SwapchainUsageFlags::SAMPLED,
-                // The format the session is drawing the world in, which is the one the runtime offered and the
-                // one the renderer's pipeline is already built for.
-                format: self.format,
-                sample_count: 1,
-                width: pixels.width,
-                height: pixels.height,
-                // A cube is six faces of one image; every other shape is one. The array is one for all of
-                // them: a layer is one picture per eye, which is the reason to hand it to a compositor.
-                face_count: match shape {
-                    wxr::LayerShape::Cube => 6,
-                    _ => 1,
-                },
-                array_size: 1,
-                mip_count: 1,
-            })
-            .map_err(|error| Error::runtime("create a layer's swapchain", error))?;
-        let images: Vec<_> = swapchain
-            .enumerate_images()
-            .map_err(|error| Error::runtime("enumerate a layer's images", error))?
-            .into_iter()
-            // A layer has no depth of its own: the app's depth is the projection layer's, because that is the
-            // picture the compositor reprojects - the panels over it are already where they are.
-            .map(|color| crate::import::SwapchainImage {
-                color,
-                depth: None,
-                motion: None,
-            })
-            .collect();
-        let id = self.layers.len() as u32;
-        self.layers.push(Some(Layer {
-            swapchain,
-            images,
-            space: space_id,
-            space_kind,
-            pose: xr::Posef::IDENTITY,
-            placed: None,
-            placed_at: None,
-            shape,
-            extent: pixels,
-            held: None,
-        }));
-        log::info!(
-            "wxr-openxr: a {} layer at {}x{} px",
-            shape.name(),
-            pixels.width,
-            pixels.height
-        );
-        Ok(wxr::Layer::new(id))
+        self.layer_impl(space, shape, pixels)
     }
 
     fn layer_image(&mut self, layer: wxr::Layer) -> Option<(&Self::Image, wxr::LayerImage)> {
-        let slot = self.layers.get(layer.id() as usize)?.as_ref()?;
-        let held = slot.held?;
-        let image = slot.images.get(held as usize)?;
-        // One image and the whole of it: a layer's swapchain is the layer's, so there is no atlas to take a
-        // sub-rectangle out of - which is the difference between this and the projection layer's sub-image.
-        Some((
-            image,
-            wxr::LayerImage {
-                meta: wxr::ImageMeta {
-                    format: self.color,
-                    extent: slot.extent,
-                    // A cube's swapchain is six faces, one per array layer. Every other shape is one picture.
-                    layers: if matches!(slot.shape, wxr::LayerShape::Cube) {
-                        6
-                    } else {
-                        1
-                    },
-                },
-                viewport: wxr::Viewport {
-                    x: 0,
-                    y: 0,
-                    width: slot.extent.width,
-                    height: slot.extent.height,
-                },
-            },
-        ))
+        self.layer_image_impl(layer)
     }
 
     fn set_layer_pose(&mut self, layer: wxr::Layer, pose: wxr::Pose) -> Result<(), wxr::Error> {
-        let Some(slot) = self
-            .layers
-            .get_mut(layer.id() as usize)
-            .and_then(Option::as_mut)
-        else {
-            return Err(wxr::Error::Unsupported("no such layer".into()));
-        };
-        // Kept rather than applied: a layer's pose is read at `xrEndFrame`, so placing one is not a call into
-        // the runtime - it is where the next frame says it is. A cube is the exception: its composition struct
-        // has an orientation and no position, so one is placed by making a reference space it then uses.
-        if matches!(slot.shape, wxr::LayerShape::Cube) && pose.position != wxr::glam::Vec3::ZERO {
-            if slot.placed.is_none() || slot.placed_at != Some(pose.position) {
-                let Some(offset) = self.offsets.get(slot.space).copied() else {
-                    return Err(wxr::Error::NoSpace(slot.space_kind));
-                };
-                let at = wxr::Pose {
-                    position: pose.position,
-                    orientation: wxr::glam::Quat::IDENTITY,
-                };
-                let space = self
-                    .session
-                    .create_reference_space(
-                        reference_space(slot.space_kind),
-                        posef(offset.then(at)),
-                    )
-                    .map_err(|error| Error::runtime("place a cube layer", error))?;
-                slot.placed = Some(space);
-                slot.placed_at = Some(pose.position);
-            }
-        } else {
-            slot.placed = None;
-            slot.placed_at = None;
-        }
-        slot.pose = posef(pose);
-        Ok(())
+        self.set_layer_pose_impl(layer, pose)
     }
 
+    /// Dropping the swapchain is the whole of it: OpenXR has no `destroy`, and a layer no longer named is gone.
     fn release_layer(&mut self, layer: wxr::Layer) {
-        // Dropping the swapchain is the whole of it: OpenXR has no `destroy`, and a layer no longer named is gone.
-        if let Some(slot) = self.layers.get_mut(layer.id() as usize) {
-            *slot = None;
-        }
+        self.release_layer_impl(layer)
     }
 
     fn begin(&mut self, _now: Duration, out: &mut wxr::Frame) -> Result<(), wxr::Error> {
