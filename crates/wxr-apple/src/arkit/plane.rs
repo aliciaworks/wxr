@@ -4,6 +4,7 @@
 //! come from and this is what a plane anchor is once it is Rust's - a pose, an extent, and a horizontal or
 //! a vertical. Nothing here asks ARKit a question; it answers one.
 
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::time::Duration;
 
@@ -11,7 +12,7 @@ use objc2_ar_kit::{
     ar_plane_alignment_t, ar_plane_anchor_t, ar_plane_extent_t, ar_plane_geometry_t,
     ar_surface_classification_t,
 };
-use wxr::glam::Mat4;
+use wxr::glam::{Mat4, Vec2};
 
 use crate::sys;
 
@@ -22,6 +23,11 @@ use crate::sys;
 /// its own transform into the anchor's space. Composing the two gives the rectangle's centre and its turn,
 /// with the surface's normal on +Y and the extent along X and Z - the space WebXR's plane space is, and the
 /// one the core says a plane's pose is in.
+///
+/// The outline is the plane's mesh, and it is not the rectangle: Apple describes the geometry as the convex
+/// polygon around everything ARKit currently thinks is part of the surface, and the extent as the rectangle
+/// that encloses it. The mesh's vertices are in the anchor's space, so each point is brought into the
+/// rectangle's space before it is reported - the same transform the pose is built from, read the other way.
 ///
 /// # Safety
 ///
@@ -50,10 +56,9 @@ unsafe fn plane_of(anchor: &ar_plane_anchor_t) -> wxr::Plane {
                 ar_plane_extent_t::width(&extent),
                 ar_plane_extent_t::height(&extent),
             ),
-            // ARKit reports a plane as a rectangle with an extent, and this backend does not read the finer
-            // mesh geometry that could carry another shape - so the box is the whole answer and the outline
-            // is left absent rather than filled in from it. A surface traced as triangles is a `wxr::Mesh`.
-            outline: None,
+            // The mesh's rim, which is the polygon Apple says the geometry encloses, and not the extent's
+            // four corners: an L-shaped table has six or more points.
+            outline: outline_of(&geometry, anchor_from_extent),
             orientation: match alignment {
                 a if a == ar_plane_alignment_t::horizontal => wxr::PlaneOrientation::Horizontal,
                 a if a == ar_plane_alignment_t::vertical => wxr::PlaneOrientation::Vertical,
@@ -90,6 +95,99 @@ fn rectangle_pose(
         position,
         orientation,
     }
+}
+
+/// The plane's boundary, as the core's outline, in the rectangle's space.
+///
+/// ARKit gives a plane as a triangle mesh and the extent as the rectangle around it; the boundary is the edges
+/// no second triangle shares, walked in the direction the triangles wind them. Points come out of the mesh in
+/// the anchor's space - Apple says the anchor's transform defines it - and the core's plane pose is the
+/// rectangle's, so each point goes through the inverse of the extent's transform first.
+///
+/// `None` for a mesh this cannot read: no faces, a rim in more than one piece, or a walk that does not close.
+/// A plane with no outline is one a caller draws from its extent, which is what every caller did before.
+///
+/// # Safety
+///
+/// `geometry` must be a live plane geometry.
+unsafe fn outline_of(
+    geometry: &ar_plane_geometry_t,
+    anchor_from_extent: sys::Float4x4,
+) -> Option<Vec<Vec2>> {
+    // SAFETY: the geometry is live, and both buffers are the runtime's - the mesh readers have the same
+    // contract they have for a mesh anchor.
+    unsafe {
+        let vertices = super::mesh::read_vectors(&ar_plane_geometry_t::mesh_vertices(geometry));
+        let indices = super::mesh::read_indices(&ar_plane_geometry_t::mesh_faces(geometry));
+        let rim = boundary(&indices, vertices.len())?;
+        let extent_from_anchor = Mat4::from_cols_array(&anchor_from_extent.0).inverse();
+        Some(
+            rim.into_iter()
+                .map(|index| {
+                    let point = extent_from_anchor.transform_point3(vertices[index]);
+                    // The extent's space is the core plane's: X across and Z along, with the normal on Y.
+                    // A point that is a rounding error off the surface has its Y dropped rather than
+                    // reported as a second shape a hair above the first.
+                    Vec2::new(point.x, point.z)
+                })
+                .collect(),
+        )
+    }
+}
+
+/// The vertices on the rim of a triangle mesh, in the order the triangles walk them.
+///
+/// An edge inside the mesh is shared by two triangles and an edge on the rim by one, so counting the
+/// undirected edges and keeping the ones that occurred once is the whole of the classification. The rim edges
+/// keep their direction, and a consistently wound mesh gives every rim vertex one edge in and one edge out -
+/// which is what turns the set into a loop.
+///
+/// `None` when the mesh is not one closed rim: an index past the vertices, a triangle with a repeated vertex,
+/// a rim vertex with two edges out or two in, or a rim that does not come back to where it started.
+fn boundary(indices: &[u32], vertices: usize) -> Option<Vec<usize>> {
+    let (triangles, rest) = indices.as_chunks::<3>();
+    if !rest.is_empty() {
+        return None;
+    }
+    let mut used: HashMap<(u32, u32), usize> = HashMap::new();
+    let mut directed = Vec::with_capacity(indices.len());
+    for triangle in triangles {
+        for (from, to) in [
+            (triangle[0], triangle[1]),
+            (triangle[1], triangle[2]),
+            (triangle[2], triangle[0]),
+        ] {
+            if from == to || from as usize >= vertices || to as usize >= vertices {
+                return None;
+            }
+            *used.entry((from.min(to), from.max(to))).or_default() += 1;
+            directed.push((from, to));
+        }
+    }
+    let mut next: HashMap<u32, u32> = HashMap::new();
+    let mut incoming: HashMap<u32, u32> = HashMap::new();
+    for (from, to) in directed {
+        if used[&(from.min(to), from.max(to))] != 1 {
+            continue;
+        }
+        if next.insert(from, to).is_some() || incoming.insert(to, from).is_some() {
+            return None;
+        }
+    }
+    let start = *next.keys().min()?;
+    let mut rim = Vec::with_capacity(next.len());
+    let mut at = start;
+    loop {
+        rim.push(at as usize);
+        at = *next.get(&at)?;
+        if at == start {
+            break;
+        }
+        if rim.len() > next.len() {
+            return None;
+        }
+    }
+    (rim.len() == next.len()).then_some(rim)
 }
 
 /// What ARKit's classification of a plane is, in the core's terms.
@@ -173,5 +271,24 @@ mod tests {
         let pose = rectangle_pose(identity(), sys::Float4x4(turned.to_cols_array()));
         assert!((pose.orientation * wxr::glam::Vec3::Y - wxr::glam::Vec3::Y).length() < 1e-6);
         assert!((pose.orientation * wxr::glam::Vec3::X - wxr::glam::Vec3::NEG_Z).length() < 1e-6);
+    }
+
+    /// A square of two triangles: the rim is the four corners, not the diagonal that both triangles share.
+    #[test]
+    fn a_square_mesh_has_four_corners_for_a_rim() {
+        let rim = boundary(&[0, 1, 2, 0, 2, 3], 4).expect("a quad is one rim");
+        assert_eq!(rim, [0, 1, 2, 3]);
+    }
+
+    /// One triangle is its own rim, and a rim that does not close is not a shape this can report.
+    #[test]
+    fn a_rim_has_to_be_one_closed_loop() {
+        assert_eq!(boundary(&[0, 1, 2], 3), Some(vec![0, 1, 2]));
+        // Two triangles that share no edge are two rims, and the walk finds only one of them.
+        assert_eq!(boundary(&[0, 1, 2, 3, 4, 5], 6), None);
+        // Two rims that meet at one vertex give that vertex two edges out, so the shape is not a loop.
+        assert_eq!(boundary(&[0, 1, 2, 2, 3, 4], 5), None);
+        // An index the mesh does not have is a mesh this cannot walk.
+        assert_eq!(boundary(&[0, 1, 2], 2), None);
     }
 }

@@ -75,10 +75,13 @@ unsafe fn mesh_of(anchor: &ar_mesh_anchor_t) -> wxr::Mesh {
 
 /// Read a `float3` source as vectors, honouring the offset and the stride ARKit gives it with.
 ///
+/// Shared with the plane reader, whose geometry is the same kind of source in the same kind of buffer: a
+/// plane's mesh and a room's triangles are read the same way.
+///
 /// # Safety
 ///
 /// `source` must be a live geometry source whose buffer outlives the read.
-unsafe fn read_vectors(source: &ar_geometry_source_t) -> Vec<Vec3> {
+pub(super) unsafe fn read_vectors(source: &ar_geometry_source_t) -> Vec<Vec3> {
     // SAFETY: the source is live; its buffer is the runtime's and is read here rather than kept.
     unsafe {
         // The one format: ARKit's mesh positions are `float3`, and a format this does not know is a mesh left
@@ -107,10 +110,13 @@ unsafe fn read_vectors(source: &ar_geometry_source_t) -> Vec<Vec3> {
 
 /// Read a face list as triangle indices.
 ///
+/// Shared with the plane reader for the reason [`read_vectors`] is: a plane's mesh is a triangle list in the
+/// same structure as a mesh anchor's.
+///
 /// # Safety
 ///
 /// `faces` must be the live element of a mesh geometry whose buffer outlives the read.
-unsafe fn read_indices(faces: &ar_geometry_element_t) -> Vec<u32> {
+pub(super) unsafe fn read_indices(faces: &ar_geometry_element_t) -> Vec<u32> {
     // SAFETY: as above.
     unsafe {
         // ARKit counts primitives and this core carries indices: a triangle is three of them. Apple also
