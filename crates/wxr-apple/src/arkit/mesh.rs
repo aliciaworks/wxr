@@ -9,8 +9,8 @@ use std::ffi::c_void;
 use std::time::Duration;
 
 use objc2_ar_kit::{
-    ar_geometry_element_t, ar_geometry_source_t, ar_mesh_anchor_t, ar_mesh_classification_t,
-    ar_mesh_geometry_t,
+    ar_geometry_element_t, ar_geometry_primitive_type_t, ar_geometry_source_t, ar_mesh_anchor_t,
+    ar_mesh_classification_t, ar_mesh_geometry_t,
 };
 use objc2_metal_visionos::{MTLBuffer, MTLVertexFormat};
 use wxr::glam::{Mat4, Vec3};
@@ -113,7 +113,16 @@ unsafe fn read_vectors(source: &ar_geometry_source_t) -> Vec<Vec3> {
 unsafe fn read_indices(faces: &ar_geometry_element_t) -> Vec<u32> {
     // SAFETY: as above.
     unsafe {
-        let count = ar_geometry_element_t::count(faces);
+        // ARKit counts primitives and this core carries indices: a triangle is three of them. Apple also
+        // says how many indices a primitive has, so a line list - two per primitive - is a mesh this cannot
+        // turn into triangles and is left empty rather than read as overlapping ones.
+        let Some(count) = index_count(
+            ar_geometry_element_t::count(faces),
+            ar_geometry_element_t::index_count_per_primitive(faces),
+            ar_geometry_element_t::primitive_type(faces),
+        ) else {
+            return Vec::new();
+        };
         let bytes = ar_geometry_element_t::bytes_per_index(faces);
         let buffer = ar_geometry_element_t::buffer(faces);
         let base = buffer.contents().cast::<u8>();
@@ -129,6 +138,23 @@ unsafe fn read_indices(faces: &ar_geometry_element_t) -> Vec<u32> {
         };
         (0..count).map(|i| read(base.add(i * bytes))).collect()
     }
+}
+
+/// How many indices a geometry element holds, when it is the triangle list a mesh is.
+///
+/// `primitives` is what `ar_geometry_element_get_count` returns, and it is not the index count: Apple's
+/// header says "the number of primitives", so reading that many indices keeps one triangle in three and
+/// drops the rest of the room. The per-primitive count is Apple's too, and a triangle list is the only shape
+/// this core's [`wxr::Mesh`] can carry - a line list is not a triangle soup and reads as empty.
+fn index_count(
+    primitives: usize,
+    per_primitive: usize,
+    primitive_type: ar_geometry_primitive_type_t,
+) -> Option<usize> {
+    if primitive_type != ar_geometry_primitive_type_t::triangle || per_primitive != 3 {
+        return None;
+    }
+    primitives.checked_mul(3)
 }
 
 /// What ARKit says the mesh is, as the core's word.
@@ -225,5 +251,34 @@ fn kind_from_raw(raw: i64) -> wxr::SurfaceKind {
         // `ar_mesh_classification_t::none`, and anything a newer runtime adds: a mesh with no label, which is
         // a room to collide with all the same.
         _ => wxr::SurfaceKind::None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ARKit counts primitives, so four triangles are twelve indices and not four.
+    #[test]
+    fn a_triangle_list_is_three_indices_a_primitive() {
+        assert_eq!(
+            index_count(4, 3, ar_geometry_primitive_type_t::triangle),
+            Some(12)
+        );
+    }
+
+    /// A line list is not a triangle soup, however many indices it has.
+    #[test]
+    fn a_line_list_is_not_a_triangle_mesh() {
+        assert_eq!(index_count(4, 2, ar_geometry_primitive_type_t::line), None);
+    }
+
+    /// And a triangle list whose indices do not come three at a time is a shape this cannot read.
+    #[test]
+    fn a_triangle_list_with_the_wrong_stride_is_not_read() {
+        assert_eq!(
+            index_count(4, 4, ar_geometry_primitive_type_t::triangle),
+            None
+        );
     }
 }
