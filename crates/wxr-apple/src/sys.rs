@@ -95,6 +95,11 @@ unsafe extern "C" {
 
     /// Writes the transform from an anchor's space to the origin's into `out`.
     fn wxr_ar_anchor_get_origin_from_anchor_transform(anchor: *const c_void, out: *mut f32);
+    /// Writes the transform from a plane extent's space to the plane anchor carrying it into `out`.
+    fn wxr_ar_plane_extent_get_plane_anchor_from_plane_extent_transform(
+        extent: *const c_void,
+        out: *mut f32,
+    );
     /// Writes where a hand anchor is into `out`.
     fn wxr_ar_hand_anchor_get_origin_from_anchor_transform(
         hand_anchor: *const c_void,
@@ -198,6 +203,27 @@ pub unsafe fn ar_anchor_get_origin_from_anchor_transform(anchor: *const c_void) 
     let mut out = [0.0f32; 16];
     // SAFETY: the caller's contract is the shim's, and `out` is sixteen contiguous `f32`s.
     unsafe { wxr_ar_anchor_get_origin_from_anchor_transform(anchor, out.as_mut_ptr()) };
+    Float4x4(out)
+}
+
+/// Where a plane anchor's rectangle sits inside the anchor - its centre and its turn on the normal.
+///
+/// The anchor's own transform is where ARKit first saw the plane, and it stays there while the rectangle
+/// grows around it, so the two are not the same place. This is the missing half: composed after
+/// [`ar_anchor_get_origin_from_anchor_transform`] it gives the transform of the rectangle itself, which is
+/// the pose [`wxr::Plane::pose`] is defined to be.
+///
+/// # Safety
+///
+/// `extent` must be a live plane extent from `ar_plane_geometry_get_plane_extent`.
+pub unsafe fn ar_plane_extent_get_plane_anchor_from_plane_extent_transform(
+    extent: *const c_void,
+) -> Float4x4 {
+    let mut out = [0.0f32; 16];
+    // SAFETY: the caller's contract is the shim's, and `out` is sixteen contiguous `f32`s.
+    unsafe {
+        wxr_ar_plane_extent_get_plane_anchor_from_plane_extent_transform(extent, out.as_mut_ptr())
+    };
     Float4x4(out)
 }
 

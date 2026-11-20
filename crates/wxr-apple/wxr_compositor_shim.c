@@ -50,6 +50,18 @@ void wxr_ar_hand_anchor_get_origin_from_anchor_transform(ar_hand_anchor_t anchor
     memcpy(out, &transform, sizeof(transform));
 }
 
+// Writes the transform from a plane extent's space to the plane anchor carrying it into `out`.
+//
+// A plane anchor's own transform puts the origin where ARKit first saw the plane; as the plane grows, the
+// rectangle moves and turns under that origin. The extent's transform is where the rectangle now sits in the
+// anchor's space, so the anchor's transform composed with this one is the rectangle's centre - which is the
+// pose the core calls a plane's.
+void wxr_ar_plane_extent_get_plane_anchor_from_plane_extent_transform(ar_plane_extent_t extent,
+                                                                      float out[16]) {
+    simd_float4x4 transform = ar_plane_extent_get_plane_anchor_from_plane_extent_transform(extent);
+    memcpy(out, &transform, sizeof(transform));
+}
+
 // Writes the transform from a skeleton joint to the hand anchor that holds it into `out`.
 //
 // The same shape as the hand anchor's own transform above, and the same reason it is here: the function

@@ -17,8 +17,11 @@ use crate::sys;
 
 /// One plane anchor, as the core's [`wxr::Plane`].
 ///
-/// The pose is the anchor's transform, which ARKit builds with the surface's normal on +Y and its extent
-/// along X and Z - the same space WebXR's plane space is, and the one the core says a plane's pose is in.
+/// The pose is where the rectangle is, which is not quite where the anchor is: ARKit puts an anchor's origin
+/// at the point it first saw the surface and grows the rectangle around it afterwards, so the extent carries
+/// its own transform into the anchor's space. Composing the two gives the rectangle's centre and its turn,
+/// with the surface's normal on +Y and the extent along X and Z - the space WebXR's plane space is, and the
+/// one the core says a plane's pose is in.
 ///
 /// # Safety
 ///
@@ -30,10 +33,11 @@ unsafe fn plane_of(anchor: &ar_plane_anchor_t) -> wxr::Plane {
         let transform = sys::ar_anchor_get_origin_from_anchor_transform(
             std::ptr::from_ref(anchor).cast::<c_void>(),
         );
-        let (_, orientation, position) =
-            Mat4::from_cols_array(&transform.0).to_scale_rotation_translation();
         let geometry = ar_plane_anchor_t::geometry(anchor);
         let extent = ar_plane_geometry_t::plane_extent(&geometry);
+        let anchor_from_extent = sys::ar_plane_extent_get_plane_anchor_from_plane_extent_transform(
+            std::ptr::from_ref(&*extent).cast::<c_void>(),
+        );
         let mut identifier = [0u8; 16];
         ar_plane_anchor_t::identifier(anchor, &mut identifier);
         let alignment = ar_plane_anchor_t::alignment(anchor);
@@ -41,10 +45,7 @@ unsafe fn plane_of(anchor: &ar_plane_anchor_t) -> wxr::Plane {
             // The anchor's UUID folded to the name the core carries: the same 32 bits for as long as the
             // anchor lives, which is what a stable id has to be.
             id: u32::from_le_bytes([identifier[0], identifier[1], identifier[2], identifier[3]]),
-            pose: wxr::Pose {
-                position,
-                orientation,
-            },
+            pose: rectangle_pose(transform, anchor_from_extent),
             extent: wxr::glam::Vec2::new(
                 ar_plane_extent_t::width(&extent),
                 ar_plane_extent_t::height(&extent),
@@ -65,6 +66,25 @@ unsafe fn plane_of(anchor: &ar_plane_anchor_t) -> wxr::Plane {
                 ar_plane_anchor_t::timestamp(anchor).max(0.0),
             )),
         }
+    }
+}
+
+/// Where a plane's rectangle is: the anchor's transform composed with the extent's transform inside it.
+///
+/// Two matrices because they answer two questions - where the anchor is, and where the rectangle has moved
+/// since - and the composition is the second applied first, which is what `origin_from_anchor` followed by
+/// `anchor_from_extent` means. The extent transform is a translation, a turn about the surface normal, or
+/// both; either way the normal stays on +Y and the rectangle's edges stay on the pose's X and Z.
+fn rectangle_pose(
+    origin_from_anchor: sys::Float4x4,
+    anchor_from_extent: sys::Float4x4,
+) -> wxr::Pose {
+    let (_, orientation, position) = (Mat4::from_cols_array(&origin_from_anchor.0)
+        * Mat4::from_cols_array(&anchor_from_extent.0))
+    .to_scale_rotation_translation();
+    wxr::Pose {
+        position,
+        orientation,
     }
 }
 
@@ -112,4 +132,42 @@ pub(super) unsafe extern "C-unwind" fn collect_plane(
         (*context.cast::<Vec<wxr::Plane>>()).push(plane_of(anchor));
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A transform that moves and turns nothing, which is where a plane starts.
+    fn identity() -> sys::Float4x4 {
+        sys::Float4x4(Mat4::IDENTITY.to_cols_array())
+    }
+
+    /// A plane that has not grown is still at the anchor.
+    #[test]
+    fn a_plane_at_its_anchor_has_the_anchor_pose() {
+        assert_eq!(rectangle_pose(identity(), identity()), wxr::Pose::IDENTITY);
+    }
+
+    /// The extent's translation is where the rectangle has moved to, so the pose follows it.
+    #[test]
+    fn a_grown_plane_is_where_its_rectangle_is() {
+        let anchor = Mat4::from_translation(wxr::glam::Vec3::new(1.0, 0.0, 2.0));
+        let extent = Mat4::from_translation(wxr::glam::Vec3::new(0.5, 0.0, -0.25));
+        let pose = rectangle_pose(
+            sys::Float4x4(anchor.to_cols_array()),
+            sys::Float4x4(extent.to_cols_array()),
+        );
+        let expected = wxr::glam::Vec3::new(1.5, 0.0, 1.75);
+        assert!((pose.position - expected).length() < 1e-6);
+    }
+
+    /// A rectangle turned on the surface keeps the normal up and turns its own edges with it.
+    #[test]
+    fn an_extent_turned_about_the_normal_turns_the_pose() {
+        let turned = Mat4::from_rotation_y(std::f32::consts::FRAC_PI_2);
+        let pose = rectangle_pose(identity(), sys::Float4x4(turned.to_cols_array()));
+        assert!((pose.orientation * wxr::glam::Vec3::Y - wxr::glam::Vec3::Y).length() < 1e-6);
+        assert!((pose.orientation * wxr::glam::Vec3::X - wxr::glam::Vec3::NEG_Z).length() < 1e-6);
+    }
 }
