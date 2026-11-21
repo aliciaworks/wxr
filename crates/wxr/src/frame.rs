@@ -154,6 +154,20 @@ pub struct Frame {
     /// When the picture will be on the display, as the runtime predicts it. A simulation that wants to be
     /// in step with the head wants to be sampled for this time and not for now.
     pub predicted_display_time: Duration,
+    /// The time by which everything for this frame must be finished, on the same clock as
+    /// [`predicted_display_time`](Frame::predicted_display_time) - visionOS's
+    /// `cp_frame_timing_get_rendering_deadline`.
+    ///
+    /// `None` on a runtime that does not publish one: WebXR owns the frame loop and OpenXR paces it with
+    /// `xrWaitFrame`, so neither has a number to give. A frame finished late is still presented; it is
+    /// presented for a later display than the one it was predicted for.
+    pub rendering_deadline: Option<Duration>,
+    /// The time at which this frame's input should be read, on the same clock - visionOS's
+    /// `cp_frame_timing_get_optimal_input_time`.
+    ///
+    /// Earlier than the deadline by the time the picture takes to draw, which is what makes it the time to
+    /// ask for the head rather than the time it will be at. `None` where nothing publishes a deadline either.
+    pub optimal_input_time: Option<Duration>,
     pub state: FrameState,
     /// Where the head is, in whichever reference space the views were asked for - WebXR's
     /// `XRViewerPose.transform`.
@@ -282,5 +296,19 @@ mod tests {
             frame.motion.is_none(),
             "and nor is the speed it was going when it was there"
         );
+    }
+
+    #[test]
+    fn forgetting_a_frames_head_leaves_its_clock_alone() {
+        // `views` starts with `reset`, and a backend that has just been given a frame's timing sets it in
+        // `begin`: clearing the clock with the head would wipe what the frame had only just been told.
+        let mut frame = Frame {
+            rendering_deadline: Some(Duration::from_secs(1)),
+            optimal_input_time: Some(Duration::from_secs(2)),
+            ..Default::default()
+        };
+        frame.reset();
+        assert_eq!(frame.rendering_deadline, Some(Duration::from_secs(1)));
+        assert_eq!(frame.optimal_input_time, Some(Duration::from_secs(2)));
     }
 }

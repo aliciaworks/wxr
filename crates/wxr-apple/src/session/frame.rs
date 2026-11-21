@@ -36,6 +36,10 @@ impl AppleSession {
     ) -> Result<(), wxr::Error> {
         self.release();
         out.reset();
+        // The deadline and the input time belong to this frame's timing rather than to its head, so they are
+        // cleared here and not in `reset` - `views` starts with `reset`, and a frame's eyes are not its clock.
+        out.rendering_deadline = None;
+        out.optimal_input_time = None;
         // An invalidated layer hands out no more frames, and waiting for one is a frame loop that never stops.
         // The state is already `Ended`, so this is the answer the core has for it rather than a second guess.
         if self.layer_state().0 == wxr::State::Ended {
@@ -58,7 +62,7 @@ impl AppleSession {
         //
         // SAFETY: the frame is the layer's, it is not in flight twice, and it is read between this
         // `start_update` and the `end_update` that `views` performs.
-        unsafe {
+        let (deadline, optimal_input) = unsafe {
             cp_frame::start_update(self.frame);
             let timing = cp_frame::predict_timing(self.frame);
             // `now` is not used: the compositor's clock is a Mach one and comparing it against a wall clock
@@ -66,6 +70,15 @@ impl AppleSession {
             let seconds =
                 cp_time::to_cf_time_interval(cp_frame_timing::presentation_time(timing)).max(0.0);
             self.predicted = Duration::from_secs_f64(seconds);
+            // The two ends of the budget the frame is drawn in: when the input should be read and when every
+            // bit of work must be finished. Both come from the same call as the presentation time and are on
+            // the same clock, which is what makes them comparable with it.
+            let deadline = Duration::from_secs_f64(
+                cp_time::to_cf_time_interval(cp_frame_timing::rendering_deadline(timing)).max(0.0),
+            );
+            let optimal_input = Duration::from_secs_f64(
+                cp_time::to_cf_time_interval(cp_frame_timing::optimal_input_time(timing)).max(0.0),
+            );
             // And the time this frame's ARKit anchors are asked about, which is not the presentation one: the
             // compositor's header names `trackable_anchor_time` for predicting a trackable anchor, and says
             // the offset between the two is variable, so it is read per frame rather than derived.
@@ -79,7 +92,8 @@ impl AppleSession {
             let device = self.arkit.as_ref().and_then(|arkit| arkit.device(seconds));
             self.origin = device.map(|device| device.transform);
             self.emulated = device.is_some_and(|device| device.emulated);
-        }
+            (deadline, optimal_input)
+        };
 
         // SAFETY: the frame is live, the timing above is already read, and the drawables are read before the
         // update window closes.
@@ -148,6 +162,8 @@ impl AppleSession {
         }
 
         out.predicted_display_time = self.predicted;
+        out.rendering_deadline = Some(deadline);
+        out.optimal_input_time = Some(optimal_input);
         out.state = wxr::FrameState::Render;
         Ok(())
     }
