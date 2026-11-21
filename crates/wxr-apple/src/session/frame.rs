@@ -36,10 +36,13 @@ impl AppleSession {
     ) -> Result<(), wxr::Error> {
         self.release();
         out.reset();
-        // The deadline and the input time belong to this frame's timing rather than to its head, so they are
-        // cleared here and not in `reset` - `views` starts with `reset`, and a frame's eyes are not its clock.
+        // The deadline, the input time and the two frame numbers belong to this frame's timing rather than
+        // to its head, so they are cleared here and not in `reset` - `views` starts with `reset`, and a
+        // frame's eyes are not its clock.
         out.rendering_deadline = None;
         out.optimal_input_time = None;
+        out.index = None;
+        out.presentation_index = None;
         // An invalidated layer hands out no more frames, and waiting for one is a frame loop that never stops.
         // The state is already `Ended`, so this is the answer the core has for it rather than a second guess.
         if self.layer_state().0 == wxr::State::Ended {
@@ -116,6 +119,16 @@ impl AppleSession {
             }
         };
         self.drawable = drawable;
+        // The two numbers the compositor keeps: the layer's for the frame it handed over, and the
+        // compositor's for the picture it will show. Both are known as soon as the frame is, so `begin` is
+        // where they are read - the header only promises what each counter numbers, not that they agree.
+        // SAFETY: the frame is live, and a non-null drawable is this frame's until `end`.
+        unsafe {
+            out.index = Some(cp_frame::frame_index(self.frame));
+            if !drawable.is_null() {
+                out.presentation_index = Some(cp_drawable::presentation_frame_index(drawable));
+            }
+        }
         if queried == 0 {
             // The header on `cp_frame_query_drawables` is exact about this case: an empty array means the
             // frame was cancelled, and it "should be discarded and is invalid to access" - which is what

@@ -168,6 +168,20 @@ pub struct Frame {
     /// Earlier than the deadline by the time the picture takes to draw, which is what makes it the time to
     /// ask for the head rather than the time it will be at. `None` where nothing publishes a deadline either.
     pub optimal_input_time: Option<Duration>,
+    /// The runtime's own number for this frame - visionOS's `cp_frame_get_frame_index`.
+    ///
+    /// A layer numbers every frame it hands out, starting at the first and adding one for each new frame, so
+    /// this is the counter a caller can key per-frame state to without keeping one of its own. `None` for a
+    /// runtime that numbers no frame: neither WebXR's animation callback nor OpenXR's `xrWaitFrame` names one.
+    pub index: Option<u64>,
+    /// The number the compositor will show this frame under - visionOS's
+    /// `cp_drawable_get_presentation_frame_index`.
+    ///
+    /// The compositor numbers what it presents rather than what it hands out, and the header names the use:
+    /// start an audio file when a particular presentation index appears onscreen. Kept apart from
+    /// [`index`](Frame::index) because they are two counters with two owners, and each says only what its
+    /// own framework promises.
+    pub presentation_index: Option<u64>,
     pub state: FrameState,
     /// Where the head is, in whichever reference space the views were asked for - WebXR's
     /// `XRViewerPose.transform`.
@@ -299,16 +313,20 @@ mod tests {
     }
 
     #[test]
-    fn forgetting_a_frames_head_leaves_its_clock_alone() {
+    fn forgetting_a_frames_head_leaves_its_clock_and_its_number_alone() {
         // `views` starts with `reset`, and a backend that has just been given a frame's timing sets it in
         // `begin`: clearing the clock with the head would wipe what the frame had only just been told.
         let mut frame = Frame {
             rendering_deadline: Some(Duration::from_secs(1)),
             optimal_input_time: Some(Duration::from_secs(2)),
+            index: Some(7),
+            presentation_index: Some(8),
             ..Default::default()
         };
         frame.reset();
         assert_eq!(frame.rendering_deadline, Some(Duration::from_secs(1)));
         assert_eq!(frame.optimal_input_time, Some(Duration::from_secs(2)));
+        assert_eq!(frame.index, Some(7));
+        assert_eq!(frame.presentation_index, Some(8));
     }
 }
