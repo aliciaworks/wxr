@@ -72,6 +72,9 @@ pub(crate) struct AccessoryPose {
     /// Whether the *position* is a guess because only the orientation is tracked, which is the core's
     /// `emulated_position` and a different question from `tracked`.
     pub(crate) emulated_position: bool,
+    /// Whether a hand is holding it: a pad on a table is tracked and not held, which is what
+    /// `ar_accessory_anchor_is_held` answers.
+    pub(crate) held: bool,
     /// The grip's place and orientation, in ARKit's world: the named grip location when there is one, and
     /// the anchor's own transform when the accessory names none.
     pub(crate) grip: Mat4,
@@ -152,6 +155,9 @@ pub(crate) struct Place {
     pub(crate) tracked: bool,
     /// Whether that place is a guess because only the orientation is tracked.
     pub(crate) emulated_position: bool,
+    /// Whether a hand is holding it, from `ar_accessory_anchor_is_held` - `None` for a controller with no
+    /// anchor, because nothing said it was set down.
+    pub(crate) held: Option<bool>,
     pub(crate) handedness: wxr::Handedness,
 }
 
@@ -163,6 +169,7 @@ impl Place {
         motion: None,
         tracked: false,
         emulated_position: false,
+        held: None,
         handedness: wxr::Handedness::Unknown,
     };
 }
@@ -183,6 +190,7 @@ impl AccessoryPose {
             }),
             tracked: self.tracked,
             emulated_position: self.emulated_position,
+            held: Some(self.held),
             handedness: self.handedness,
         }
     }
@@ -264,6 +272,7 @@ mod tests {
             handedness: wxr::Handedness::Right,
             tracked: true,
             emulated_position: false,
+            held: true,
             grip: Mat4::IDENTITY,
             aim: Mat4::from_translation(wxr::glam::Vec3::Z),
             linear_velocity: wxr::glam::Vec3::X,
@@ -280,6 +289,7 @@ mod tests {
         assert_eq!(motion.angular_velocity, Some(wxr::glam::Vec3::Y));
         assert!(place.tracked);
         assert!(!place.emulated_position);
+        assert_eq!(place.held, Some(true), "the anchor said a hand was on it");
         assert_eq!(place.handedness, wxr::Handedness::Right);
     }
 
@@ -292,6 +302,7 @@ mod tests {
             handedness: wxr::Handedness::Unknown,
             tracked: true,
             emulated_position: false,
+            held: false,
             grip: Mat4::IDENTITY,
             aim: Mat4::from_translation(wxr::glam::Vec3::Z),
             linear_velocity: wxr::glam::Vec3::ZERO,

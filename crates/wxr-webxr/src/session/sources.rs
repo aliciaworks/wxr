@@ -105,6 +105,9 @@ impl WebXrSession {
                 skip_rendering: XrInputSource::skip_rendering(&source),
                 emulated_position,
                 motion,
+                // No browser says whether a source is in a hand: `tracked` is the whole of what WebXR
+                // reports about a controller's state.
+                held: None,
                 grip: grip
                     .map(|pose| transform(pose.transform()))
                     .unwrap_or(wxr::Pose::IDENTITY),

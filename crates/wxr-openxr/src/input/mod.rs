@@ -354,6 +354,9 @@ impl Hands {
                 skip_rendering: false,
                 // Nor does it say which pose is a guess in words: the location flags do, one half at a time.
                 emulated_position,
+                // OpenXR tracks a controller, not a hand holding one: a runtime following a pad on a table
+                // cannot say it was set down, and a hand is attached rather than held.
+                held: None,
                 grip: grip_pose,
                 aim: pose(&aim),
                 // The grip's speed, or nothing when the runtime did not report a valid half.

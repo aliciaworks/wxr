@@ -125,6 +125,8 @@ impl Gaze {
             // The eyes are a place the runtime can estimate as easily as a hand's - and there is no grip, so
             // the located gaze is the pose the answer is about.
             emulated_position: estimated(&located),
+            // Eyes are not held. Nothing in OpenXR asks that of a source, and a gaze ray has nothing to hold.
+            held: None,
             // A gaze ray has no place the source is held - and the core's grip is a pose rather than an
             // option, so it is the identity, the same answer `read` gives a hand whose grip was not
             // located. What an app is meant to use is `aim`.

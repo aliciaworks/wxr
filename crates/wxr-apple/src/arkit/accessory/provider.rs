@@ -420,6 +420,9 @@ unsafe extern "C-unwind" fn collect(context: *mut c_void, anchor: &ar_accessory_
             emulated_position: super::emulated_position_of(ar_accessory_anchor_t::tracking_state(
                 anchor,
             )),
+            // From the latest anchor like the hand and the tracking state: a prediction moves where the
+            // accessory is, not whether a hand is on it.
+            held: ar_accessory_anchor_t::is_held(anchor),
             grip: if named.grip {
                 location(world_from_anchor, address, ar_accessory_location_name_grip)
             } else {

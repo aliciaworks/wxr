@@ -243,6 +243,9 @@ impl GameControllers {
                 // ARKit's own estimate of how fast it moves, or nothing when it has no anchor - see
                 // `crate::arkit::accessory`.
                 motion: place.motion,
+                // Whether a hand is holding it, which is ARKit's answer and not the generic tracked one: a
+                // pad on a table is tracked and not held - see `crate::arkit::accessory`.
+                held: place.held,
                 // Two poses: the accessory's grip and aim locations - see `crate::arkit::accessory`.
                 grip: place.grip,
                 aim: place.aim,

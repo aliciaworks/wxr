@@ -328,6 +328,9 @@ impl Session for MockSession {
                 // And nothing in a mock moves at a speed: a pose with a made-up velocity would be a mock that
                 // taught a game to believe one.
                 motion: None,
+                // And nothing here can be set down: a mock's source is a controller without an accessory
+                // behind it, so whether a hand holds it is not a fact this session has.
+                held: None,
                 grip: Pose {
                     position: Vec3::new(x, 1.0, 0.0),
                     orientation: Quat::IDENTITY,

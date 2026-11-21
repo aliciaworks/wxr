@@ -269,6 +269,14 @@ pub struct InputSource {
     /// Whether the runtime is tracking it. An untracked controller is still a controller, and a game that
     /// forgets that teleports the player's hand to the origin.
     pub tracked: bool,
+    /// Whether the runtime sees it being held in a hand right now - ARKit's
+    /// `ar_accessory_anchor_is_held`.
+    ///
+    /// A controller on a table is [`InputSource::tracked`] and not held, and the difference is what a game
+    /// wants before it draws a hand over it or offers a pause. Apple's accessory anchor is the one place a
+    /// runtime answers it; `None` is a runtime that does not say, and a hand - which is not held, it is
+    /// attached - is the same answer.
+    pub held: Option<bool>,
     pub buttons: Buttons,
     pub axes: Axes,
 }
