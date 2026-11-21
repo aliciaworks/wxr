@@ -143,6 +143,10 @@ pub struct AppleSession {
     /// Where the device is in the world at this frame's presentation time, when ARKit answered. The frame's
     /// views are built from it, and it is what was handed to the compositor to reproject against.
     origin: Option<Mat4>,
+    /// Whether [`AppleSession::origin`]'s place is inferred rather than measured, as ARKit's device anchor
+    /// said this frame. [`wxr::Frame::emulated_position`] is the core's name for it; a frame with no origin -
+    /// no tracking yet, or no ARKit - leaves it false rather than inventing a guess ARKit did not report.
+    emulated: bool,
     predicted: Duration,
     /// The Mach absolute time this frame's ARKit anchors are predicted for, from
     /// `cp_frame_timing_get_trackable_anchor_time`: the compositor's own answer to which time a trackable
@@ -195,6 +199,7 @@ impl AppleSession {
             controllers: GameControllers::new(),
             configured,
             origin: None,
+            emulated: false,
             predicted: Duration::ZERO,
             anchor_time: None,
             reported: (wxr::State::Ready, wxr::Visibility::Hidden),

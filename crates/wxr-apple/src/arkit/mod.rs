@@ -70,16 +70,12 @@ use std::sync::Mutex;
 
 use objc2::rc::Retained;
 use objc2_ar_kit::{
-    ar_data_provider_t, ar_data_providers_t, ar_device_anchor_query_status_t, ar_device_anchor_t,
-    ar_hand_anchor_t, ar_hand_tracking_configuration_t, ar_hand_tracking_provider_t,
-    ar_mesh_anchors_t, ar_plane_anchors_t, ar_plane_detection_configuration_t,
-    ar_plane_detection_provider_t, ar_scene_reconstruction_configuration_t,
-    ar_scene_reconstruction_provider_t, ar_session_t, ar_trackable_anchor_t, ar_world_anchor_t,
-    ar_world_tracking_configuration_t, ar_world_tracking_provider_t,
+    ar_data_provider_t, ar_data_providers_t, ar_hand_anchor_t, ar_hand_tracking_configuration_t,
+    ar_hand_tracking_provider_t, ar_mesh_anchors_t, ar_plane_anchors_t,
+    ar_plane_detection_configuration_t, ar_plane_detection_provider_t,
+    ar_scene_reconstruction_configuration_t, ar_scene_reconstruction_provider_t, ar_session_t,
+    ar_trackable_anchor_t, ar_world_anchor_t,
 };
-use wxr::glam::Mat4;
-
-use crate::sys;
 
 pub(crate) mod accessory;
 mod anchor;
@@ -91,6 +87,7 @@ mod mesh;
 mod persistence;
 mod plane;
 mod skeleton;
+mod world;
 
 use accessory::Accessories;
 use authorization::Permissions;
@@ -99,6 +96,8 @@ use light::Lights;
 use mesh::collect_mesh;
 use persistence::{Listing, Waiting};
 use plane::collect_plane;
+pub use world::Device;
+use world::World;
 
 /// Reinterpret a concrete provider as the `ar_data_provider_t` a collection takes.
 ///
@@ -147,12 +146,6 @@ pub(super) unsafe fn as_trackable<T>(anchor: &T) -> &ar_trackable_anchor_t {
 pub(super) unsafe fn is_tracked<T>(anchor: &T) -> bool {
     // SAFETY: the caller guarantees both the live anchor and its conformance.
     unsafe { ar_trackable_anchor_t::is_tracked(as_trackable(anchor)) }
-}
-
-/// World tracking: the provider and the one anchor its queries refill.
-struct World {
-    provider: Retained<ar_world_tracking_provider_t>,
-    anchor: Retained<ar_device_anchor_t>,
 }
 
 /// Hand tracking: the provider and an anchor for each hand.
@@ -279,24 +272,6 @@ impl ArKit {
     /// # Safety
     ///
     /// `providers` must be a live collection.
-    unsafe fn start_world(providers: &ar_data_providers_t) -> Option<World> {
-        // SAFETY: the calls build ARKit objects, and the provider is added to the collection the session
-        // retains. The casts are the subtype ones documented on the helpers above.
-        unsafe {
-            if !ar_world_tracking_provider_t::is_supported() {
-                return None;
-            }
-            let configuration = ar_world_tracking_configuration_t::new();
-            let provider = ar_world_tracking_provider_t::new(&configuration);
-            ar_data_providers_t::add_data_provider(providers, as_data_provider(&provider));
-            let anchor = ar_device_anchor_t::new();
-            Some(World { provider, anchor })
-        }
-    }
-
-    /// # Safety
-    ///
-    /// `providers` must be a live collection.
     unsafe fn start_hands(providers: &ar_data_providers_t) -> Option<Hands> {
         // SAFETY: as above. Support is asked first, because a provider on a device that has none is a
         // provider whose every query fails.
@@ -351,47 +326,6 @@ impl ArKit {
             ar_data_providers_t::add_data_provider(providers, as_data_provider(&provider));
             Some(Meshes { provider })
         }
-    }
-
-    /// Whether there is a world to put things in, as opposed to one that follows the wearer.
-    pub fn is_world_tracked(&self) -> bool {
-        self.world.is_some()
-    }
-
-    /// Where the device is at `time`, in seconds from the same epoch the frame's timing is in.
-    ///
-    /// `None` while tracking is coming up, which is a frame to draw head-locked rather than a frame to fail.
-    /// The result is `origin from device`: device space seen from the world's origin, which for a device
-    /// anchor is where the head is in the world.
-    pub fn device(&self, time: f64) -> Option<Mat4> {
-        let world = self.world.as_ref()?;
-        // SAFETY: the provider and the anchor are both live, and the anchor is ours to fill.
-        let status = unsafe {
-            ar_world_tracking_provider_t::query_device_anchor_at_timestamp(
-                &world.provider,
-                time,
-                &world.anchor,
-            )
-        };
-        if status != ar_device_anchor_query_status_t::success {
-            return None;
-        }
-        Some(Self::transform(Retained::as_ptr(&world.anchor).cast()))
-    }
-
-    /// The anchor the last query filled in, which the compositor wants so it can reproject the frame.
-    pub fn anchor(&self) -> sys::ArDeviceAnchor {
-        match &self.world {
-            Some(world) => Retained::as_ptr(&world.anchor) as *mut c_void,
-            None => std::ptr::null_mut(),
-        }
-    }
-
-    /// The transform an anchor is at, as glam's matrix.
-    fn transform(anchor: *const c_void) -> Mat4 {
-        // SAFETY: the anchor is live, and reading a transform from one does not consume it.
-        let transform = unsafe { sys::ar_anchor_get_origin_from_anchor_transform(anchor) };
-        Mat4::from_cols_array(&transform.0)
     }
 
     /// What ARKit has decided about `feature`'s permission - see [`wxr::Authorization`].

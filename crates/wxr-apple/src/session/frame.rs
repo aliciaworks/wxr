@@ -74,8 +74,11 @@ impl AppleSession {
             ));
 
             // Where the head will be when this is shown, predicted for the presentation time. It is kept
-            // because the drawable that is told about it does not exist yet.
-            self.origin = self.arkit.as_ref().and_then(|arkit| arkit.device(seconds));
+            // because the drawable that is told about it does not exist yet - and so is whether ARKit
+            // measured that place, which is the one fact about the head `CompositorServices` does not say.
+            let device = self.arkit.as_ref().and_then(|arkit| arkit.device(seconds));
+            self.origin = device.map(|device| device.transform);
+            self.emulated = device.is_some_and(|device| device.emulated);
         }
 
         // SAFETY: the frame is live, the timing above is already read, and the drawables are read before the
@@ -216,6 +219,9 @@ impl AppleSession {
         // relative to the wearer, so the viewer is the device and an eye is `head * device_from_eye`.
         let head = self.device_in_space(space);
         out.viewer = wxr_render::pose_from_transform(head);
+        // Whether that place was measured, from the device anchor this frame's projection was predicted
+        // against: ARKit's `tracked` says yes, and a direction with no measured place says no.
+        out.emulated_position = self.emulated;
         let count = self.eyes.len();
         for (index, eye) in self.eyes.iter().enumerate() {
             out.views_mut().push(wxr::View {
