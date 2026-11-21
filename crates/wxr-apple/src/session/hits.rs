@@ -125,6 +125,8 @@ impl AppleSession {
         let space_from_world = wxr_render::pose_from_transform(self.space_from_world(space));
         out.push(wxr::Hit {
             pose: space_from_world.then(hit),
+            // The ray was the app's, so there is no pointer to name.
+            input: None,
         });
         Ok(())
     }

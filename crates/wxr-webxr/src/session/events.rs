@@ -4,6 +4,22 @@
 
 use super::*;
 
+impl Drop for WebXrSession {
+    /// End the browser's session when this one is dropped; dropping the handle is how an app says it is done.
+    ///
+    /// The end of a session is a lifecycle fact like the ones below, which is why it lives here rather than
+    /// beside the constructor: nothing else about `mod.rs` is about a session being over.
+    fn drop(&mut self) {
+        if let Some(session) = self.inner.borrow().session.clone() {
+            // Caught: a session dropped inside its own frame handler is still active, and `end` throws
+            // `InvalidStateError` for that as for an ended one. An exception out of a destructor is worse.
+            if throws::end(&session).is_err() {
+                log::debug!("wxr-webxr: the browser would not end the session on drop");
+            }
+        }
+    }
+}
+
 impl WebXrSession {
     pub(super) fn poll_impl(&mut self) -> Option<wxr::Event> {
         // An ended session stays ended. `Lost` is the last thing it says - the session object may still be

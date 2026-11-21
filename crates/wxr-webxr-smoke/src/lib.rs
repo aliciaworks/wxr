@@ -199,10 +199,10 @@ struct Board {
     anchor_unframed_checked: bool,
     /// Whether the floor space has resolved: a space is a promise, so an anchor cannot be made in one yet.
     space_resolved: bool,
-    /// The hit-test source this run made, if it has, and whether the ray it was asked along has been read
-    /// back with the place it landed - a hit test is the one call whose numbers the frame cannot supply.
+    /// The hit-test source this run made, if it has, and how far through its two questions it has got: the ray
+    /// the app named, then which of its pointers a tap lands through - each answer is read a stage at a time.
     hit_source: Option<wxr::HitTestSource>,
-    hit_checked: bool,
+    hit_step: u8,
     /// Whether a mask change arrived and its geometry was read back from it, which is once.
     masks_checked: bool,
     /// Whether a space was located from another, which is once: the answer is the frame's.
@@ -398,7 +398,7 @@ async fn enter(backend: wxr_webxr::WebXr, device: wgpu::Device) {
         anchor_unframed_checked: false,
         space_resolved: false,
         hit_source: None,
-        hit_checked: false,
+        hit_step: 0,
         masks_checked: false,
         pose_checked: false,
         stopped: false,

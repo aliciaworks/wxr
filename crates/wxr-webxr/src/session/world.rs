@@ -119,6 +119,29 @@ impl WebXrSession {
 }
 
 impl WebXrSession {
+    pub(super) fn hit_test_source_for_profile_impl(
+        &mut self,
+        kinds: wxr::HitTestKinds,
+        profile: &str,
+    ) -> Result<wxr::HitTestSource, wxr::Error> {
+        let Some(session) = self.inner.borrow().session.clone() else {
+            return Err(wxr::Error::Unavailable(
+                "the session has not started yet".into(),
+            ));
+        };
+        // The same feature and the same reason as the ray source's: a browser that was not granted hit
+        // testing refuses the call, and a session saying so itself is the better answer.
+        if !has_feature(&session, "hit-test") {
+            return Err(wxr::Error::Unsupported("hit-test".into()));
+        }
+        let slot = Rc::new(RefCell::new(hit::Slot::default()));
+        hit::request_transient(&session, kinds, profile, slot.clone());
+        self.hit_sources.push(slot);
+        Ok(wxr::HitTestSource::new((self.hit_sources.len() - 1) as u32))
+    }
+}
+
+impl WebXrSession {
     pub(super) fn hits_impl(
         &mut self,
         source: wxr::HitTestSource,
@@ -140,7 +163,14 @@ impl WebXrSession {
         let Some(frame) = self.frame() else {
             return Ok(());
         };
-        hit::results(&frame, &source, &base, out);
+        // Which browser object it is decides where the rays come from: one the app described, or one per
+        // input source the browser matched by profile.
+        match source {
+            hit::Source::Ray(source) => hit::results(&frame, &source, &base, out),
+            hit::Source::Input(source) => {
+                hit::transient_results(&frame, &source, &base, &self.sources, out)
+            }
+        }
         Ok(())
     }
 }

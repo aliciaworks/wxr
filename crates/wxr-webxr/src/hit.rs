@@ -1,7 +1,9 @@
 //! Hit testing: where a ray out of a space meets the world.
 //!
 //! `XRHitTestSource` is created asynchronously and is otherwise opaque, so one waits in a slot until the
-//! browser answers - and a frame with no source yet is a frame with no hits rather than a frame to fail.
+//! browser answers - and a frame with no source yet is a frame with no hits rather than a frame to fail. A
+//! profile source is the same shape with a different browser object: it follows the input sources the wearer
+//! actually has, so its hits arrive in groups, one per source.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -9,15 +11,39 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 
+use crate::input::Sources;
 use crate::sys::{
     DomPointInit, XrFrame, XrHitTestOptionsInit, XrHitTestResult, XrHitTestSource, XrRay,
-    XrRayDirectionInit, XrReferenceSpace, XrSession,
+    XrRayDirectionInit, XrReferenceSpace, XrSession, XrTransientInputHitTestOptionsInit,
+    XrTransientInputHitTestResult, XrTransientInputHitTestSource,
 };
+
+/// What the browser answered with, which is one of the two kinds of hit-test source it has.
+///
+/// They are the same handle to a caller - both are cancelled the same way and both answer through `hits` - so
+/// they share a slot and an id, and only the ask and the read differ.
+#[derive(Clone)]
+pub enum Source {
+    /// A ray the app described, which is `XRHitTestSource`.
+    Ray(XrHitTestSource),
+    /// A profile whose matching sources aim themselves, which is `XRTransientInputHitTestSource`.
+    Input(XrTransientInputHitTestSource),
+}
+
+impl Source {
+    /// Tell the browser this source is done, whichever kind it is.
+    fn cancel(self) {
+        match self {
+            Self::Ray(source) => source.cancel(),
+            Self::Input(source) => source.cancel(),
+        }
+    }
+}
 
 /// A source that has been asked for, and the browser's answer once it arrives.
 #[derive(Default)]
 pub struct Slot {
-    source: Option<XrHitTestSource>,
+    source: Option<Source>,
     /// Set by [`Slot::cancel`], so an answer arriving afterwards fills nothing. A source let go while its
     /// request was still a promise would otherwise come back from having been released, which is the one
     /// way this slot can be wrong - the handle is still in the caller's hand either way.
@@ -26,11 +52,11 @@ pub struct Slot {
 
 impl Slot {
     /// The source, if the browser has answered and nobody has let it go.
-    pub fn source(&self) -> Option<XrHitTestSource> {
+    pub fn source(&self) -> Option<Source> {
         self.source.clone()
     }
 
-    /// Tell the browser this source is done - `XRHitTestSource.cancel` - and forget it.
+    /// Tell the browser this source is done - `XRHitTestSource.cancel` or its transient sibling - and forget it.
     ///
     /// Both halves are needed. An answered source would otherwise be one the browser keeps reporting for
     /// the rest of the session, and an unanswered one must not be filled in when its promise lands - so the
@@ -44,7 +70,7 @@ impl Slot {
 
     /// Take the browser's answer, unless the source was let go while its request was in flight - in which
     /// case it is cancelled here rather than kept, since no caller will ever ask for it.
-    pub fn fill(&mut self, source: XrHitTestSource) {
+    pub fn fill(&mut self, source: Source) {
         if self.cancelled {
             source.cancel();
         } else {
@@ -77,7 +103,31 @@ pub fn request(
         if let Ok(source) = JsFuture::from(promise).await
             && let Ok(source) = source.dyn_into::<XrHitTestSource>()
         {
-            slot.borrow_mut().fill(source);
+            slot.borrow_mut().fill(Source::Ray(source));
+        }
+    });
+}
+
+/// Ask the browser for a source that follows whichever input source carries `profile`, which is
+/// `requestHitTestSourceForTransientInput`, and fill the slot when it answers.
+///
+/// No space and no ray: each matching source aims along its own target ray, so there is nothing here to
+/// describe one with. `entityTypes` is passed for the same reason a ray source's is - the browser's default
+/// is a plane alone and the core's `ALL` is all three.
+pub fn request_transient(
+    session: &XrSession,
+    kinds: wxr::HitTestKinds,
+    profile: &str,
+    slot: Rc<RefCell<Slot>>,
+) {
+    let options = XrTransientInputHitTestOptionsInit::new(profile);
+    options.set_entity_types(&entity_types(kinds));
+    let promise: js_sys::Promise = session.request_hit_test_source_for_transient_input(&options);
+    wasm_bindgen_futures::spawn_local(async move {
+        if let Ok(source) = JsFuture::from(promise).await
+            && let Ok(source) = source.dyn_into::<XrTransientInputHitTestSource>()
+        {
+            slot.borrow_mut().fill(Source::Input(source));
         }
     });
 }
@@ -127,8 +177,42 @@ pub fn results(
     base: &XrReferenceSpace,
     out: &mut Vec<wxr::Hit>,
 ) {
+    collect(&frame.get_hit_test_results(source), base, None, out);
+}
+
+/// The same for a profile source, which WebXR answers per input source - `XRTransientInputHitTestResult` -
+/// rather than as one flat list. Every hit keeps the identity of the pointer that aimed it, under the id
+/// `inputs` gives that same source.
+pub fn transient_results(
+    frame: &XrFrame,
+    source: &XrTransientInputHitTestSource,
+    base: &XrReferenceSpace,
+    sources: &Sources,
+    out: &mut Vec<wxr::Hit>,
+) {
+    for result in frame
+        .get_hit_test_results_for_transient_input(source)
+        .iter()
+    {
+        let Ok(result) = result.dyn_into::<XrTransientInputHitTestResult>() else {
+            continue;
+        };
+        // Both halves come from the same table the frame loop reads: a hit that named a number of its own
+        // would be a pointer no `inputs` call could find.
+        let input = sources.id(&result.input_source());
+        collect(&result.results(), base, Some(input), out);
+    }
+}
+
+/// One list of results as the core's hits, tagged with the source that aimed when a pointer did.
+fn collect(
+    results: &js_sys::Array,
+    base: &XrReferenceSpace,
+    input: Option<wxr::InputId>,
+    out: &mut Vec<wxr::Hit>,
+) {
     // One result per surface the ray meets, and an empty sequence for a ray that meets nothing.
-    for result in frame.get_hit_test_results(source).iter() {
+    for result in results.iter() {
         let Ok(result) = result.dyn_into::<XrHitTestResult>() else {
             continue;
         };
@@ -137,6 +221,7 @@ pub fn results(
         if let Some(pose) = result.get_pose(base) {
             out.push(wxr::Hit {
                 pose: crate::transform(pose.transform()),
+                input,
             });
         }
     }

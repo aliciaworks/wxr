@@ -1,8 +1,11 @@
-//! A hit test along a ray the app named, which is the one call whose numbers a frame cannot supply.
+//! A hit test along a ray the app named, and one that follows the controllers' own aim.
 //!
 //! Kept out of `tick.rs` only to stay under the file-size limit; everything it uses comes from there.
 
 use super::*;
+
+/// The profile the stub's two controllers carry, which is how a hit test names who aims.
+const PROFILE: &str = "wxr-stub";
 
 /// The ray asked with, and where one metre along it lands.
 ///
@@ -31,6 +34,15 @@ fn recorded() -> Option<(wxr::glam::Vec3, wxr::glam::Vec3)> {
     Some((point(&origin)?, point(&direction)?))
 }
 
+/// Whether the stub has answered a transient hit test at all, which tells an empty answer from no answer:
+/// the promise has landed when it has been asked, and only then does an empty list mean no source matched.
+fn answered() -> bool {
+    js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str("__wxrTransientCalls"))
+        .ok()
+        .and_then(|value| value.as_f64())
+        .is_some_and(|calls| calls > 0.0)
+}
+
 /// Three coordinates off a JavaScript object, or `None` when one of them is not a number.
 fn point(value: &JsValue) -> Option<wxr::glam::Vec3> {
     let read = |name: &str| {
@@ -45,13 +57,27 @@ fn point(value: &JsValue) -> Option<wxr::glam::Vec3> {
     ))
 }
 
-/// Ask once, then read every frame until the source answers, then check where it landed and let it go.
+/// Ask once, read every frame until the source answers, check where it landed and let it go - then do the
+/// same for the two controllers' own aim, which is one hit each and one id each.
 pub(super) fn step(
     board: &mut Board,
     session: &mut wxr_webxr::WebXrSession,
     space: wxr::ReferenceSpace,
 ) -> Result<(), String> {
-    if board.hit_source.is_none() {
+    match board.hit_step {
+        0 | 1 => ray(board, session, space),
+        2 | 3 => profile(board, session, space),
+        _ => Ok(()),
+    }
+}
+
+/// The ray the app named: the half of a hit test a space cannot describe.
+fn ray(
+    board: &mut Board,
+    session: &mut wxr_webxr::WebXrSession,
+    space: wxr::ReferenceSpace,
+) -> Result<(), String> {
+    if board.hit_step == 0 {
         // The ray is the app's, which is the half of a hit test a space cannot describe - and the half this
         // backend has to put on the options rather than cast itself.
         board.hit_source = Some(
@@ -59,10 +85,8 @@ pub(super) fn step(
                 .hit_test_source(space, wxr::HitTestKinds::ALL, Some(asked()))
                 .map_err(|error| format!("a hit-test ray of the app's was refused: {error}"))?,
         );
+        board.hit_step = 1;
         say("asked for a hit-test source along a ray of the app's own");
-    }
-    if board.hit_checked {
-        return Ok(());
     }
     let source = board.hit_source.expect("made above or in an earlier frame");
     let mut hits = Vec::new();
@@ -74,7 +98,9 @@ pub(super) fn step(
     if hits.is_empty() {
         return Ok(());
     }
-    board.hit_checked = true;
+    if hits[0].input.is_some() {
+        return Err("a ray the app named came back as one of its pointers'".into());
+    }
     let (origin, direction) =
         recorded().ok_or("the stub recorded no ray for the hit-test source")?;
     let ray = asked();
@@ -108,5 +134,89 @@ pub(super) fn step(
         return Err("a released hit-test source still reported a hit".into());
     }
     say("a released hit-test source reports no hits");
+    board.hit_step = 2;
+    Ok(())
+}
+
+/// The same question asked by profile, which is answered once per controller that carries it.
+fn profile(
+    board: &mut Board,
+    session: &mut wxr_webxr::WebXrSession,
+    space: wxr::ReferenceSpace,
+) -> Result<(), String> {
+    if board.hit_step == 2 {
+        board.hit_source = Some(
+            session
+                .hit_test_source_for_profile(wxr::HitTestKinds::PLANES, PROFILE)
+                .map_err(|error| format!("a hit-test source for {PROFILE} was refused: {error}"))?,
+        );
+        board.hit_step = 3;
+        say("asked for a hit-test source that follows the controllers' profile");
+    }
+    let source = board.hit_source.expect("made above or in an earlier frame");
+    let mut hits = Vec::new();
+    session
+        .hits(source, space, &mut hits)
+        .map_err(|error| format!("hits on a profile source failed: {error}"))?;
+    if hits.is_empty() {
+        // The promise has landed but nothing matched, which no later frame is going to change - a profile is
+        // asked for because something carries it. Before that, the ask is simply still in flight.
+        if answered() {
+            return Err("a profile both controllers carry answered no hits".into());
+        }
+        return Ok(());
+    }
+    // The ids a hit names have to be the ones `inputs` names, or the app has a pointer it cannot find: the
+    // two tables are the same table, and this is where that is checked.
+    let mut sources = Vec::new();
+    session
+        .inputs(space, &mut sources)
+        .map_err(|error| format!("inputs failed: {error}"))?;
+    let mut matching = Vec::new();
+    for input in sources {
+        let mut profiles = Vec::new();
+        session
+            .profiles(input.id, &mut profiles)
+            .map_err(|error| format!("profiles failed: {error}"))?;
+        if profiles.iter().any(|name| name == PROFILE) {
+            matching.push(input);
+        }
+    }
+    if hits.len() != matching.len() {
+        return Err(format!(
+            "a profile source answered {} hits for {} sources carrying {PROFILE}",
+            hits.len(),
+            matching.len()
+        ));
+    }
+    for input in &matching {
+        let hit = hits
+            .iter()
+            .find(|hit| hit.input == Some(input.id))
+            .ok_or_else(|| format!("no hit named {:?}, which carries {PROFILE}", input.id))?;
+        // One metre along the source's own `-Z`, which is the stub's arithmetic done from the pose the app
+        // read: the same number by two routes.
+        let forward = input.aim.orientation * wxr::glam::Vec3::NEG_Z;
+        let wanted = input.aim.position + forward;
+        if (hit.pose.position - wanted).length() > 1e-4 {
+            return Err(format!(
+                "the hit for {:?} landed at {:?}, not {wanted:?}",
+                input.id, hit.pose.position
+            ));
+        }
+    }
+    say("the profile source answered once per controller, each hit naming the one that found it");
+    // The other kind of source is released the same way, and its browser object's `cancel` is the one the
+    // ray source's is not.
+    session.release_hit_test_source(source);
+    let mut after = Vec::new();
+    session
+        .hits(source, space, &mut after)
+        .map_err(|error| format!("hits on a released profile source answered {error}"))?;
+    if !after.is_empty() {
+        return Err("a released profile source still reported a hit".into());
+    }
+    say("a released profile source reports no hits");
+    board.hit_step = 4;
     Ok(())
 }

@@ -391,6 +391,8 @@ impl OpenXrSession {
         // met and nothing to pad it with.
         out.push(wxr::Hit {
             pose: crate::convert::surface(crate::convert::pose(found)),
+            // The extension casts the ray the app handed it, so every hit is the app's own aim.
+            input: None,
         });
         Ok(())
     }

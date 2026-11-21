@@ -315,6 +315,23 @@ class XRHitTestSource {
   }
 }
 
+/**
+ * A source of hits along whichever input source carries a profile, which is `XRTransientInputHitTestSource`.
+ *
+ * The other half of `XRHitTestSource`, and a class for the same reason: `wxr-webxr` tells the two answers
+ * apart with `instanceof`, and a plain object would be a source that never arrived.
+ */
+class XRTransientInputHitTestSource {
+  constructor(profile) {
+    this.profile = profile;
+    this.cancelled = false;
+  }
+
+  cancel() {
+    this.cancelled = true;
+  }
+}
+
 /** One place a ray met the room, which is `XRHitTestResult` and holds where that was in the world. */
 class XRHitTestResult {
   constructor(where, time) {
@@ -326,6 +343,19 @@ class XRHitTestResult {
     return baseSpace
       ? new XRPose(relative(this._where, baseSpace.at(this._time)))
       : null;
+  }
+}
+
+/**
+ * One input source's hits, which is `XRTransientInputHitTestResult`.
+ *
+ * The same `XRHitTestResult` list a ray source answers, grouped by the pointer that asked - which is the
+ * whole of what the transient form adds.
+ */
+class XRTransientInputHitTestResult {
+  constructor(inputSource, results) {
+    this.inputSource = inputSource;
+    this.results = results;
   }
 }
 
@@ -663,6 +693,23 @@ class XRSession {
     return Promise.resolve(source);
   }
 
+  /**
+   * A source that follows whichever input source carries `profile`, which is
+   * `requestHitTestSourceForTransientInput`.
+   *
+   * No space and no ray, because each matching source aims along its own target ray. This stub has no
+   * transient pointers, so it follows *every* source whose profile matches: a browser's own rule is that
+   * only the sources it considers transient are candidates, and a profile is the half a page can see.
+   */
+  requestHitTestSourceForTransientInput(options) {
+    if (!options || typeof options.profile !== 'string') {
+      throw new TypeError('a transient hit test needs a profile');
+    }
+    // Recorded because a source cannot be read back: the profile is the half of the ask no hit pose shows.
+    globalThis.__wxrTransientProfile = options.profile;
+    return Promise.resolve(new XRTransientInputHitTestSource(options.profile));
+  }
+
   requestReferenceSpace(type) {
     if (type === 'viewer') {
       return Promise.resolve(new XRReferenceSpace(type, null));
@@ -916,6 +963,38 @@ class XRFrame {
     ];
     const where = compose(source.space.at(this.time), local);
     return [new XRHitTestResult(where, this.time)];
+  }
+
+  /**
+   * Where each matching source's own aim met the room, one group per source - `getHitTestResultsForTransientInput`.
+   *
+   * The same empty-room arithmetic as a ray's, done with each source's target ray instead of one the app
+   * described: one metre along its own `-Z`, which is where the ray goes. A count of calls is recorded,
+   * because an empty answer means two different things - a source that has not arrived yet, and a profile
+   * nothing carries - and only one of them is worth waiting for.
+   */
+  getHitTestResultsForTransientInput(source) {
+    requireActive(this);
+    globalThis.__wxrTransientCalls = (globalThis.__wxrTransientCalls || 0) + 1;
+    if (!source || source.cancelled || !source.profile) {
+      return [];
+    }
+    const results = [];
+    for (const input of this.session.inputSources) {
+      if (!input.profiles.includes(source.profile)) {
+        continue;
+      }
+      const at = input.targetRaySpace.at(this.time);
+      const forward = rotate([at[3], at[4], at[5], at[6]], [0, 0, -1]);
+      const where = [
+        at[0] + forward[0],
+        at[1] + forward[1],
+        at[2] + forward[2],
+        0, 0, 0, 1,
+      ];
+      results.push(new XRTransientInputHitTestResult(input, [new XRHitTestResult(where, this.time)]));
+    }
+    return results;
   }
 
   /** Anything else: an input source's space, or a hand's joint, measured from the space it was asked in. */

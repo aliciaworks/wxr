@@ -322,6 +322,12 @@ DEFAULT_IS_ENOUGH = {
     "four different shapes: a triangle mesh with its own lifecycle, a component of a spatial entity, and two "
     "whole-room scans. Picking one is picking which headsets this backend can mesh, and it has not been "
     "picked (the same choice, said at length, in `crates/wxr-openxr/src/lib.rs`)",
+    ("wxr-openxr", "hit_test_source_for_profile"): "OpenXR's hit test is `XR_META_environment_raycast`, "
+    "which casts the ray the app hands it: an input source's own ray is the app's to pass as that ray, and "
+    "there is no source that follows a profile because there is nothing per-source to make one of",
+    ("wxr-apple", "hit_test_source_for_profile"): "ARKit has no raycast and no hit-test provider - "
+    "`ArKit::cast` traces the ray the app gives through the triangles and planes it found - so a hit test "
+    "here is always one ray the app described, and there is no source that follows an input's own aim",
     ("wxr-apple", "interaction_mode"): "only a browser is ever `ScreenSpace`",
     ("wxr-openxr", "layer_needs_redraw"): "OpenXR is handed the whole layer list at `xrEndFrame`, so a layer "
     "that is not submitted is simply not composited - there is no request for a redraw to answer, and `false` "
@@ -441,6 +447,9 @@ RENAMES = {
     "XRReferenceSpaceType": "SpaceKind",
     "XRJointSpace": "HandJoint",
     "XRGPUSubImage": "SubImage",
+    # A hit-test source that follows an input's own aim is a hit-test source: the core has one handle for
+    # both kinds and cancels either the same way.
+    "XRTransientInputHitTestSource": "HitTestSource",
     # The three kinds of surface a hit test may land on, which the core carries as one set rather than as the
     # specification's enum: a source asks for several at once, and a set is what that is.
     "XRHitTestTrackableType": "HitTestKinds",
@@ -781,7 +790,7 @@ ALIASES = {
     "depthType": "fn depth_sensing",
     "depthActive": "fn depth_sensing",
     "requestHitTestSource": "fn hit_test_source",
-    "requestHitTestSourceForTransientInput": "fn hit_test_source",
+    "requestHitTestSourceForTransientInput": "fn hit_test_source_for_profile",
     "getHitTestResults": "fn hits",
     "getHitTestResultsForTransientInput": "fn hits",
     "createAnchor": "fn anchor",

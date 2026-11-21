@@ -29,19 +29,6 @@ use crate::sys::{
 };
 use crate::{depth, hit, input, planes, throws};
 
-impl Drop for WebXrSession {
-    /// End the browser's session when this one is dropped; dropping the handle is how an app says it is done.
-    fn drop(&mut self) {
-        if let Some(session) = self.inner.borrow().session.clone() {
-            // Caught: a session dropped inside its own frame handler is still active, and `end` throws
-            // `InvalidStateError` for that as for an ended one. An exception out of a destructor is worse.
-            if throws::end(&session).is_err() {
-                log::debug!("wxr-webxr: the browser would not end the session on drop");
-            }
-        }
-    }
-}
-
 /// Where the session request has got to.
 pub(crate) enum Connect {
     Pending,
@@ -342,6 +329,14 @@ impl wxr::Session for WebXrSession {
         ray: Option<wxr::Ray>,
     ) -> Result<wxr::HitTestSource, wxr::Error> {
         self.hit_test_source_impl(space, kinds, ray)
+    }
+
+    fn hit_test_source_for_profile(
+        &mut self,
+        kinds: wxr::HitTestKinds,
+        profile: &str,
+    ) -> Result<wxr::HitTestSource, wxr::Error> {
+        self.hit_test_source_for_profile_impl(kinds, profile)
     }
 
     fn hits(

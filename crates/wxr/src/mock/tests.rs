@@ -212,6 +212,11 @@ fn a_backend_without_hit_testing_says_so() {
         session.hit_test_source(space, crate::HitTestKinds::ALL, None),
         Err(Error::Unsupported(_))
     ));
+    // And the kind aimed by each input source's own ray is the same absence, not a second feature.
+    assert!(matches!(
+        session.hit_test_source_for_profile(crate::HitTestKinds::ALL, "generic-touchscreen"),
+        Err(Error::Unsupported(_))
+    ));
     // And a hit test that never happened is no hits, not a failure.
     let mut hits = Vec::new();
     session

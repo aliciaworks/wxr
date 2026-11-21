@@ -1,5 +1,6 @@
 //! Asking where the world is, which is WebXR's hit test.
 
+use crate::input::InputId;
 use crate::space::Pose;
 
 use glam::Vec3;
@@ -40,11 +41,16 @@ impl Ray {
 
 /// Where a ray met the world, which is WebXR's `XRHitTestResult`.
 ///
-/// A pose and nothing more, because that is all WebXR gives one: *what* was met is the runtime's business, and
-/// a scene that wants to put something where the ray landed wants the pose.
+/// A pose and, at most, whose ray asked: *what* was met is the runtime's business, and a scene that wants to
+/// put something where the ray landed wants the pose.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Hit {
     pub pose: Pose,
+    /// Which of the app's own sources aimed the ray, when it was one of theirs rather than one the app
+    /// described - WebXR's `XRTransientInputHitTestResult.inputSource`. `None` for a source asked for along a
+    /// ray the app gave, which is every hit from [`Session::hit_test_source`](crate::Session::hit_test_source);
+    /// two fingers on a touchscreen ask through one profile source and come back told apart by this.
+    pub input: Option<InputId>,
 }
 
 /// A ray asking where the world is, which is WebXR's `XRHitTestSource`.

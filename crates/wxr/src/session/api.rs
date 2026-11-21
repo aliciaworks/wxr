@@ -181,18 +181,16 @@ pub trait Session: Any {
         Err(Error::Unsupported("layers".into()))
     }
 
-    /// What to draw into for a layer this frame, and where in it.
-    ///
-    /// `None` while there is nothing to draw into yet - a layer is made asynchronously, and its image is the
-    /// compositor's for one frame and not the app's to keep - and for a backend never taught layers either.
+    /// What to draw into for a layer this frame, and where in it. `None` while there is nothing to draw into
+    /// yet - a layer is made asynchronously, and its image is the compositor's for one frame and not the app's
+    /// to keep - and for a backend never taught layers either.
     fn layer_image(&mut self, _layer: Layer) -> Option<(&Self::Image, LayerImage)> {
         None
     }
 
     /// Whether the compositor wants this layer drawn again, which is WebXR's `needsRedraw`. True for a layer
-    /// nothing has been drawn into yet, and after a [`Redraw`](Event::Redraw) that says the picture the
-    /// compositor had was lost; false once the app has taken the layer's image, and for a compositor that
-    /// takes a complete layer list each frame, which never asks.
+    /// nothing has been drawn into yet and after a [`Redraw`](Event::Redraw) that says its picture was lost;
+    /// false once the app has taken the layer's image, and for a compositor given a complete list each frame.
     fn layer_needs_redraw(&self, _layer: Layer) -> bool {
         false
     }
@@ -247,26 +245,22 @@ pub trait Session: Any {
     /// Begin a frame. Fills in the predicted display time and what the caller should do with it.
     fn begin(&mut self, now: Duration, out: &mut Frame) -> Result<(), Error>;
 
-    /// Fill in the views for the frame just begun, in the space given.
-    ///
-    /// Replaced rather than added to, as [`Frame::reset`] says - asking twice is two answers, and a call that
-    /// cannot locate leaves neither.
+    /// Fill in the views for the frame just begun, in the space given. Replaced rather than added to, as
+    /// [`Frame::reset`] says - asking twice is two answers, and a call that cannot locate leaves neither.
     fn views(&mut self, space: ReferenceSpace, out: &mut Frame) -> Result<(), Error>;
 
     /// Fill in the part of one view's picture the display shows, and let an empty mask mean the whole view.
-    /// `view` is an index into the frame's views, which is what [`Event::VisibilityMaskChanged`] carries; the
-    /// mask is in that eye's view space on the plane `z = -1`, as [VisibilityMask] describes. A session
-    /// without [`Features::VISIBILITY_MASK`] says [`Error::Unsupported`] rather than a mask that claims the
-    /// whole view.
+    /// `view` indexes the frame's views, which is what [`Event::VisibilityMaskChanged`] carries; the mask is in
+    /// that eye's view space on the plane `z = -1`, as [VisibilityMask] describes. A session without
+    /// [`Features::VISIBILITY_MASK`] says [`Error::Unsupported`] rather than a mask claiming the whole view.
     fn visibility_mask(&mut self, _view: usize, out: &mut VisibilityMask) -> Result<(), Error> {
         out.clear();
         Err(Error::Unsupported("visibility masks".into()))
     }
 
-    /// Fill in what the user is holding, in the space given.
-    ///
-    /// Emptied first: what it holds when this returns is this frame's sources, not the session's history. Empty
-    /// by default, because a runtime with no controllers bound has nothing to report rather than having failed.
+    /// Fill in what the user is holding, in the space given. Emptied first, so what it holds is this frame's
+    /// sources rather than the session's history; empty by default, because a runtime with no controllers bound
+    /// has nothing to report rather than having failed.
     fn inputs(&mut self, _space: ReferenceSpace, out: &mut Vec<InputSource>) -> Result<(), Error> {
         out.clear();
         Ok(())
@@ -388,7 +382,18 @@ pub trait Session: Any {
         Err(Error::Unsupported("hit testing".into()))
     }
 
-    /// Fill in what the ray met this frame, expressed in the space given. Empty when it met nothing.
+    /// Ask for a source of hits along whichever input source carries `profile` - WebXR's
+    /// `requestHitTestSourceForTransientInput`; [`Hit::input`] names the source each hit came from.
+    fn hit_test_source_for_profile(
+        &mut self,
+        _kinds: HitTestKinds,
+        _profile: &str,
+    ) -> Result<HitTestSource, Error> {
+        Err(Error::Unsupported("input hit testing".into()))
+    }
+
+    /// Fill in what the ray met this frame, expressed in the space given. Empty when it met nothing; a hit from
+    /// a source asked for by profile carries the input that found it.
     fn hits(
         &mut self,
         _source: HitTestSource,
@@ -442,7 +447,6 @@ pub trait Session: Any {
 
     /// The runtime's own name for an anchor - WebXR's `XRAnchor.requestPersistentHandle`, OpenXR's
     /// `XrSpatialAnchorCreateCompleteFB`, ARKit's `ar_anchor_get_identifier`.
-    ///
     /// [`Anchor`]'s id is a slot in *this* session's table and means nothing to the next session, while this
     /// one is the runtime's: it is what a caller writes down to ask for the same place in a later run.
     /// `None` while the runtime has not answered - WebXR answers with a promise - for an anchor this session
@@ -476,9 +480,8 @@ pub trait Session: Any {
     /// `XRFrame.getDepthInformation`, OpenXR's environment depth. `None` for a runtime with no depth sensing,
     /// for a view it has none for, for one that has paused it, and for one that never had any - the same
     /// answer, and why [`Features::DEPTH`] says whether this exists.
-    ///
-    /// Ask once per frame, like a view: depth is a buffer made for the frame and taken back at its end; it is
-    /// the platform's own, and the renderer's importer turns it into something to draw with.
+    /// Ask once per frame, like a view: depth is a buffer made for the frame and taken back at its end, and the
+    /// renderer's importer turns it into something to draw with.
     fn environment_depth(&mut self, _view: usize) -> Option<(&Self::EnvironmentDepth, DepthInfo)> {
         None
     }
@@ -489,8 +492,8 @@ pub trait Session: Any {
     /// Ask the runtime to end this session, which is WebXR's `XRSession.end` and OpenXR's
     /// `xrRequestExitSession` - the app saying it is finished rather than the handle being dropped. Not
     /// [`end`](Session::end), which hands back one frame: this is what a system menu does, and the runtime
-    /// answers with an ending of its own - a [`StateChanged`](Event::StateChanged) on the next `poll`. A
-    /// backend with no request to make keeps the runtime's lifecycle and says so.
+    /// answers with a [`StateChanged`](Event::StateChanged) on the next `poll`. A backend with no request to
+    /// make keeps the runtime's lifecycle and says so.
     fn request_exit(&mut self) -> Result<(), Error> {
         Err(Error::Unsupported("ending the session".into()))
     }
