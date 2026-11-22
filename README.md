@@ -213,9 +213,10 @@ The model, the seam, and a mock:
 - `frame` - `View`, `Eye`, `FieldOfView`, `Frame`, `FrameState`. Asymmetric fields of view, because a
   headset lens is not centred on its panel.
 - `target` - `ImageMeta`, `ColorFormat`, `Extent2d`. The *shape* of the images, not the images.
-- `layer` - `Layer`, `LayerShape`, `LayerImage`. The pictures a compositor places itself, which is the one part
-  of a frame that is not drawn per eye: a menu, a video, a skybox. The vocabulary is the shape both platforms
-  share, and which shapes a session has is `Features::LAYER_QUAD` and its siblings.
+- `layer` - `Layer`, `LayerShape`, `LayerImage`, `LayerOptions`. The pictures a compositor places itself, which
+  is the one part of a frame that is not drawn per eye: a menu, a video, a skybox. The vocabulary is the shape
+  both platforms share, which shapes a session has is `Features::LAYER_QUAD` and its siblings, and `LayerOptions`
+  is whether the compositor reads the picture's alpha or treats it as opaque.
 - `session` - the `Session` and `Backend` traits, `State`, `Event`, `Presentation`, `Error`.
 - `input` - `InputSource`, `Buttons`, `Axes`. One entry per hand, with a grip pose and an aim pose, because a
   controller is one thing with two places on it. The buttons are only what all three platforms have, and on a

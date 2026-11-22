@@ -12,6 +12,7 @@ impl OpenXrSession {
         space: wxr::ReferenceSpace,
         shape: wxr::LayerShape,
         pixels: wxr::Extent2d,
+        options: wxr::LayerOptions,
     ) -> Result<wxr::Layer, wxr::Error> {
         // One extension per non-quad shape, enabled when the instance is made or not at all - so the refusal
         // is per shape and reads what the capability bits report.
@@ -82,6 +83,7 @@ impl OpenXrSession {
             shape,
             extent: pixels,
             held: None,
+            options,
         }));
         log::info!(
             "wxr-openxr: a {} layer at {}x{} px",
@@ -227,6 +229,19 @@ impl OpenXrSession {
     }
 }
 
+/// The composition-layer flags one layer's options ask for.
+///
+/// One bit of this core is in `XrCompositionLayerFlags`: with `BLEND_TEXTURE_SOURCE_ALPHA` the compositor
+/// reads the picture's alpha and blends it with what is behind, and without it every texel is opaque. The
+/// other bits are a deprecated aberration correction and two alpha conventions this core does not ask for.
+pub(super) fn flags(options: wxr::LayerOptions) -> xr::CompositionLayerFlags {
+    if options.blend_texture_source_alpha {
+        xr::CompositionLayerFlags::BLEND_TEXTURE_SOURCE_ALPHA
+    } else {
+        xr::CompositionLayerFlags::EMPTY
+    }
+}
+
 /// How many array slices a layer of this shape has.
 ///
 /// A cube is the only shape that is more than one picture: its six faces are its six slices. A quad, a
@@ -241,6 +256,22 @@ fn slices(shape: wxr::LayerShape) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The alpha bit is the only flag a layer can ask for, and it is off unless the app asked for it: an
+    /// opaque picture that names no bit lets the compositor skip reading a channel that is always one.
+    #[test]
+    fn an_opaque_layer_asks_for_no_flags() {
+        assert_eq!(
+            flags(wxr::LayerOptions::default()),
+            xr::CompositionLayerFlags::BLEND_TEXTURE_SOURCE_ALPHA
+        );
+        assert!(
+            flags(wxr::LayerOptions {
+                blend_texture_source_alpha: false,
+            })
+            .is_empty()
+        );
+    }
 
     /// The face count is the layer's, not the eyes': a cube always has six and every other shape one, so
     /// `sub_image` can refuse an index that would be outside the swapchain's array.

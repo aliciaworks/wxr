@@ -93,6 +93,7 @@ impl Session for MockSession {
         space: ReferenceSpace,
         shape: LayerShape,
         pixels: Extent2d,
+        options: LayerOptions,
     ) -> Result<Layer, Error> {
         // One shape, and the refusal is the interesting half: a mock that quietly made a cylinder would be a
         // mock that let a renderer ship code for a capability no session here has.
@@ -109,6 +110,7 @@ impl Session for MockSession {
             space,
             pose: Pose::IDENTITY,
             pixels,
+            options,
             image: 0,
         }));
         Ok(Layer::new((self.layers.len() - 1) as u32))

@@ -133,7 +133,9 @@ impl OpenXrSession {
                 }
                 let layer = layer.as_ref()?;
                 let space = self.spaces.get(layer.space)?;
-                let flags = xr::CompositionLayerFlags::BLEND_TEXTURE_SOURCE_ALPHA;
+                // The app's answer about its own alpha, kept since the layer was made: an opaque picture names
+                // no bit, which is a compositor that need not sample a channel that is always one.
+                let flags = super::layers::flags(layer.options);
                 let rect = xr::Rect2Di {
                     offset: xr::Offset2Di { x: 0, y: 0 },
                     extent: xr::Extent2Di {

@@ -70,7 +70,12 @@ pub(super) fn prepare(board: &mut Board, session: &mut WebXrSession) -> Result<b
             },
             wxr::LayerShape::Cube,
         ] {
-            match session.layer(viewer, shape, wxr::Extent2d::new(64, 64)) {
+            match session.layer(
+                viewer,
+                shape,
+                wxr::Extent2d::new(64, 64),
+                wxr::LayerOptions::default(),
+            ) {
                 Err(wxr::Error::Rejected(_)) => {}
                 other => {
                     return Err(format!(
@@ -81,7 +86,12 @@ pub(super) fn prepare(board: &mut Board, session: &mut WebXrSession) -> Result<b
             }
         }
         // A cube's six faces are square, so the extent it is asked for has to be square as well.
-        match session.layer(floor, wxr::LayerShape::Cube, wxr::Extent2d::new(64, 32)) {
+        match session.layer(
+            floor,
+            wxr::LayerShape::Cube,
+            wxr::Extent2d::new(64, 32),
+            wxr::LayerOptions::default(),
+        ) {
             Err(wxr::Error::Rejected(_)) => {}
             other => {
                 return Err(format!(
@@ -100,6 +110,7 @@ pub(super) fn prepare(board: &mut Board, session: &mut WebXrSession) -> Result<b
             height: 0.5,
         },
         wxr::Extent2d::new(256, 128),
+        wxr::LayerOptions::default(),
     ) {
         Ok(layer) => layer,
         Err(wxr::Error::Unavailable(_)) => return Ok(false),
@@ -114,6 +125,7 @@ pub(super) fn prepare(board: &mut Board, session: &mut WebXrSession) -> Result<b
                 aspect: 1.5,
             },
             wxr::Extent2d::new(128, 128),
+            wxr::LayerOptions::default(),
         )
         .map_err(|error| format!("a cylinder layer: {error}"))?;
     let equirect = session
@@ -126,10 +138,16 @@ pub(super) fn prepare(board: &mut Board, session: &mut WebXrSession) -> Result<b
                 lower_vertical: -0.4,
             },
             wxr::Extent2d::new(128, 64),
+            wxr::LayerOptions::default(),
         )
         .map_err(|error| format!("an equirect layer: {error}"))?;
     let cube = session
-        .layer(floor, wxr::LayerShape::Cube, wxr::Extent2d::new(64, 64))
+        .layer(
+            floor,
+            wxr::LayerShape::Cube,
+            wxr::Extent2d::new(64, 64),
+            wxr::LayerOptions::default(),
+        )
         .map_err(|error| format!("a cube layer: {error}"))?;
 
     // A pose is relative to the layer's own space. The quad is moved, because a quad has a transform; the cube
@@ -289,6 +307,7 @@ pub(super) fn check_frame(board: &mut Board, session: &mut WebXrSession) -> Resu
                 height: 0.5,
             },
             wxr::Extent2d::new(32, 32),
+            wxr::LayerOptions::default(),
         ) {
             Err(wxr::Error::Rejected(_)) => {}
             other => {

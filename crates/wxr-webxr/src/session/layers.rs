@@ -80,6 +80,7 @@ impl WebXrSession {
         space: wxr::ReferenceSpace,
         shape: wxr::LayerShape,
         pixels: wxr::Extent2d,
+        options: wxr::LayerOptions,
     ) -> Result<wxr::Layer, wxr::Error> {
         let Some(gpu) = self.gpu.as_ref() else {
             return Err(wxr::Error::Unsupported(
@@ -204,10 +205,11 @@ impl WebXrSession {
                     .unchecked_into()
             }
         };
-        // A layer is a picture *over* what is already there, so its alpha is part of the picture: a panel drawn
-        // with a transparent background is transparent, which it is not if the compositor ignores the channel.
-        // Opaque content says the same thing with every alpha at one.
-        layer.set_blend_texture_source_alpha(true);
+        // A layer is a picture *over* what is already there, and whether its alpha is part of the picture is
+        // the app's answer: a panel drawn with a transparent background is transparent only if the compositor
+        // reads the channel, and an opaque one asks for the channel to be ignored. The init dictionaries have
+        // no member for it, so it is set on the layer once the layer exists.
+        layer.set_blend_texture_source_alpha(options.blend_texture_source_alpha);
         let id = self.layers.len() as u32;
         // The compositor can lose a layer's picture - it says so by setting `needsRedraw` and firing `redraw` -
         // and the event arrives on the layer. The handler hands it on through a queue the poll drains, the same

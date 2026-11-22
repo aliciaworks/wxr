@@ -149,6 +149,7 @@ fn a_layer_picture_belongs_to_a_frame_that_is_open() {
                 height: 1.0,
             },
             Extent2d::new(64, 64),
+            LayerOptions::default(),
         )
         .expect("a quad layer");
     assert!(session.layer_image(layer).is_none(), "before any frame");

@@ -15,7 +15,7 @@ use crate::frame::{Eye, FieldOfView, Frame, FrameState, View, Viewport};
 use crate::input::{
     Axes, Buttons, Hand, HandJoint, Handedness, InputId, InputSource, Joint, TargetRayMode,
 };
-use crate::layer::{Layer, LayerImage, LayerShape};
+use crate::layer::{Layer, LayerImage, LayerOptions, LayerShape};
 use crate::mesh::{Mesh, SurfaceKind};
 use crate::session::{
     Backend, Error, Event, Presentation, Session, SessionMode, State, Visibility,
@@ -122,6 +122,8 @@ struct MockLayer {
     pose: Pose,
     /// What the app asked to draw it at, which is what comes back as the image's extent.
     pixels: Extent2d,
+    /// How the app said the picture meets what is behind it, kept so a test can see it arrived.
+    options: LayerOptions,
     /// This frame's image, which changes the way the session's own does and for the same reason.
     image: u32,
 }

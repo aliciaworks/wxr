@@ -17,7 +17,7 @@ use crate::feature::Features;
 use crate::frame::{DepthRange, Frame};
 use crate::hit::{Hit, HitTestKinds, HitTestSource, Ray};
 use crate::input::{Hand, InputId, InputSource};
-use crate::layer::{Binding, Layer, LayerImage, LayerShape, SubImage};
+use crate::layer::{Binding, Layer, LayerImage, LayerOptions, LayerShape, SubImage};
 use crate::light::{LightEstimate, LightProbe};
 use crate::mesh::Mesh;
 use crate::plane::Plane;
@@ -168,15 +168,16 @@ pub trait Session: Any {
         None
     }
 
-    /// Make a picture the compositor places itself - WebXR's and OpenXR's `XRCompositionLayer`s other than the
+    /// Make a picture the compositor places itself - a WebXR or OpenXR `XRCompositionLayer` other than the
     /// projection one. It is drawn once (a menu, a video, a 360° photograph) and the runtime puts it where the
-    /// shape and the space say. Which shapes a session has is [`Features::LAYER_QUAD`] and its siblings, one
-    /// bit per shape; a session with none answers [`Error::Unsupported`], and `pixels` is the resolution.
+    /// shape, the space, `pixels` and `options` say - see [`LayerOptions`]. Which shapes a session has is
+    /// [`Features::LAYER_QUAD`] and its siblings, one bit per shape; a session with none says `Unsupported`.
     fn layer(
         &mut self,
         _space: ReferenceSpace,
         _shape: LayerShape,
         _pixels: crate::Extent2d,
+        _options: LayerOptions,
     ) -> Result<Layer, Error> {
         Err(Error::Unsupported("layers".into()))
     }
@@ -196,9 +197,8 @@ pub trait Session: Any {
     }
 
     /// A binding for a layer whose picture the app supplies, which is WebXR's `XRWebGLBinding` and its
-    /// WebGPU and media siblings collapsed into one - see [`Binding`]. Not a [`Features`] bit: a binding is
-    /// a layer the app draws into itself rather than one the compositor makes, and a backend that cannot
-    /// take an app's resource answers [`Error::Unsupported`].
+    /// WebGPU and media siblings collapsed into one - see [`Binding`]. Not a [`Features`] bit: it is a layer
+    /// the app draws into itself, and a backend that cannot take one says [`Error::Unsupported`].
     fn binding(&mut self, _layer: Layer) -> Result<Binding, Error> {
         Err(Error::Unsupported("bindings".into()))
     }

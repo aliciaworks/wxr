@@ -88,6 +88,15 @@ impl MockSession {
             .map(|slot| (slot.shape, slot.pixels))
     }
 
+    /// How a layer's picture was said to meet what is behind it, which is otherwise the app's own business:
+    /// a test that asked is checking that the answer reached the backend rather than the default.
+    pub fn layer_options(&self, layer: Layer) -> Option<LayerOptions> {
+        self.layers
+            .get(layer.id() as usize)
+            .and_then(Option::as_ref)
+            .map(|slot| slot.options)
+    }
+
     /// The space a layer was made in.
     pub fn layer_space(&self, layer: Layer) -> Option<ReferenceSpace> {
         self.layers

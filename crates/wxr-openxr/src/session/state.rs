@@ -178,6 +178,9 @@ pub(super) struct Layer {
     pub(super) extent: wxr::Extent2d,
     /// Which image this frame took, until it is given back.
     pub(super) held: Option<u32>,
+    /// How the picture meets what is behind it, kept until `xrEndFrame` builds the layer's flags - the
+    /// composition struct is one per frame and not one per layer, so the app's choice lives here.
+    pub(super) options: wxr::LayerOptions,
 }
 
 /// Which composition-layer extensions the instance was made with.

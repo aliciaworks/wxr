@@ -454,8 +454,9 @@ impl wxr::Session for WebXrSession {
         space: wxr::ReferenceSpace,
         shape: wxr::LayerShape,
         pixels: wxr::Extent2d,
+        options: wxr::LayerOptions,
     ) -> Result<wxr::Layer, wxr::Error> {
-        self.layer_impl(space, shape, pixels)
+        self.layer_impl(space, shape, pixels, options)
     }
 
     fn layer_image(&mut self, layer: wxr::Layer) -> Option<(&Self::Image, wxr::LayerImage)> {

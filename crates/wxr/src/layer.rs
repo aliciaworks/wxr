@@ -30,10 +30,10 @@ use crate::target::ImageMeta;
 /// a radius and how far it opens horizontally and above and below the horizon. Sizes are metres and angles are
 /// radians.
 ///
-/// What is *not* here is anything about how a layer meets the others: which one is on top, whether it is blended
-/// with what is behind it, or which eyes see it. Those are the compositor's rules on every platform that has
-/// layers, and a renderer that needs to know them is a renderer drawing the composite itself - which is the
-/// thing a layer exists to avoid.
+/// What is *not* here is how a layer meets the others: which one is on top, and which eyes see it. Those are
+/// the compositor's rules on every platform that has layers, and a renderer that needs to know them is a
+/// renderer drawing the composite itself - which is the thing a layer exists to avoid. Alpha is the exception,
+/// because it belongs to the picture: [`LayerOptions`] is where the app says whether the compositor reads it.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum LayerShape {
     /// A flat rectangle, facing the space it was made in: a menu, a monitor, a video - anything that is a
@@ -68,6 +68,34 @@ impl LayerShape {
             Self::Cylinder { .. } => "cylinder",
             Self::Equirect { .. } => "equirect",
             Self::Cube => "cube",
+        }
+    }
+}
+
+/// How a layer's picture meets what is already in the frame.
+///
+/// A layer is drawn *over* the world, and whether its alpha is part of what it draws is the app's answer
+/// rather than the compositor's guess: WebXR's `XRCompositionLayer.blendTextureSourceAlpha` is exactly this
+/// question, and OpenXR asks it with `XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT` on every
+/// composition layer. Apple's CompositorServices has no app-made layers, so its backend has no layer to ask.
+///
+/// True is the default, and it is the safe answer: a panel drawn with a transparent background is transparent
+/// only when the channel is read, and opaque content says the same thing with every alpha at one. False is a
+/// promise about the picture - every texel is opaque - which lets a compositor skip the blend rather than
+/// sample an alpha that is always one.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct LayerOptions {
+    /// Whether the compositor blends the picture with what is behind it using the picture's own alpha.
+    ///
+    /// The two platforms spell the flag differently and mean the same thing by it: `true` reads the alpha
+    /// channel, `false` treats the picture as opaque.
+    pub blend_texture_source_alpha: bool,
+}
+
+impl Default for LayerOptions {
+    fn default() -> Self {
+        Self {
+            blend_texture_source_alpha: true,
         }
     }
 }
@@ -214,6 +242,17 @@ mod tests {
             .name(),
             "cylinder"
         );
+    }
+
+    #[test]
+    fn a_layer_reads_its_alpha_unless_it_says_otherwise() {
+        // The default is the behaviour both backends had before the option existed, and the safe one for a
+        // picture whose alpha the app bothered to write: an opaque layer is the case that has to ask.
+        assert!(LayerOptions::default().blend_texture_source_alpha);
+        let opaque = LayerOptions {
+            blend_texture_source_alpha: false,
+        };
+        assert_ne!(opaque, LayerOptions::default());
     }
 
     #[test]

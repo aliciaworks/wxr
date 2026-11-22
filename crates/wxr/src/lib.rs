@@ -53,7 +53,7 @@ pub use hit::{Hit, HitTestKinds, HitTestSource, Ray};
 pub use input::{
     Axes, Buttons, Hand, HandJoint, Handedness, InputId, InputSource, Joint, TargetRayMode,
 };
-pub use layer::{Binding, Layer, LayerImage, LayerShape, SubImage};
+pub use layer::{Binding, Layer, LayerImage, LayerOptions, LayerShape, SubImage};
 pub use light::{LightEstimate, LightProbe};
 pub use mesh::{Mesh, SurfaceKind};
 pub use plane::{Plane, PlaneOrientation};

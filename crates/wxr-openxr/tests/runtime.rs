@@ -105,6 +105,7 @@ fn every_capability_bit_is_something_the_session_will_answer_for() {
                 height: 1.0,
             },
             wxr::Extent2d::new(64, 64),
+            wxr::LayerOptions::default(),
         )
         .expect("a quad layer, which is in the core specification");
     session.release_layer(layer);
@@ -132,7 +133,12 @@ fn every_capability_bit_is_something_the_session_will_answer_for() {
         ),
         (wxr::LayerShape::Cube, wxr::Features::LAYER_CUBE),
     ] {
-        let made = session.layer(space, shape, wxr::Extent2d::new(128, 128));
+        let made = session.layer(
+            space,
+            shape,
+            wxr::Extent2d::new(128, 128),
+            wxr::LayerOptions::default(),
+        );
         assert_eq!(
             made.is_ok(),
             features.contains(bit),

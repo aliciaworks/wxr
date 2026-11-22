@@ -59,8 +59,13 @@ mod native {
                 height: 0.8,
             },
             wxr::Extent2d::new(1024, 683),
+            // An opaque panel, which is a picture the compositor need not blend. The default is the other
+            // answer, for content whose alpha is part of what it draws.
+            wxr::LayerOptions {
+                blend_texture_source_alpha: false,
+            },
         )?;
-        println!("made a quad layer: {layer:?}");
+        println!("made an opaque quad layer: {layer:?}");
 
         // Placed, and placed again: on OpenXR that is a value the next `xrEndFrame` reads rather than a call
         // into the runtime, which is why this proving nothing yet is the honest outcome.
@@ -101,7 +106,7 @@ mod native {
             (wxr::LayerShape::Cube, wxr::Extent2d::new(512, 512)),
         ];
         for (shape, pixels) in shapes {
-            match session.layer(space, shape, pixels) {
+            match session.layer(space, shape, pixels, wxr::LayerOptions::default()) {
                 Ok(made) => {
                     println!("made a {} layer: {made:?}", shape.name());
                     session.release_layer(made);
