@@ -30,6 +30,13 @@ pub(super) struct Space {
     pub(super) kind: SpaceKind,
     pub(super) space: Option<XrReferenceSpace>,
     pub(super) promise: Option<js_sys::Promise>,
+    /// Whether the browser settled the request by refusing it.
+    ///
+    /// A refused space and one still being promised both have no `space` and no `promise`, and they are not
+    /// the same answer: one is a session that has not started yet, the other is a space this browser does not
+    /// have. Keeping the difference is what lets [`WebXrSession::resolved_space`] answer `NoSpace` for the
+    /// second rather than leaving a caller with no eyes and no reason for them.
+    pub(super) refused: bool,
     /// The `reset` handler, kept alive for as long as the space is: a closure the browser holds and this drops
     /// is a closure that stops being called. Nothing reads it - holding it is the work.
     #[allow(dead_code)]

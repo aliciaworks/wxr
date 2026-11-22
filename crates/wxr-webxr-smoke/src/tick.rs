@@ -258,19 +258,19 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
         images::check_images(board, session)?;
     }
     // A `views` retry is a new answer rather than an addition to the last one, so a space the browser refused
-    // has to leave the frame without eyes *and* without the picture those eyes were drawn through. Asked once,
-    // after the image checks above and before anything else reads the frame, and the real space is asked again
-    // below so that this tick still draws.
+    // is `NoSpace` and leaves the frame without eyes or the picture those eyes were drawn through.
     if board.gpu && board.checked && !board.retry_checked {
         board.retry_checked = true;
         if let Some(unbounded) = board.unbounded {
-            if let Err(error) = session.views(unbounded, &mut board.frame) {
-                return Err(format!("views of a refused space answered {error}"));
+            match session.views(unbounded, &mut board.frame) {
+                Err(wxr::Error::NoSpace(wxr::SpaceKind::Unbounded)) => {}
+                Err(error) => return Err(format!("views of a refused space answered {error}")),
+                Ok(()) => return Err("a refused space's views was accepted, not NoSpace".into()),
             }
-            if !board.frame.views().is_empty() {
+            let eyes = board.frame.views().len();
+            if eyes != 0 {
                 return Err(format!(
-                    "a views call for a refused space left {} eye(s) in the frame",
-                    board.frame.views().len()
+                    "a refused space's views left {eyes} eye(s) in the frame"
                 ));
             }
             let meta = session.images();
@@ -286,7 +286,7 @@ pub(super) fn tick(board: &mut Board, session: &mut wxr_webxr::WebXrSession) -> 
                     meta.extent
                 ));
             }
-            say("a views retry with no eyes took the picture with it");
+            say("a views call on a refused space is NoSpace and took the picture with it");
             if let Err(error) = session.views(space, &mut board.frame) {
                 return Err(format!("the floor space's views, asked again: {error}"));
             }

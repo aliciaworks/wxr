@@ -39,6 +39,7 @@ impl WebXrSession {
             kind,
             space: None,
             promise: Some(promise.clone()),
+            refused: false,
             on_reset: None,
         }));
 
@@ -59,6 +60,10 @@ impl WebXrSession {
             let mut slot = fill.borrow_mut();
             slot.promise = None;
             let Some(space) = space else {
+                // The request settled without a space, so it never will have one: keeping that apart from a
+                // request still pending is what lets the next use of the handle answer `NoSpace` instead of
+                // waiting forever for eyes that are not coming.
+                slot.refused = true;
                 return;
             };
             // The space itself says when its origin was recentered, and every pose measured in it is stale
@@ -88,9 +93,10 @@ impl WebXrSession {
     /// The browser's space behind a handle, once the browser has answered for it.
     ///
     /// `Err(NoSpace)` is a handle this session never handed out - an id past the list, or one whose public
-    /// kind was changed - and `Ok(None)` is a space this session did make that the browser has not settled
-    /// yet. The caller decides because the two callers differ: a creator has nothing to build from a promise
-    /// and says so, while a reader asked before the first frame has no eyes to report either way.
+    /// kind was changed - or one the browser has answered and refused. `Ok(None)` is a space this session did
+    /// make that the browser has not settled yet, which is the one frame of a session that just started. The
+    /// caller decides because the two callers differ: a creator has nothing to build from a promise and says
+    /// so, while a reader asked before the first frame has no eyes to report either way.
     pub(super) fn resolved_space(
         &self,
         space: wxr::ReferenceSpace,
@@ -98,7 +104,13 @@ impl WebXrSession {
         let Some(slot) = self.space_slot(space) else {
             return Err(wxr::Error::NoSpace(space.kind));
         };
-        Ok(slot.borrow().space.clone())
+        let slot = slot.borrow();
+        // A refusal is final, so it is an answer now rather than a wait: a caller asking for a kind this
+        // browser does not have hears that on its first use of the handle, and can fall back to one it does.
+        if slot.refused {
+            return Err(wxr::Error::NoSpace(space.kind));
+        }
+        Ok(slot.space.clone())
     }
 
     pub(super) fn offset_space_impl(
@@ -115,6 +127,7 @@ impl WebXrSession {
             kind: space.kind,
             space: None,
             promise: None,
+            refused: false,
             on_reset: None,
         }));
         // The id the handle will have, known before the space is here so that the reset handler can name it.
@@ -130,24 +143,34 @@ impl WebXrSession {
                 kind: space.kind,
                 space: Some(offset),
                 promise: None,
+                refused: false,
                 on_reset: Some(handler),
             };
         } else if let Some(promise) = pending {
             let fill = slot.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                if let Ok(value) = JsFuture::from(promise).await
-                    && let Ok(base) = value.dyn_into::<XrReferenceSpace>()
-                    && let Ok(offset) = offset_reference_space(&base, offset)
-                {
-                    let handler = reset_handler(reset, space.kind, id);
-                    offset.set_onreset(Some(handler.as_ref().unchecked_ref()));
-                    *fill.borrow_mut() = Space {
-                        kind: space.kind,
-                        space: Some(offset),
-                        promise: None,
-                        on_reset: Some(handler),
-                    };
-                }
+                let made = match JsFuture::from(promise).await {
+                    Ok(value) => value
+                        .dyn_into::<XrReferenceSpace>()
+                        .ok()
+                        .and_then(|base| offset_reference_space(&base, offset).ok()),
+                    Err(_) => None,
+                };
+                let Some(offset) = made else {
+                    // The base was refused, or the offset of it was: either way this handle will never name a
+                    // space, and saying so is the same answer a refusal of the base itself gives.
+                    fill.borrow_mut().refused = true;
+                    return;
+                };
+                let handler = reset_handler(reset, space.kind, id);
+                offset.set_onreset(Some(handler.as_ref().unchecked_ref()));
+                *fill.borrow_mut() = Space {
+                    kind: space.kind,
+                    space: Some(offset),
+                    promise: None,
+                    refused: false,
+                    on_reset: Some(handler),
+                };
             });
         } else {
             return Err(wxr::Error::NoSpace(space.kind));
