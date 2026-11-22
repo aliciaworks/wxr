@@ -182,6 +182,18 @@ pub struct Frame {
     /// [`index`](Frame::index) because they are two counters with two owners, and each says only what its
     /// own framework promises.
     pub presentation_index: Option<u64>,
+    /// Whether a capture of this frame is protected - visionOS's
+    /// `cp_drawable_is_content_capture_protected`.
+    ///
+    /// A headset can mirror what the wearer sees, and an app drawing something that must not leave the device
+    /// (a message, a password, a camera feed) has to know whether what it draws now will be hidden in that
+    /// mirror and in any recording of it. `Some(true)` is the compositor's promise that it will be; `Some(false)`
+    /// is the answer to draw that content somewhere else, or not at all. The compositor can answer differently
+    /// from one frame to the next, which is why it is asked per frame.
+    ///
+    /// `None` for a runtime with no such notion, and for a frame the compositor did not serve: WebXR and OpenXR
+    /// name no protection, so a caller with content to protect can only draw it where this says `Some(true)`.
+    pub content_capture_protected: Option<bool>,
     pub state: FrameState,
     /// Where the head is, in whichever reference space the views were asked for - WebXR's
     /// `XRViewerPose.transform`.
@@ -313,14 +325,17 @@ mod tests {
     }
 
     #[test]
-    fn forgetting_a_frames_head_leaves_its_clock_and_its_number_alone() {
+    fn forgetting_a_frames_head_leaves_its_clock_and_its_numbers_alone() {
         // `views` starts with `reset`, and a backend that has just been given a frame's timing sets it in
-        // `begin`: clearing the clock with the head would wipe what the frame had only just been told.
+        // `begin`: clearing the clock with the head would wipe what the frame had only just been told. The
+        // capture promise is the same kind of answer, and a scene that redraws after a second `views` call
+        // must not lose the one reason it was allowed to draw what it did.
         let mut frame = Frame {
             rendering_deadline: Some(Duration::from_secs(1)),
             optimal_input_time: Some(Duration::from_secs(2)),
             index: Some(7),
             presentation_index: Some(8),
+            content_capture_protected: Some(true),
             ..Default::default()
         };
         frame.reset();
@@ -328,5 +343,6 @@ mod tests {
         assert_eq!(frame.optimal_input_time, Some(Duration::from_secs(2)));
         assert_eq!(frame.index, Some(7));
         assert_eq!(frame.presentation_index, Some(8));
+        assert_eq!(frame.content_capture_protected, Some(true));
     }
 }
