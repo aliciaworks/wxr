@@ -418,6 +418,15 @@ impl ArKit {
         self.lights.as_ref()?.estimate()
     }
 
+    /// Where the probe that produced that estimate is, in ARKit's world, or `None` when there is no estimate.
+    ///
+    /// The space the light is in, and not an extra reading: [`ArKit::light`] and this are two halves of one
+    /// photograph, so a session that has one has the other. A caller turns the direction with it, which is
+    /// what makes a directional light usable in a scene ARKit's world origin is not the frame of.
+    pub fn light_probe_pose(&self) -> Option<wxr::Pose> {
+        self.lights.as_ref()?.probe_pose()
+    }
+
     /// Whether the provider for device fit came up, which is what `features` asks and what `device_fit`
     /// answers.
     ///

@@ -47,17 +47,29 @@ mod sh;
 /// The six faces of a cubemap, which is what one of ARKit's textures is.
 const FACES: usize = 6;
 
+/// What one photograph of the room came to: the estimate, and where the probe was when it was taken.
+///
+/// The pose is not decoration. ARKit's texture is a cube of radiance around the probe anchor, so the
+/// harmonics and the direction integrated from it are in *that anchor's* space rather than in ARKit's world;
+/// without the anchor's transform an app has a light it cannot turn into its own frame. The two are one
+/// photograph and travel together, because a pose from another photograph would turn the light the wrong way.
+#[derive(Clone, Copy)]
+struct Sample {
+    estimate: wxr::LightEstimate,
+    pose: wxr::Pose,
+}
+
 /// What the handler has read, and when it was taken.
 ///
-/// The timestamp lives beside the estimate rather than only inside one pass. ARKit calls the handler once
+/// The timestamp lives beside the sample rather than only inside one pass. ARKit calls the handler once
 /// per batch of probe updates and promises nothing about the order two batches arrive in, so a batch that
 /// carried only its own best timestamp could replace a newer photograph of the room with an older one -
 /// and the estimate would then go backwards.
 #[derive(Default)]
 struct Seen {
-    /// The timestamp of the photograph `estimate` was read from, or zero before the first one.
+    /// The timestamp of the photograph `sample` was read from, or zero before the first one.
     timestamp: f64,
-    estimate: Option<wxr::LightEstimate>,
+    sample: Option<Sample>,
 }
 
 /// Light estimation: the provider, and the slot its handler writes estimates into.
@@ -91,7 +103,17 @@ impl Lights {
         self.estimate
             .lock()
             .expect("the light slot is only ever written by a handler that cannot panic")
-            .estimate
+            .sample
+            .map(|sample| sample.estimate)
+    }
+
+    /// Where the probe that produced that estimate was, in ARKit's world, or `None` with no estimate.
+    pub(super) fn probe_pose(&self) -> Option<wxr::Pose> {
+        self.estimate
+            .lock()
+            .expect("the light slot is only ever written by a handler that cannot panic")
+            .sample
+            .map(|sample| sample.pose)
     }
 
     /// Start the provider and the queue its handler runs on, or `None` if the device cannot.
@@ -190,7 +212,7 @@ struct Freshest {
     /// `None` when this pass saw no photograph to read, and `Some(None)` when it read one this backend
     /// cannot use. The difference is the whole of the staleness rule: a room ARKit has not photographed
     /// again keeps the estimate it had, and a photograph that arrived but could not be read takes it away.
-    estimate: Option<Option<wxr::LightEstimate>>,
+    sample: Option<Option<Sample>>,
 }
 
 impl Freshest {
@@ -219,11 +241,11 @@ impl Freshest {
         // The slot is read again here rather than trusted from the baseline: another batch may have landed
         // between the two locks, and the older of two passes must not move the estimate backwards. Equality
         // is the same photograph read twice, which is not a step either way.
-        if let Some(estimate) = self.estimate
+        if let Some(sample) = self.sample
             && self.timestamp >= slot.timestamp
         {
             slot.timestamp = self.timestamp;
-            slot.estimate = estimate;
+            slot.sample = sample;
         }
     }
 }
@@ -253,21 +275,33 @@ unsafe extern "C-unwind" fn take_photograph(
     };
     // SAFETY: as above.
     let scale = unsafe { ar_environment_probe_anchor_t::camera_scale_reference(anchor) };
+    // Where the probe is, which is the only way to use what the texture says: the cube is around this
+    // anchor, so the light integrated from it is in the anchor's own space and not in ARKit's world.
+    // SAFETY: the anchor is live, and asking where it is consumes nothing.
+    let transform = unsafe {
+        crate::sys::ar_environment_probe_anchor_get_origin_from_anchor_transform(
+            std::ptr::from_ref(anchor).cast::<c_void>(),
+        )
+    };
     freshest.timestamp = timestamp;
     // A photograph this backend cannot read is no estimate, and not the stale one: the room it was taken
     // in has since changed, and lighting a scene by yesterday's room is worse than not lighting it. It is
-    // still `Some` of nothing, which is what tells the caller to clear rather than to leave the old one.
-    freshest.estimate = Some(estimate(&texture, scale));
+    // still `Some` of nothing, which is what tells the caller to clear rather than to leave the old one. A
+    // transform that is not a rigid pose is the same answer for the same reason: the light cannot be placed
+    // in a frame, so it is light the caller could not use.
+    freshest.sample =
+        Some(wxr::Pose::from_matrix(&transform.0).and_then(|pose| sample(&texture, scale, pose)));
     true
 }
 
-/// One of ARKit's photographs as an estimate, or nothing for a texture this cannot read.
+/// One of ARKit's photographs as an estimate and the space it is in, or nothing for a texture this cannot read.
 ///
 /// `scale` is the anchor's camera scale reference, which is what makes the numbers absolute: the texture
 /// stores brightness relative to its own latest update, and the reference is the absolute brightness of a
 /// pixel that reads `[1, 1, 1]`. Without it two photographs of the same room a minute apart would be lit
-/// at different strengths.
-fn estimate(texture: &ProtocolObject<dyn MTLTexture>, scale: f32) -> Option<wxr::LightEstimate> {
+/// at different strengths. `pose` is where the probe was in ARKit's world, which is the space the numbers
+/// are in.
+fn sample(texture: &ProtocolObject<dyn MTLTexture>, scale: f32, pose: wxr::Pose) -> Option<Sample> {
     // A cube, and a square one. The projection below is six square faces, so a texture that is anything
     // else is the wrong thing to project rather than a worse thing to project.
     if texture.textureType() != MTLTextureType::TypeCube {
@@ -284,10 +318,13 @@ fn estimate(texture: &ProtocolObject<dyn MTLTexture>, scale: f32) -> Option<wxr:
     let faces = decode(format, &raw, size, texel);
     let p3_to_srgb = sh::p3_to_srgb();
     let brightness = Vec3::splat(scale);
-    Some(sh::project(size, |face, column, row| {
-        let texel = faces.at(face, column, row);
-        p3_to_srgb * Vec3::new(texel[0], texel[1], texel[2]) * brightness
-    }))
+    Some(Sample {
+        pose,
+        estimate: sh::project(size, |face, column, row| {
+            let texel = faces.at(face, column, row);
+            p3_to_srgb * Vec3::new(texel[0], texel[1], texel[2]) * brightness
+        }),
+    })
 }
 
 /// How many bytes one texel of this format takes, or nothing for a format this does not read.

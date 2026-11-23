@@ -52,49 +52,73 @@ fn texels_are_four_channels() {
 /// A pass with no photograph is not news, so it keeps the estimate. A photograph that could not be
 /// read is news that the room is no longer known, so it clears it. Leaving the old estimate in that
 /// second case is lighting a changed room with yesterday's light.
+/// A photograph as the slot holds it: an estimate, and the space that estimate is in.
+///
+/// The two are one value because they travel together - a pose from one photograph and harmonics from
+/// another would turn the light the wrong way, and that is a bug a test that only looked at the estimate
+/// could not see.
+fn photograph(estimate: wxr::LightEstimate, pose: wxr::Pose) -> Sample {
+    Sample { estimate, pose }
+}
+
+/// A pass with no photograph is not news, so it keeps the estimate. A photograph that could not be
+/// read is news that the room is no longer known, so it clears it. Leaving the old estimate in that
+/// second case is lighting a changed room with yesterday's light.
 #[test]
 fn an_unreadable_photograph_clears_the_estimate() {
     let mut slot = Seen {
-        estimate: Some(wxr::LightEstimate::default()),
+        sample: Some(photograph(
+            wxr::LightEstimate::default(),
+            wxr::Pose::IDENTITY,
+        )),
         ..Default::default()
     };
 
     Freshest::default().keep(&mut slot);
     assert!(
-        slot.estimate.is_some(),
+        slot.sample.is_some(),
         "no photograph at all leaves the last estimate alone"
     );
 
     Freshest {
-        estimate: Some(None),
+        sample: Some(None),
         ..Default::default()
     }
     .keep(&mut slot);
     assert!(
-        slot.estimate.is_none(),
+        slot.sample.is_none(),
         "a photograph that could not be read is no estimate"
     );
 }
 
 /// A readable photograph replaces the last one, so the slot is always the freshest estimate and never
-/// the first one that happened to arrive.
+/// the first one that happened to arrive - and its pose is the one that came with it.
 #[test]
 fn a_readable_photograph_replaces_the_estimate() {
     let mut slot = Seen {
-        estimate: Some(wxr::LightEstimate::default()),
+        sample: Some(photograph(
+            wxr::LightEstimate::default(),
+            wxr::Pose::IDENTITY,
+        )),
         ..Default::default()
     };
     let lit = wxr::LightEstimate {
         primary_intensity: Vec3::ONE,
         ..Default::default()
     };
+    let somewhere = wxr::Pose {
+        position: Vec3::X,
+        ..Default::default()
+    };
 
     Freshest {
         timestamp: 10.0,
-        estimate: Some(Some(lit)),
+        sample: Some(Some(photograph(lit, somewhere))),
     }
     .keep(&mut slot);
-    assert_eq!(slot.estimate.unwrap().primary_intensity, Vec3::ONE);
+    let kept = slot.sample.unwrap();
+    assert_eq!(kept.estimate.primary_intensity, Vec3::ONE);
+    assert_eq!(kept.pose, somewhere, "the pose travels with the estimate");
     assert_eq!(slot.timestamp, 10.0);
 }
 
@@ -112,7 +136,7 @@ fn a_stale_batch_does_not_replace_a_newer_estimate() {
     };
     let mut slot = Seen {
         timestamp: 20.0,
-        estimate: Some(newer),
+        sample: Some(photograph(newer, wxr::Pose::IDENTITY)),
     };
 
     // What `probe_updated` builds for a batch whose photographs are all older than the slot's.
@@ -122,16 +146,16 @@ fn a_stale_batch_does_not_replace_a_newer_estimate() {
     assert!(!freshest.newer(20.0), "and neither is the same one again");
     assert!(freshest.newer(25.0), "only a newer one is");
     freshest.keep(&mut slot);
-    assert_eq!(slot.estimate.unwrap().primary_intensity, Vec3::ONE);
+    assert_eq!(slot.sample.unwrap().estimate.primary_intensity, Vec3::ONE);
     assert_eq!(slot.timestamp, 20.0);
 
     // And a pass that did read one can only move it forward.
     Freshest {
         timestamp: 30.0,
-        estimate: Some(Some(older)),
+        sample: Some(Some(photograph(older, wxr::Pose::IDENTITY))),
     }
     .keep(&mut slot);
-    assert_eq!(slot.estimate.unwrap().primary_intensity, Vec3::ZERO);
+    assert_eq!(slot.sample.unwrap().estimate.primary_intensity, Vec3::ZERO);
     assert_eq!(slot.timestamp, 30.0);
 
     // A pass that began before the newer batch landed finishes after it. It read a photograph, but its
@@ -142,10 +166,10 @@ fn a_stale_batch_does_not_replace_a_newer_estimate() {
     };
     Freshest {
         timestamp: 25.0,
-        estimate: Some(Some(lit)),
+        sample: Some(Some(photograph(lit, wxr::Pose::IDENTITY))),
     }
     .keep(&mut slot);
-    assert_eq!(slot.estimate.unwrap().primary_intensity, Vec3::ZERO);
+    assert_eq!(slot.sample.unwrap().estimate.primary_intensity, Vec3::ZERO);
     assert_eq!(slot.timestamp, 30.0);
 }
 

@@ -351,6 +351,14 @@ impl wxr::Session for WebXrSession {
         self.light_impl(probe, out)
     }
 
+    fn light_probe_pose(
+        &mut self,
+        probe: wxr::LightProbe,
+        space: wxr::ReferenceSpace,
+    ) -> Option<wxr::Pose> {
+        self.light_probe_pose_impl(probe, space)
+    }
+
     fn set_foveation(&mut self, amount: f32) {
         // `fixedFoveation` is a WebIDL `float`, so NaN and the infinities are a `TypeError` - an exception
         // through the wasm frame, not a knob refusing a value. NaN is refused here, and `clamp` tames infinity.

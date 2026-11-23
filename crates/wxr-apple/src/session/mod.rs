@@ -406,6 +406,7 @@ impl AppleSession {
 }
 
 mod dispatch;
+mod features;
 mod frame;
 mod hits;
 mod sources;

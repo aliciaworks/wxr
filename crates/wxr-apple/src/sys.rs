@@ -109,6 +109,11 @@ unsafe extern "C" {
         hand_anchor: *const c_void,
         out: *mut f32,
     );
+    /// Writes where an environment probe anchor is into `out`.
+    fn wxr_ar_environment_probe_anchor_get_origin_from_anchor_transform(
+        anchor: *const c_void,
+        out: *mut f32,
+    );
     /// Writes the transform from a skeleton joint to the hand anchor holding it into `out`.
     fn wxr_ar_skeleton_joint_get_anchor_from_joint_transform(joint: *const c_void, out: *mut f32);
     /// Returns a world anchor the runtime will keep at the transform passed in `transform`.
@@ -207,6 +212,23 @@ pub unsafe fn ar_anchor_get_origin_from_anchor_transform(anchor: *const c_void) 
     let mut out = [0.0f32; 16];
     // SAFETY: the caller's contract is the shim's, and `out` is sixteen contiguous `f32`s.
     unsafe { wxr_ar_anchor_get_origin_from_anchor_transform(anchor, out.as_mut_ptr()) };
+    Float4x4(out)
+}
+
+/// The transform from an environment probe anchor's space into the world ARKit tracks, which is where the
+/// probe's own cube of the room sits - and therefore the space a light estimate read from it is in.
+///
+/// # Safety
+///
+/// `anchor` must be a live `ar_environment_probe_anchor_t` from the generated crate.
+pub unsafe fn ar_environment_probe_anchor_get_origin_from_anchor_transform(
+    anchor: *const c_void,
+) -> Float4x4 {
+    let mut out = [0.0f32; 16];
+    // SAFETY: the caller's contract is the shim's, and `out` is sixteen contiguous `f32`s.
+    unsafe {
+        wxr_ar_environment_probe_anchor_get_origin_from_anchor_transform(anchor, out.as_mut_ptr())
+    };
     Float4x4(out)
 }
 

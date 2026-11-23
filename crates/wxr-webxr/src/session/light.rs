@@ -45,3 +45,25 @@ impl WebXrSession {
         Ok(())
     }
 }
+
+impl WebXrSession {
+    /// Where a probe's own space is, in one of this session's - WebXR's `XRLightProbe.probeSpace`, which only a
+    /// frame's `getPose` can read. A request the browser has not answered has no space yet, and a frame outside
+    /// one of its callbacks is none either, so both are `None`: the estimate's direction is in that space, and
+    /// without it there is nothing to turn it into the caller's.
+    pub(super) fn light_probe_pose_impl(
+        &self,
+        probe: wxr::LightProbe,
+        space: wxr::ReferenceSpace,
+    ) -> Option<wxr::Pose> {
+        let base = self.resolved_space(space).ok()??;
+        let probe = self
+            .light_probes
+            .get(probe.id() as usize)?
+            .borrow()
+            .probe()?;
+        let frame = self.frame()?;
+        let pose = frame.get_pose(&probe.probe_space(), &base)?;
+        Some(transform(pose.transform()))
+    }
+}

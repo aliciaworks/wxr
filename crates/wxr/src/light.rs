@@ -32,8 +32,9 @@ impl LightProbe {
 ///
 /// Everything is expressed in the **probe's** space, which is the runtime's: WebXR makes a probe track a point
 /// in the room and does not let the app choose it, and changing a spherical harmonic's basis is not a rotation
-/// this core does. A scene that wants the primary light in its own frame brings it over itself - it is one
-/// vector - while the ambient is low-frequency enough to use where it is.
+/// this core does. A scene that wants the primary light in its own frame asks
+/// [`Session::light_probe_pose`](crate::Session::light_probe_pose) where that space is, and turns the vector
+/// with the answer - it is one vector - while the ambient is low-frequency enough to use where it is.
 ///
 /// A runtime with no estimate reports no intensity and zero harmonics, which is a scene lit by nothing rather
 /// than by a guess. The direction is still a unit vector: WebXR's answer for a room where it found no light is

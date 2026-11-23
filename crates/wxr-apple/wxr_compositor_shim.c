@@ -50,6 +50,17 @@ void wxr_ar_hand_anchor_get_origin_from_anchor_transform(ar_hand_anchor_t anchor
     memcpy(out, &transform, sizeof(transform));
 }
 
+// Writes the transform from an environment probe anchor's space to ARKit's world origin into `out`.
+//
+// The probe's environment texture is a cube around this anchor, so the light estimate integrated from it is
+// in the anchor's own space - which is what the core's `Session::light_probe_pose` hands to an app that wants
+// the primary direction in its own frame.
+void wxr_ar_environment_probe_anchor_get_origin_from_anchor_transform(
+    ar_environment_probe_anchor_t anchor, float out[16]) {
+    simd_float4x4 transform = ar_environment_probe_anchor_get_origin_from_anchor_transform(anchor);
+    memcpy(out, &transform, sizeof(transform));
+}
+
 // Writes the transform from a plane extent's space to the plane anchor carrying it into `out`.
 //
 // A plane anchor's own transform puts the origin where ARKit first saw the plane; as the plane grows, the

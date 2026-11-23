@@ -224,14 +224,13 @@ pub trait Session: Any {
     /// release, and unlike an anchor a layer holds an image the runtime wants back - a reason to say so.
     fn release_layer(&mut self, _layer: Layer) {}
 
-    /// Ask for a space to measure poses in. A runtime that does not have the one asked for says so, rather
-    /// than quietly handing back a worse one - a scene that asked to stand on the floor and got a head
-    /// origin is a scene floating at eye height.
+    /// Ask for a space to measure poses in. A runtime without the one asked for says so rather than handing
+    /// back a worse one: a scene asked to stand on the floor, and got a head origin, is floating at eye height.
     fn space(&mut self, kind: SpaceKind) -> Result<ReferenceSpace, Error>;
 
-    /// A space at `offset` inside `space`, for content that belongs to a place rather than to a room: WebXR's
-    /// `getOffsetReferenceSpace`, which is how a panel goes on a wall. The offset is in `space`, so what comes
-    /// back moves with it - off a controller follows the controller, off the floor stays put.
+    /// A space at `offset` inside `space`, for content that belongs to a place rather than a room: WebXR's
+    /// `getOffsetReferenceSpace`, which is how a panel goes on a wall. Off a controller follows it, off the
+    /// floor stays put.
     fn offset_space(
         &mut self,
         space: ReferenceSpace,
@@ -271,9 +270,8 @@ pub trait Session: Any {
         Ok(())
     }
 
-    /// Fill in a hand's skeleton, if the source has one and the runtime is tracking it.
-    ///
-    /// WebXR's `XRFrame.getJointPose`, asked once for the whole hand rather than once per joint. A source
+    /// Fill in a hand's skeleton, if the source has one and the runtime is tracking it. WebXR's
+    /// `XRFrame.getJointPose`, asked once for the whole hand rather than once per joint. A source
     /// with no skeleton says so with `InputSource::hand`, and a hand half out of view has joints that are
     /// not tracked: both are an empty [`Hand`].
     fn hand(
@@ -286,12 +284,10 @@ pub trait Session: Any {
         Ok(())
     }
 
-    /// The runtime's own name, or names, for what a source is - WebXR's `XRInputSource.profiles`.
-    ///
-    /// The first is the profile in use and the rest are fallbacks, most specific first. The strings belong to
-    /// the runtime: WebXR uses its registry's names (`"meta-quest-touch-plus"`), OpenXR the path
+    /// The runtime's own name, or names, for what a source is - WebXR's `XRInputSource.profiles`. The first is
+    /// the profile in use and the rest are fallbacks, most specific first. The strings belong to the runtime:
+    /// WebXR uses its registry's names (`"meta-quest-touch-plus"`), OpenXR the path
     /// `xrGetCurrentInteractionProfile` answers with, and a platform that only names a product names that.
-    ///
     /// Empty when the session never handed the source out, has no name for it, or cannot ask - the same "no
     /// name" the other list-shaped answers give, and what to check before drawing a model of a controller.
     fn profiles(&mut self, _source: InputId, out: &mut Vec<String>) -> Result<(), Error> {
@@ -325,14 +321,12 @@ pub trait Session: Any {
 
     /// Play a buffer of haptic samples on a source - WebXR's `GamepadHapticActuator.playPCM` and OpenXR's
     /// `XR_FB_haptic_pcm`, which are the same idea: the app hands over the waveform instead of describing it
-    /// with an intensity.
-    ///
-    /// `samples` are amplitudes in `-1..=1` at `sample_rate` hertz, which is what a platform's PCM haptics
-    /// want and what a browser's `AudioBuffer` carries, so an app that already has an audio buffer has the
-    /// hard part. A backend without PCM output answers [`Error::Unsupported`], and a source that cannot be
-    /// felt is the same quiet no-op [`pulse`](Session::pulse) makes of one. Not every session has this even
-    /// where it has a pulse: OpenXR's PCM is Meta's extension on top of the vibration one, so a runtime can
-    /// have the buzz and not the waveform.
+    /// with an intensity. `samples` are amplitudes in `-1..=1` at `sample_rate` hertz, which is what a
+    /// platform's PCM haptics want and what a browser's `AudioBuffer` carries, so an app that already has an
+    /// audio buffer has the hard part. A backend without PCM output answers [`Error::Unsupported`], and a
+    /// source that cannot be felt is the same quiet no-op [`pulse`](Session::pulse) makes of one. Not every
+    /// session has this even where it has a pulse: OpenXR's PCM is Meta's extension on top of the vibration
+    /// one, so a runtime can have the buzz and not the waveform.
     fn play_pcm(
         &mut self,
         _source: InputId,
@@ -342,10 +336,9 @@ pub trait Session: Any {
         Err(Error::Unsupported("haptic samples".into()))
     }
 
-    /// Fill in the surfaces the runtime has found, in the space given.
-    ///
-    /// WebXR's `XRFrame.detectedPlanes`, the shape a frame's views have: what is detected *this* frame, not a
-    /// list to keep. Empty for a session that found none, and for a backend not taught surfaces.
+    /// Fill in the surfaces the runtime has found, in the space given - WebXR's `XRFrame.detectedPlanes`, the
+    /// shape a frame's views have: what is detected *this* frame, not a list to keep. Empty for a session that
+    /// found none, and for a backend not taught surfaces.
     fn planes(&mut self, _space: ReferenceSpace, out: &mut Vec<Plane>) -> Result<(), Error> {
         out.clear();
         Ok(())
@@ -422,6 +415,13 @@ pub trait Session: Any {
     fn light(&mut self, _probe: LightProbe, out: &mut LightEstimate) -> Result<(), Error> {
         *out = LightEstimate::default();
         Ok(())
+    }
+
+    /// Where a light probe's own space is in `space` - WebXR's `XRLightProbe.probeSpace`, ARKit's probe anchor
+    /// transform. [`Session::light`] answers in that space, so this is the transform that brings its direction
+    /// into a scene's; `None` while the runtime has not placed the probe, or for a backend with no estimate.
+    fn light_probe_pose(&mut self, _probe: LightProbe, _space: ReferenceSpace) -> Option<Pose> {
+        None
     }
 
     /// Ask the runtime to keep a place fixed in the room, which is WebXR's `XRFrame.createAnchor`: `space`
