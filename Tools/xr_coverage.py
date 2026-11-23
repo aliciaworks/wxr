@@ -325,9 +325,16 @@ DEFAULT_IS_ENOUGH = {
     ("wxr-openxr", "hit_test_source_for_profile"): "OpenXR's hit test is `XR_META_environment_raycast`, "
     "which casts the ray the app hands it: an input source's own ray is the app's to pass as that ray, and "
     "there is no source that follows a profile because there is nothing per-source to make one of",
+    ("wxr-openxr", "set_passthrough_fully_obscured"): "OpenXR has no per-session passthrough promise: "
+    "`XR_FB_passthrough` styles a passthrough layer and `XR_META_passthrough_preferences` sets a preference, "
+    "and both are vendor extensions this backend does not take - and neither is WebXR's statement that the "
+    "frame's own content covers the camera feed",
     ("wxr-apple", "hit_test_source_for_profile"): "ARKit has no raycast and no hit-test provider - "
     "`ArKit::cast` traces the ray the app gives through the triangles and planes it found - so a hit test "
     "here is always one ray the app described, and there is no source that follows an input's own aim",
+    ("wxr-apple", "set_passthrough_fully_obscured"): "CompositorServices names no passthrough control: "
+    "whether the world shows behind the app is the immersive space's setting, made before there is a "
+    "session, and no header takes a frame's promise that its content covers it",
     ("wxr-apple", "interaction_mode"): "only a browser is ever `ScreenSpace`",
     ("wxr-openxr", "layer_needs_redraw"): "OpenXR is handed the whole layer list at `xrEndFrame`, so a layer "
     "that is not submitted is simply not composited - there is no request for a redraw to answer, and `false` "

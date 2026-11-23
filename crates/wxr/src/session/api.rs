@@ -92,6 +92,11 @@ pub trait Session: Any {
         Blend::Opaque
     }
 
+    /// Promise the compositor that the picture covers the camera feed, so it can leave passthrough out -
+    /// WebXR's `passthroughFullyObscured`. A hint for a session that draws over the world: true says nothing
+    /// of the world shows through what is drawn; a runtime with no camera feed ignores it.
+    fn set_passthrough_fully_obscured(&mut self, _obscured: bool) {}
+
     /// What this session's depth sensing is, when it asked for any - WebXR's `depthUsage`, `depthDataFormat`,
     /// `depthType` and `depthActive` as one value. `None` for no depth sensing and for a compositor's own depth.
     fn depth_sensing(&self) -> Option<DepthSensing> {
@@ -347,14 +352,10 @@ pub trait Session: Any {
     }
 
     /// Fill in the room the runtime has traced, as triangles, in the space given - WebXR's meshing draft.
-    ///
     /// What is traced *this* frame, because a runtime re-traces a room as it learns more and a copy a caller
     /// keeps goes wrong where it matters - a wall that moved. Empty for a session that traced nothing and for
-    /// a backend never taught it, the same answer to a caller asking whether there is a wall here.
-    ///
-    /// A mesh is per *geometry* and not per anchor: one anchor can carry a table and the wall behind it.
-    /// Whether a session has this at all is [`Features::MESH`], not [`Features::PLANES`] - a runtime can
-    /// trace meshes and have no planes, and ARKit's are two providers.
+    /// a backend never taught it, the same answer to a caller asking whether there is a wall here. A mesh is
+    /// per *geometry*, not per anchor: whether a session has any is [`Features::MESH`], not `PLANES`.
     fn meshes(&mut self, _space: ReferenceSpace, out: &mut Vec<Mesh>) -> Result<(), Error> {
         out.clear();
         Ok(())
@@ -371,8 +372,8 @@ pub trait Session: Any {
     /// Ask for a source of hits along a ray - WebXR's `requestHitTestSource`. `ray` is in `space`'s own
     /// coordinates and `None` means its `-Z`; `kinds` is what it may land on, and kinds this backend cannot
     /// produce are [`Error::Unsupported`] rather than a source that never answers - so [`HitTestKinds::ALL`]
-    /// and [`HitTestKinds::NONE`] always work. Made asynchronously: a frame or two with none, and `hits` on
-    /// one not ready has none. A ray [`Ray::unit`] refuses is refused too.
+    /// and [`HitTestKinds::NONE`] always work. Made asynchronously: a frame or two with none, `hits` on one not
+    /// ready has none, and a ray [`Ray::unit`] refuses is refused too.
     fn hit_test_source(
         &mut self,
         _space: ReferenceSpace,
@@ -405,13 +406,13 @@ pub trait Session: Any {
     }
 
     /// Let a source of hits go, which is WebXR's `XRHitTestSource.cancel`; `hits` on a released one is an
-    /// empty list rather than an error. WebXR has a `cancel()` and a promise in flight to cancel, while
-    /// OpenXR's raycaster has no per-source object - only this backend's slot to clear.
+    /// empty list rather than an error. WebXR has a promise in flight to cancel, while OpenXR's raycaster has
+    /// no per-source object - only this backend's slot to clear.
     fn release_hit_test_source(&mut self, _source: HitTestSource) {}
 
     /// Ask for a probe of the room's light, which is WebXR's `requestLightProbe`. A handle the way a hit-test
     /// source is, and for the same reason: a runtime makes one asynchronously. The estimate it gives is in the
-    /// runtime's own probe space, which is not one of this session's - see [`LightEstimate`].
+    /// runtime's own probe space, which is not one of this session's - [`LightEstimate`] says what that means.
     fn light_probe(&mut self) -> Result<LightProbe, Error> {
         Err(Error::Unsupported("light estimation".into()))
     }
@@ -425,8 +426,8 @@ pub trait Session: Any {
 
     /// Ask the runtime to keep a place fixed in the room, which is WebXR's `XRFrame.createAnchor`: `space`
     /// and `pose` are where it is now, and the runtime keeps it there as its understanding of the room
-    /// changes. Asynchronous, so it is a handle the way a hit-test source is, and a backend with no anchors
-    /// says so rather than handing back one that never answers. [`Features::ANCHORS`] says whether they exist.
+    /// changes. Asynchronous, so a handle the way a hit-test source is; a backend with no anchors says so
+    /// rather than handing back one that never answers, and [`Features::ANCHORS`] says whether they exist.
     fn anchor(&mut self, _space: ReferenceSpace, _pose: Pose) -> Result<Anchor, Error> {
         Err(Error::Unsupported("anchors".into()))
     }
@@ -446,11 +447,10 @@ pub trait Session: Any {
     fn release_anchor(&mut self, _anchor: Anchor) {}
 
     /// The runtime's own name for an anchor - WebXR's `XRAnchor.requestPersistentHandle`, OpenXR's
-    /// `XrSpatialAnchorCreateCompleteFB`, ARKit's `ar_anchor_get_identifier`.
-    /// [`Anchor`]'s id is a slot in *this* session's table and means nothing to the next session, while this
-    /// one is the runtime's: it is what a caller writes down to ask for the same place in a later run.
-    /// `None` while the runtime has not answered - WebXR answers with a promise - for an anchor this session
-    /// did not hand out, and for a runtime with no way to name one.
+    /// `XrSpatialAnchorCreateCompleteFB`, ARKit's `ar_anchor_get_identifier`. [`Anchor`]'s id is a slot in
+    /// *this* session's table and means nothing to the next one, while this is the runtime's: what a caller
+    /// writes down to ask for the same place in a later run. `None` while the runtime has not answered, for an
+    /// anchor this session did not hand out, or for a runtime with no way to name one.
     fn anchor_id(&mut self, _anchor: Anchor) -> Option<AnchorId> {
         None
     }
@@ -479,9 +479,9 @@ pub trait Session: Any {
     /// What the runtime measured of the real world for the view at `index`, and the buffer itself - WebXR's
     /// `XRFrame.getDepthInformation`, OpenXR's environment depth. `None` for a runtime with no depth sensing,
     /// for a view it has none for, for one that has paused it, and for one that never had any - the same
-    /// answer, and why [`Features::DEPTH`] says whether this exists.
-    /// Ask once per frame, like a view: depth is a buffer made for the frame and taken back at its end, and the
-    /// renderer's importer turns it into something to draw with.
+    /// answer, and why [`Features::DEPTH`] says whether this exists. Ask once per frame, like a view: depth
+    /// is a buffer made for the frame and taken back at its end, and the renderer's importer turns it into
+    /// something to draw with.
     fn environment_depth(&mut self, _view: usize) -> Option<(&Self::EnvironmentDepth, DepthInfo)> {
         None
     }
@@ -491,9 +491,9 @@ pub trait Session: Any {
 
     /// Ask the runtime to end this session, which is WebXR's `XRSession.end` and OpenXR's
     /// `xrRequestExitSession` - the app saying it is finished rather than the handle being dropped. Not
-    /// [`end`](Session::end), which hands back one frame: this is what a system menu does, and the runtime
-    /// answers with a [`StateChanged`](Event::StateChanged) on the next `poll`. A backend with no request to
-    /// make keeps the runtime's lifecycle and says so.
+    /// [`end`](Session::end), the one-frame call: this is what a system menu does, and the runtime answers
+    /// with a [`StateChanged`](Event::StateChanged) on the next `poll`. A backend with no request to make
+    /// keeps the runtime's lifecycle and says so.
     fn request_exit(&mut self) -> Result<(), Error> {
         Err(Error::Unsupported("ending the session".into()))
     }

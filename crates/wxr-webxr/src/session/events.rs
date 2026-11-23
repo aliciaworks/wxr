@@ -83,6 +83,8 @@ impl WebXrSession {
 
             // A depth range the app set before the session existed goes on now that there is a render state.
             self.apply_depth_range();
+            // And so does a passthrough promise made at the same time.
+            self.apply_passthrough_obscured();
             self.request_frame();
         }
 

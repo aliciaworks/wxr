@@ -76,6 +76,7 @@ impl WebXrSession {
                 ..Default::default()
             },
             depth_range: None,
+            passthrough_obscured: None,
             layers: Vec::new(),
             layer_images: Vec::new(),
         }
@@ -121,28 +122,6 @@ impl WebXrSession {
         log::info!("wxr-webxr: a projection layer, and with it the frames");
         // A foveation amount asked for before there was a layer goes on now that there is one.
         self.apply_foveation();
-    }
-
-    /// Hand the browser the whole layer list: the projection layer first, then every layer the app has made.
-    /// Called again whenever a layer appears or goes away, because the render state is where a layer *is*.
-    fn present_layers(&self) -> Result<(), wxr::Error> {
-        let Some(gpu) = &self.gpu else {
-            return Ok(());
-        };
-        let session = self.inner.borrow().session.clone();
-        let Some(session) = session else {
-            return Ok(());
-        };
-        let state = XrRenderStateInit::new();
-        let presented = js_sys::Array::new();
-        presented.push(gpu.layer.as_ref());
-        for slot in self.layers.iter().flatten() {
-            presented.push(slot.layer.as_ref());
-        }
-        state.set_layers(&presented);
-        // Caught: `updateRenderState` throws during an animation frame, and a layer list is handed over between.
-        throws::update_render_state(&session, &state)
-            .map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))
     }
 }
 
@@ -206,6 +185,13 @@ impl wxr::Session for WebXrSession {
     fn set_depth_range(&mut self, range: wxr::DepthRange) {
         self.depth_range = Some(range);
         self.apply_depth_range();
+    }
+
+    /// A promise that the picture covers the camera feed, through the same render state; remembered while
+    /// `Connecting`, because there is no state to put it on until the session arrives.
+    fn set_passthrough_fully_obscured(&mut self, obscured: bool) {
+        self.passthrough_obscured = Some(obscured);
+        self.apply_passthrough_obscured();
     }
 
     fn images(&self) -> wxr::ImageMeta {

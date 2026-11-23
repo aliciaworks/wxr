@@ -369,6 +369,30 @@ impl WebXrSession {
 }
 
 impl WebXrSession {
+    /// Hand the browser the whole layer list: the projection layer first, then every layer the app has made.
+    /// Called again whenever a layer appears or goes away, because the render state is where a layer *is*.
+    pub(super) fn present_layers(&self) -> Result<(), wxr::Error> {
+        let Some(gpu) = &self.gpu else {
+            return Ok(());
+        };
+        let session = self.inner.borrow().session.clone();
+        let Some(session) = session else {
+            return Ok(());
+        };
+        let state = XrRenderStateInit::new();
+        let presented = js_sys::Array::new();
+        presented.push(gpu.layer.as_ref());
+        for slot in self.layers.iter().flatten() {
+            presented.push(slot.layer.as_ref());
+        }
+        state.set_layers(&presented);
+        // Caught: `updateRenderState` throws during an animation frame, and a layer list is handed over between.
+        throws::update_render_state(&session, &state)
+            .map_err(|error| wxr::Error::Rejected(format!("{error:?}").into()))
+    }
+}
+
+impl WebXrSession {
     /// Put the foveation amount on the layer, when there is one - a session with no binding has no layer, and
     /// an amount it never asked for is the layer's own default and is left alone.
     pub(super) fn apply_foveation(&self) {
@@ -394,6 +418,25 @@ impl WebXrSession {
         state.set_depth_far(range.far as f64);
         if let Err(error) = throws::update_render_state(&session, &state) {
             log::warn!("wxr-webxr: the near and far planes were refused: {error:?}");
+        }
+    }
+
+    /// Tell the browser whether this session's picture covers the camera feed, which lets its compositor leave
+    /// passthrough out - WebXR's `passthroughFullyObscured` on the render state.
+    ///
+    /// Called again when a session arrives, for the same reason as [`apply_depth_range`](Self::apply_depth_range):
+    /// an app may make the promise while the session is still `Connecting`.
+    pub(super) fn apply_passthrough_obscured(&self) {
+        let (Some(obscured), Some(session)) = (
+            self.passthrough_obscured,
+            self.inner.borrow().session.clone(),
+        ) else {
+            return;
+        };
+        let state = XrRenderStateInit::new();
+        state.set_passthrough_fully_obscured(obscured);
+        if let Err(error) = throws::update_render_state(&session, &state) {
+            log::warn!("wxr-webxr: the passthrough promise was refused: {error:?}");
         }
     }
 }
