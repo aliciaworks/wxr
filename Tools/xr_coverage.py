@@ -345,9 +345,6 @@ DEFAULT_IS_ENOUGH = {
     "a drawable is a colour texture, its depth, and the view information, so there is nothing to write a "
     "vector into and no request to turn one into an intermediate frame - the extension this asks after is "
     "Meta's and exists in no Apple header",
-    ("wxr-apple", "request_exit"): "there is no runtime session to leave: a CompositorServices session is "
-    "the app's own window, and the app ends it by ending the window - so the default is the whole of the "
-    "answer rather than a call this backend has not made",
     ("wxr-apple", "bounds"): "visionOS has no bounds geometry; the room is not a polygon the runtime drew",
     ("wxr-apple", "environment_depth"): "`objc2-ar-kit` has no `ar_scene_depth` - the depth a drawable "
     "holds is the one being drawn into, which is not a measurement of the room (see "

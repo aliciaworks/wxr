@@ -126,10 +126,8 @@ impl wxr::Session for AppleSession {
         self.blend
     }
 
-    /// The near and far planes the scene draws with.
-    ///
-    /// The depth buffer this compositor hands over is only useful to it if it knows what the values mean,
-    /// so the app says, in metres. Reprojection uses it to move pixels when the prediction was off.
+    /// The near and far planes the scene draws with: the depth buffer this compositor hands over is only
+    /// useful to it if it knows what the values mean, and reprojection moves pixels with them.
     fn set_depth_range(&mut self, range: wxr::DepthRange) {
         self.depth_range = Some(range);
     }
@@ -244,10 +242,9 @@ impl wxr::Session for AppleSession {
         self.inputs_impl(space, out)
     }
 
-    /// A hand's skeleton, which is ARKit's joints at this frame's poses.
-    ///
-    /// A source whose [`wxr::InputSource::hand`] was false has no skeleton, and asking anyway is an empty hand
-    /// rather than an error - the core says to ask first, and a caller that did not can live with the answer.
+    /// A hand's skeleton, which is ARKit's joints at this frame's poses. A source whose
+    /// [`wxr::InputSource::hand`] was false has no skeleton, and asking anyway is an empty hand rather than an
+    /// error - the core says to ask first, and a caller that did not can live with the answer.
     fn hand(
         &mut self,
         source: wxr::InputId,
@@ -264,11 +261,10 @@ impl wxr::Session for AppleSession {
         Ok(())
     }
 
-    /// A buzz on a device, which is a Core Haptics pattern played on an engine for it.
-    ///
-    /// A source with no actuator - every hand, and a device GameController says has none - is `Unsupported`
-    /// rather than a quiet nothing, which is the answer `InputSource::haptics` lets a caller avoid asking
-    /// for. `play_pcm` is not here and never will be: Apple's haptics are patterns, not waveforms.
+    /// A buzz on a device, which is a Core Haptics pattern played on an engine for it. A source with no
+    /// actuator - every hand, and a device GameController says has none - is `Unsupported` rather than a
+    /// quiet nothing, the answer `InputSource::haptics` lets a caller avoid asking for; `play_pcm` is not
+    /// here and never will be, because Apple's haptics are patterns rather than waveforms.
     fn pulse(
         &mut self,
         source: wxr::InputId,
@@ -471,10 +467,8 @@ impl wxr::Session for AppleSession {
             .ok_or_else(unsupported_restore)
     }
 
-    /// Forget a name for good, which ARKit takes by identifier.
-    ///
-    /// The request is made whether or not ARKit still has the name, and the core treats a name the runtime
-    /// does not have as a no-op rather than an error.
+    /// Forget a name for good, which ARKit takes by identifier: made whether or not ARKit still has it, as the
+    /// core treats a name the runtime does not have as a no-op rather than an error.
     fn delete_persistent_anchor(&mut self, id: wxr::AnchorId) -> Result<(), wxr::Error> {
         let Some(arkit) = self.arkit.as_mut() else {
             return Err(unsupported_restore());
@@ -488,6 +482,12 @@ impl wxr::Session for AppleSession {
 
     fn end(&mut self, frame: &mut wxr::Frame) -> Result<(), wxr::Error> {
         self.end_impl(frame)
+    }
+
+    /// The app is finished: stop ARKit's providers. The compositor's layer is the app's own immersive space,
+    /// so this backend does not invalidate it - but an ended session is not one to ask for another frame.
+    fn request_exit(&mut self) -> Result<(), wxr::Error> {
+        self.request_exit_impl()
     }
 }
 

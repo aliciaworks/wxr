@@ -328,6 +328,15 @@ impl ArKit {
         }
     }
 
+    /// Stop the data providers, which is `ar_session_stop`: an app that is finished should not leave the
+    /// camera and the sensors running until its process exits. The session and its providers stay alive until
+    /// this value is dropped - stopping is not releasing - so every query still answers, with no new data.
+    pub fn stop(&mut self) {
+        // SAFETY: the session is the one this value holds. Stopping it twice is avoided by the session's own
+        // `stopped` flag rather than here, because this is also the only way to say "no more frames".
+        unsafe { ar_session_t::stop(&self._session) };
+    }
+
     /// What ARKit has decided about `feature`'s permission - see [`wxr::Authorization`].
     ///
     /// A capability this session serves is `NotDetermined` until the query answers, which is a frame or two

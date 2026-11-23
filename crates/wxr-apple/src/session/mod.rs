@@ -158,6 +158,9 @@ pub struct AppleSession {
     /// Whether the final `Lost` has been said. An invalidated layer is over for good, and the event is the
     /// same one the other two backends give a session the runtime has taken away.
     lost: bool,
+    /// Whether the app asked the session to stop, which is `request_exit`: ARKit's providers are stopped and
+    /// the session reads as `Ended` from then on. The layer is the app's to end, not this backend's.
+    stopped: bool,
     /// Where each space sits inside the one it was made from, and the kind it was made as, oldest first: a
     /// space at a place in the room is this much transform, and an offset of an offset has to add up. The
     /// kind is kept beside it so that a handle whose public kind was changed is not a handle this session
@@ -204,6 +207,7 @@ impl AppleSession {
             anchor_time: None,
             reported: (wxr::State::Ready, wxr::Visibility::Hidden),
             lost: false,
+            stopped: false,
             spaces: Vec::new(),
             light_probe: false,
             hands_seen: 0,
@@ -220,6 +224,20 @@ impl AppleSession {
     /// somebody asked for otherwise.
     pub fn set_blend(&mut self, blend: wxr::Blend) {
         self.blend = blend;
+    }
+
+    /// Stop the session, which is ARKit's `ar_session_stop`: the app is finished, and data providers that keep
+    /// the camera and the sensors running until the process exits are providers nobody asked for. The
+    /// compositor's layer is not this backend's to invalidate - the app ends its own immersive space - but an
+    /// ended session is one whose frame loop stops.
+    pub(super) fn request_exit_impl(&mut self) -> Result<(), wxr::Error> {
+        if !self.stopped {
+            self.stopped = true;
+            if let Some(arkit) = self.arkit.as_mut() {
+                arkit.stop();
+            }
+        }
+        Ok(())
     }
 
     /// Whether ARKit gave this session a world to put things in, as opposed to one that follows the wearer.
@@ -304,12 +322,16 @@ impl AppleSession {
         }))
     }
 
-    /// What the layer is doing, as the two things a session can be: here or not, and shown or not.
+    /// What the session is doing, as the two things it can be: here or not, and shown or not.
     ///
     /// There is no event queue on this side - the C surface has a state and no events - so this is read
     /// rather than waited for. Its three states carry both axes between them: a paused layer is a session that
-    /// exists and is not on a display, a running one is both, and an invalidated one is over.
+    /// exists and is not on a display, a running one is both, and an invalidated one is over. A session the app
+    /// asked to stop is over too, even while the layer it draws into is still the app's to end.
     fn layer_state(&self) -> (wxr::State, wxr::Visibility) {
+        if self.stopped {
+            return (wxr::State::Ended, wxr::Visibility::Hidden);
+        }
         // SAFETY: the layer renderer is live.
         let state = unsafe { cp_layer_renderer_get_state(&self.renderer) };
         if state == cp_layer_renderer_state::running {
