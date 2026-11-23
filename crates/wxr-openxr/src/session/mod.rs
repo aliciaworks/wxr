@@ -26,7 +26,7 @@ use visibility::VisibilityMasks;
 pub(crate) use state::{HapticExtensions, InputExtensions, LayerExtensions, SpatialExtensions};
 
 pub use depth::EnvironmentDepthImage;
-use spaces::is_located;
+use spaces::{is_located, resets_for};
 pub use state::OpenXrSession;
 use state::*;
 

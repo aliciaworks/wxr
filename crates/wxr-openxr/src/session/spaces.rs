@@ -162,6 +162,24 @@ fn owns(kinds: &[wxr::SpaceKind], space: wxr::ReferenceSpace) -> bool {
         .is_some_and(|kind| *kind == space.kind)
 }
 
+/// The handles a reference-space change moves.
+///
+/// OpenXR announces a recenter by the *type* of reference space, while the core's [`wxr::Event::Reset`] names
+/// the handle an app holds - so the type is matched against every space this session made. An offset space was
+/// made with its base's type, so it is included: the pose it was offset by does not change, but every pose
+/// asked of it is measured from an origin that moved. `Unbounded` is `LOCAL` here (see [`reference_space`]), so
+/// a local recenter names both, which is right - on this platform they are the same space.
+pub(super) fn resets_for<'a>(
+    kinds: &'a [wxr::SpaceKind],
+    changed: xr::ReferenceSpaceType,
+) -> impl Iterator<Item = wxr::ReferenceSpace> + 'a {
+    kinds
+        .iter()
+        .enumerate()
+        .filter(move |(_, kind)| reference_space(**kind) == changed)
+        .map(|(id, kind)| wxr::ReferenceSpace::new(*kind, id as u32))
+}
+
 /// Whether a runtime stands behind the place it reported.
 ///
 /// Both halves of the pose have to be valid, and the `_TRACKED` bits are deliberately not asked for: they say
@@ -229,6 +247,38 @@ mod tests {
         assert!(
             !owns(&kinds, wxr::ReferenceSpace::new(wxr::SpaceKind::Local, 1)),
             "an id past the end belongs to some other session"
+        );
+    }
+
+    #[test]
+    fn a_change_names_every_space_of_its_type() {
+        // OpenXR announces a recenter by type and the core's event names a handle. Both kinds that this
+        // platform answers with `LOCAL` are the same runtime space, so a local recenter moves both - and the
+        // offset `Local` is a separate handle that moves with the kind it was made from.
+        let kinds = [
+            wxr::SpaceKind::Local,
+            wxr::SpaceKind::BoundedFloor,
+            wxr::SpaceKind::Unbounded,
+            wxr::SpaceKind::Local,
+        ];
+        let local: Vec<_> = resets_for(&kinds, xr::ReferenceSpaceType::LOCAL).collect();
+        assert_eq!(
+            local,
+            vec![
+                wxr::ReferenceSpace::new(wxr::SpaceKind::Local, 0),
+                wxr::ReferenceSpace::new(wxr::SpaceKind::Unbounded, 2),
+                wxr::ReferenceSpace::new(wxr::SpaceKind::Local, 3),
+            ]
+        );
+        assert_eq!(
+            resets_for(&kinds, xr::ReferenceSpaceType::STAGE).collect::<Vec<_>>(),
+            vec![wxr::ReferenceSpace::new(wxr::SpaceKind::BoundedFloor, 1)]
+        );
+        assert!(
+            resets_for(&kinds, xr::ReferenceSpaceType::VIEW)
+                .next()
+                .is_none(),
+            "a kind no space was made in is nothing this session can pass on"
         );
     }
 

@@ -202,6 +202,7 @@ impl OpenXrSession {
             motion,
             space_warp: false,
             depth_range: None,
+            changes: Vec::new(),
             frame_image: None,
             // Cloned, and the last field - see its documentation for why it is both.
             device: device.clone(),

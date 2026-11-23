@@ -124,6 +124,14 @@ pub struct OpenXrSession {
     /// until the app says, and a frame with no planes submits no depth: the numbers are unbounded otherwise,
     /// so a compositor given them would move the picture by an unknown amount.
     pub(super) depth_range: Option<wxr::DepthRange>,
+    /// Recenters the runtime has announced whose moment has not come, as the time they happen and the space
+    /// they move.
+    ///
+    /// `XrEventDataReferenceSpaceChangePending` says an origin *will* move at a time, while the core's
+    /// [`wxr::Event::Reset`] is WebXR's `reset` - the news that it has moved. Each is held here until a frame
+    /// has been predicted at or after its time, which is the first frame whose poses were read in the new
+    /// origin.
+    pub(super) changes: Vec<(xr::Time, wxr::ReferenceSpace)>,
     /// The pair this frame is holding, colour and depth, for [`wxr::Session::image`] to hand out.
     ///
     /// `None` on a frame whose colour image the runtime named but never enumerated - an image zero would be

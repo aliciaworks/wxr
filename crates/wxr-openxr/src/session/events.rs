@@ -14,7 +14,29 @@ impl OpenXrSession {
         self.openxr_state
     }
 
+    /// A recenter whose time the frame clock has reached, if one is due.
+    ///
+    /// `predicted` is the display time of the last frame the app asked for - the clock every pose in this
+    /// session is read against - so a change at or before it has happened to every pose the app can ask for
+    /// next. The scan is over the queue rather than its front because two spaces can be changed at different
+    /// times, and a later one that is due must not wait behind an earlier one that is not.
+    fn due_reset(&mut self) -> Option<wxr::Event> {
+        let now = self.predicted.as_nanos();
+        let index = self
+            .changes
+            .iter()
+            .position(|(at, _)| at.as_nanos() <= now)?;
+        let (_, space) = self.changes.remove(index);
+        Some(wxr::Event::Reset(space))
+    }
+
     pub(super) fn poll_impl(&mut self) -> Option<wxr::Event> {
+        // A recenter whose moment has come, from an earlier poll: it is older news than anything the runtime
+        // still has queued, and the frame clock is what says when it may be told.
+        if let Some(event) = self.due_reset() {
+            return Some(event);
+        }
+
         // The press edges the last frame produced come first: they are this crate's own, and waiting for the
         // runtime to get round to an instance event to report them would be a delay with no cause.
         if let Some(hands) = self.hands.as_mut()
@@ -162,6 +184,23 @@ impl OpenXrSession {
                             visibility.invalidate(view);
                             return Some(wxr::Event::VisibilityMaskChanged(view));
                         }
+                    }
+                    continue;
+                }
+                // A recenter the runtime is announcing. It names the reference space *type* and the time the
+                // origin moves; the core's event names a handle and is the after-the-fact news WebXR sends, so
+                // every space of that type is queued with the time and `due_reset` hands them over once the
+                // frame clock has reached it. A type this session made no space of is another session's
+                // change, or a space the app never asked for, and there is nothing here for it to move.
+                Ok(Some(xr::Event::ReferenceSpaceChangePending(pending))) => {
+                    let at = pending.change_time();
+                    self.changes.extend(
+                        resets_for(&self.kinds, pending.reference_space_type())
+                            .map(|space| (at, space)),
+                    );
+                    // One whose time has already come is news now rather than at the next poll.
+                    if let Some(event) = self.due_reset() {
+                        return Some(event);
                     }
                     continue;
                 }
