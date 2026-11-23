@@ -167,8 +167,28 @@ fn a_recentered_space_is_stale_and_says_so() {
     let mut session = running();
     let space = session.space(SpaceKind::LocalFloor).expect("a floor");
     while session.poll().is_some() {}
-    session.reset(space);
-    assert_eq!(session.poll(), Some(Event::Reset(space)));
+    session.reset(space, None);
+    assert_eq!(
+        session.poll(),
+        Some(Event::Reset {
+            space,
+            transform: None
+        })
+    );
+    // A runtime that knows how far the origin moved says so, and what it says is the new origin in the old
+    // coordinates - not an identity standing in for "unknown", which a caller would apply as no movement.
+    let moved = Pose {
+        position: Vec3::new(1.0, 0.0, 0.0),
+        orientation: Quat::IDENTITY,
+    };
+    session.reset(space, Some(moved));
+    assert_eq!(
+        session.poll(),
+        Some(Event::Reset {
+            space,
+            transform: Some(moved)
+        })
+    );
 }
 
 #[test]

@@ -8,7 +8,7 @@ use std::borrow::Cow;
 
 use crate::input::InputId;
 use crate::layer::Layer;
-use crate::space::{ReferenceSpace, SpaceKind};
+use crate::space::{Pose, ReferenceSpace, SpaceKind};
 
 use super::Session;
 
@@ -118,7 +118,17 @@ pub enum Event {
     InputsChanged,
     /// A reference space's origin was recentered, which is WebXR's `reset`. Every pose measured in it is stale
     /// afterwards - a scene that was placed in the room before the recenter is somewhere else after it.
-    Reset(ReferenceSpace),
+    ///
+    /// `transform` is the space's **new** origin in the coordinates it had before, when the runtime says which
+    /// way it moved - WebXR's `XRReferenceSpaceEvent.transform` and OpenXR's `poseInPreviousSpace`, which are
+    /// the same transform. It is how content that should stay where it was in the room is carried across the
+    /// change; content that should stay where it was in the space's own coordinates is left alone and its poses
+    /// re-read. `None` is a recenter whose size the runtime did not report, which is still news worth having:
+    /// the next frame's poses are in the new origin either way.
+    Reset {
+        space: ReferenceSpace,
+        transform: Option<Pose>,
+    },
     /// The compositor lost a layer's picture and wants it drawn again - WebXR's `redraw`, delivered through the
     /// layer's `onredraw` handler because the event is the layer's and not the session's.
     ///

@@ -61,9 +61,9 @@ impl MockSession {
     }
 
     /// Pretend a space's origin was recentered, which is the one thing a backend that cannot recenter still
-    /// has to be able to pass on.
-    pub fn reset(&mut self, space: ReferenceSpace) {
-        self.pending.push_back(Event::Reset(space));
+    /// has to be able to pass on. `transform` is where the new origin went, when the caller knows.
+    pub fn reset(&mut self, space: ReferenceSpace, transform: Option<Pose>) {
+        self.pending.push_back(Event::Reset { space, transform });
     }
 
     /// How many layers are live, so a test can tell a release from a leak.

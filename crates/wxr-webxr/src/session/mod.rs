@@ -24,8 +24,9 @@ use crate::convert::{
 use crate::sys::{
     DomPointReadOnly, Event, XrBoundedReferenceSpace, XrDepthDataFormat, XrDepthType, XrDepthUsage,
     XrEnvironmentBlendMode, XrEye, XrFrame, XrHand, XrHandedness, XrInteractionMode, XrLayerLayout,
-    XrPose, XrProjectionLayer, XrReferenceSpace, XrRenderStateInit, XrSession, XrSpace, XrView,
-    XrVisibilityMaskChangeEvent, XrgpuBinding, XrgpuProjectionLayerInit, XrgpuQuadLayerInit,
+    XrPose, XrProjectionLayer, XrReferenceSpace, XrReferenceSpaceEvent, XrRenderStateInit,
+    XrSession, XrSpace, XrView, XrVisibilityMaskChangeEvent, XrgpuBinding,
+    XrgpuProjectionLayerInit, XrgpuQuadLayerInit,
 };
 use crate::{depth, hit, input, planes, throws};
 

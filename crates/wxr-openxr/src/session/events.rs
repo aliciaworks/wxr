@@ -26,8 +26,8 @@ impl OpenXrSession {
             .changes
             .iter()
             .position(|(at, _)| at.as_nanos() <= now)?;
-        let (_, space) = self.changes.remove(index);
-        Some(wxr::Event::Reset(space))
+        let (_, event) = self.changes.remove(index);
+        Some(event)
     }
 
     pub(super) fn poll_impl(&mut self) -> Option<wxr::Event> {
@@ -194,9 +194,15 @@ impl OpenXrSession {
                 // change, or a space the app never asked for, and there is nothing here for it to move.
                 Ok(Some(xr::Event::ReferenceSpaceChangePending(pending))) => {
                     let at = pending.change_time();
+                    // `poseValid` is the runtime saying whether it knows how far the origin moved. A pose it
+                    // does not stand behind is `None` rather than a zero pose a caller would apply as no
+                    // movement - and the event is still news without it.
+                    let transform = pending
+                        .pose_valid()
+                        .then(|| pose(pending.pose_in_previous_space()));
                     self.changes.extend(
                         resets_for(&self.kinds, pending.reference_space_type())
-                            .map(|space| (at, space)),
+                            .map(|space| (at, wxr::Event::Reset { space, transform })),
                     );
                     // One whose time has already come is news now rather than at the next poll.
                     if let Some(event) = self.due_reset() {

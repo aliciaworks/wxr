@@ -15,10 +15,20 @@ fn reset_handler(
     kind: wxr::SpaceKind,
     id: u32,
 ) -> Closure<dyn FnMut(Event)> {
-    Closure::<dyn FnMut(Event)>::new(move |_| {
-        reset
-            .borrow_mut()
-            .push_back(wxr::Event::Reset(wxr::ReferenceSpace::new(kind, id)));
+    Closure::<dyn FnMut(Event)>::new(move |event: Event| {
+        // The event carries where the space's new origin sits in the coordinates it had before, which is what
+        // lets a caller carry content that should stay in the same place in the room across the change. A
+        // browser that did not say is a recenter with nothing to apply, and still news, because every pose
+        // read from the next frame is in the new origin.
+        let change = event
+            .dyn_into::<XrReferenceSpaceEvent>()
+            .ok()
+            .and_then(|event| XrReferenceSpaceEvent::transform(&event))
+            .map(transform);
+        reset.borrow_mut().push_back(wxr::Event::Reset {
+            space: wxr::ReferenceSpace::new(kind, id),
+            transform: change,
+        });
     })
 }
 
