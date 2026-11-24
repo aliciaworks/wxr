@@ -87,6 +87,13 @@ impl wxr::Session for OpenXrSession {
         self.depth_range = Some(range);
     }
 
+    /// The pair this session will put in `XrCompositionLayerDepthInfoKHR` - the app's own, because saying it
+    /// is also what turns the depth submission on, so there is no runtime default to learn. `None` until the
+    /// app has said.
+    fn depth_range(&self) -> Option<wxr::DepthRange> {
+        self.depth_range
+    }
+
     fn poll(&mut self) -> Option<wxr::Event> {
         self.poll_impl()
     }

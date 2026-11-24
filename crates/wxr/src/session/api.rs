@@ -119,6 +119,15 @@ pub trait Session: Any {
     /// them and why they are one value. A pair that does not describe a projection reaches the runtime as is.
     fn set_depth_range(&mut self, _range: DepthRange) {}
 
+    /// The pair this session's pictures are being reprojected with, in metres - what
+    /// [`set_depth_range`](Session::set_depth_range) asked for, or the pair the runtime chose when nothing did.
+    /// A renderer needs it to build a projection that matches: WebXR's render state starts with one, and a
+    /// visionOS layer has its configuration's. `None` where no pair is in force, which is an OpenXR session
+    /// that never submitted depth.
+    fn depth_range(&self) -> Option<DepthRange> {
+        None
+    }
+
     /// How much foveation the compositor should apply, from `0` to `1` - WebXR's `fixedFoveation`. A request,
     /// so a compositor that does not foveate ignores it; nothing is sent by default.
     fn set_foveation(&mut self, _amount: f32) {}
@@ -175,8 +184,7 @@ pub trait Session: Any {
 
     /// Make a picture the compositor places itself - a WebXR or OpenXR `XRCompositionLayer` other than the
     /// projection one. It is drawn once (a menu, a video, a 360° photograph) and the runtime puts it where the
-    /// shape, the space, `pixels` and `options` say - see [`LayerOptions`]. Which shapes a session has is
-    /// [`Features::LAYER_QUAD`] and its siblings, one bit per shape; a session with none says `Unsupported`.
+    /// shape, space, `pixels` and `options` say; the shapes it has are the `LAYER_*` bits.
     fn layer(
         &mut self,
         _space: ReferenceSpace,
@@ -187,23 +195,20 @@ pub trait Session: Any {
         Err(Error::Unsupported("layers".into()))
     }
 
-    /// What to draw into for a layer this frame, and where in it. `None` while there is nothing to draw into
-    /// yet - a layer is made asynchronously, and its image is the compositor's for one frame and not the app's
-    /// to keep - and for a backend never taught layers either.
+    /// What to draw into for a layer this frame, and where in it - `None` while a layer is still being made,
+    /// and for a backend never taught layers. The image is the compositor's for a frame and not the app's.
     fn layer_image(&mut self, _layer: Layer) -> Option<(&Self::Image, LayerImage)> {
         None
     }
 
-    /// Whether the compositor wants this layer drawn again, which is WebXR's `needsRedraw`. True for a layer
-    /// nothing has been drawn into yet and after a [`Redraw`](Event::Redraw) that says its picture was lost;
-    /// false once the app has taken the layer's image, and for a compositor given a complete list each frame.
+    /// Whether the compositor wants this layer drawn again, which is WebXR's `needsRedraw`: true for a layer
+    /// nothing has been drawn into yet and after a [`Redraw`](Event::Redraw), false once it has its image.
     fn layer_needs_redraw(&self, _layer: Layer) -> bool {
         false
     }
 
-    /// A binding for a layer whose picture the app supplies, which is WebXR's `XRWebGLBinding` and its
-    /// WebGPU and media siblings collapsed into one - see [`Binding`]. Not a [`Features`] bit: it is a layer
-    /// the app draws into itself, and a backend that cannot take one says [`Error::Unsupported`].
+    /// A binding for a layer whose picture the app supplies - WebXR's `XRWebGLBinding` and its WebGPU and
+    /// media siblings collapsed into one, see [`Binding`]. Not a [`Features`] bit, and `Unsupported` without it.
     fn binding(&mut self, _layer: Layer) -> Result<Binding, Error> {
         Err(Error::Unsupported("bindings".into()))
     }
@@ -229,8 +234,8 @@ pub trait Session: Any {
     fn space(&mut self, kind: SpaceKind) -> Result<ReferenceSpace, Error>;
 
     /// A space at `offset` inside `space`, for content that belongs to a place rather than a room: WebXR's
-    /// `getOffsetReferenceSpace`, which is how a panel goes on a wall. Off a controller follows it, off the
-    /// floor stays put.
+    /// `getOffsetReferenceSpace`, how a panel goes on a wall. Off a controller it follows it, off the floor it
+    /// stays put.
     fn offset_space(
         &mut self,
         space: ReferenceSpace,
@@ -271,9 +276,9 @@ pub trait Session: Any {
     }
 
     /// Fill in a hand's skeleton, if the source has one and the runtime is tracking it. WebXR's
-    /// `XRFrame.getJointPose`, asked once for the whole hand rather than once per joint. A source
-    /// with no skeleton says so with `InputSource::hand`, and a hand half out of view has joints that are
-    /// not tracked: both are an empty [`Hand`].
+    /// `XRFrame.getJointPose`, asked once for the whole hand rather than once per joint. A source with no
+    /// skeleton says so with `InputSource::hand`, and a hand half out of view has joints that are not tracked:
+    /// both are an empty [`Hand`].
     fn hand(
         &mut self,
         _source: InputId,
@@ -288,8 +293,8 @@ pub trait Session: Any {
     /// the profile in use and the rest are fallbacks, most specific first. The strings belong to the runtime:
     /// WebXR uses its registry's names (`"meta-quest-touch-plus"`), OpenXR the path
     /// `xrGetCurrentInteractionProfile` answers with, and a platform that only names a product names that.
-    /// Empty when the session never handed the source out, has no name for it, or cannot ask - the same "no
-    /// name" the other list-shaped answers give, and what to check before drawing a model of a controller.
+    /// Empty when the session never handed the source out or has no name - the same "no name" the other
+    /// list-shaped answers give, and what to check before drawing a model of a controller.
     fn profiles(&mut self, _source: InputId, out: &mut Vec<String>) -> Result<(), Error> {
         out.clear();
         Ok(())
@@ -298,8 +303,7 @@ pub trait Session: Any {
     /// Make a source buzz: `intensity` from `0` to `1`, for `duration` - WebXR's `GamepadHapticActuator.pulse`,
     /// and the one shape every platform with an actuator can be asked for. A *request*, like
     /// [`set_foveation`](Session::set_foveation): intensity is clamped rather than refused, and a platform
-    /// that cannot reach its hardware says [`Error::Unsupported`]. [`InputSource::haptics`] is the cheaper
-    /// question, and [`Features::HAPTICS`] says whether there is anything to ask at all.
+    /// that cannot reach its hardware says [`Error::Unsupported`]. [`InputSource::haptics`] is cheaper still.
     fn pulse(
         &mut self,
         _source: InputId,
@@ -310,11 +314,9 @@ pub trait Session: Any {
     }
 
     /// Stop a source's vibration before its `duration` runs out - WebXR's `GamepadHapticActuator.reset` and
-    /// OpenXR's `xrStopHapticFeedback`.
-    ///
-    /// The other half of [`pulse`](Session::pulse), and a call of its own because a duration is a guess: the app
-    /// learns it was wrong - the level ended, the hand let go. An id never handed out and a source with no
-    /// actuator answer [`Error::Unsupported`], as [`pulse`](Session::pulse) does; one not buzzing is `Ok(())`.
+    /// OpenXR's `xrStopHapticFeedback`. The other half of [`pulse`](Session::pulse), and a call of its own
+    /// because a duration is a guess: the app learns it was wrong. An id never handed out and a source with
+    /// no actuator answer [`Error::Unsupported`], as [`pulse`](Session::pulse) does; one not buzzing is `Ok(())`.
     fn stop_pulse(&mut self, _source: InputId) -> Result<(), Error> {
         Err(Error::Unsupported("haptics".into()))
     }
@@ -322,11 +324,10 @@ pub trait Session: Any {
     /// Play a buffer of haptic samples on a source - WebXR's `GamepadHapticActuator.playPCM` and OpenXR's
     /// `XR_FB_haptic_pcm`, which are the same idea: the app hands over the waveform instead of describing it
     /// with an intensity. `samples` are amplitudes in `-1..=1` at `sample_rate` hertz, which is what a
-    /// platform's PCM haptics want and what a browser's `AudioBuffer` carries, so an app that already has an
-    /// audio buffer has the hard part. A backend without PCM output answers [`Error::Unsupported`], and a
-    /// source that cannot be felt is the same quiet no-op [`pulse`](Session::pulse) makes of one. Not every
-    /// session has this even where it has a pulse: OpenXR's PCM is Meta's extension on top of the vibration
-    /// one, so a runtime can have the buzz and not the waveform.
+    /// platform's PCM haptics want and what a browser's `AudioBuffer` carries. A backend without PCM output
+    /// answers [`Error::Unsupported`], and a source that cannot be felt is the quiet no-op
+    /// [`pulse`](Session::pulse) makes of one. OpenXR's PCM is Meta's extension on top of the vibration one,
+    /// so a runtime can have one and not the other.
     fn play_pcm(
         &mut self,
         _source: InputId,
@@ -347,8 +348,8 @@ pub trait Session: Any {
     /// Fill in the room the runtime has traced, as triangles, in the space given - WebXR's meshing draft.
     /// What is traced *this* frame, because a runtime re-traces a room as it learns more and a copy a caller
     /// keeps goes wrong where it matters - a wall that moved. Empty for a session that traced nothing and for
-    /// a backend never taught it, the same answer to a caller asking whether there is a wall here. A mesh is
-    /// per *geometry*, not per anchor: whether a session has any is [`Features::MESH`], not `PLANES`.
+    /// a backend never taught it: a mesh is per *geometry*, not per anchor, and whether any is
+    /// [`Features::MESH`], not `PLANES`.
     fn meshes(&mut self, _space: ReferenceSpace, out: &mut Vec<Mesh>) -> Result<(), Error> {
         out.clear();
         Ok(())
@@ -365,8 +366,7 @@ pub trait Session: Any {
     /// Ask for a source of hits along a ray - WebXR's `requestHitTestSource`. `ray` is in `space`'s own
     /// coordinates and `None` means its `-Z`; `kinds` is what it may land on, and kinds this backend cannot
     /// produce are [`Error::Unsupported`] rather than a source that never answers - so [`HitTestKinds::ALL`]
-    /// and [`HitTestKinds::NONE`] always work. Made asynchronously: a frame or two with none, `hits` on one not
-    /// ready has none, and a ray [`Ray::unit`] refuses is refused too.
+    /// and [`HitTestKinds::NONE`] always work. Made asynchronously, and a ray [`Ray::unit`] refuses is refused.
     fn hit_test_source(
         &mut self,
         _space: ReferenceSpace,

@@ -404,6 +404,21 @@ impl WebXrSession {
 }
 
 impl WebXrSession {
+    /// The pair the browser's render state is using, which is what its compositor reprojects with.
+    ///
+    /// Read rather than remembered, because the app is not the only one who can set it: a browser starts with
+    /// a pair of its own, and a page that ran before this core did may have changed it. `None` before there is
+    /// a session to ask, which is the same window in which [`apply_depth_range`](Self::apply_depth_range) has
+    /// nothing to apply to.
+    pub(super) fn depth_range_impl(&self) -> Option<wxr::DepthRange> {
+        let session = self.inner.borrow().session.clone()?;
+        let state = session.render_state();
+        Some(wxr::DepthRange {
+            near: state.depth_near() as f32,
+            far: state.depth_far() as f32,
+        })
+    }
+
     /// Put the near and far planes on the browser's render state, if there is a session to put them on.
     ///
     /// Called again when a session arrives, which is what lets an app set them while the session is still

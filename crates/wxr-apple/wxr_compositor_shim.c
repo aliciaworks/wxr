@@ -36,6 +36,13 @@ void wxr_cp_drawable_set_depth_range(cp_drawable_t drawable, float far, float ne
     cp_drawable_set_depth_range(drawable, simd_make_float2(far, near));
 }
 
+// Reads a drawable's depth range back, far component first - the pair the compositor is using, which is the
+// layer configuration's until an app sets one.
+void wxr_cp_drawable_get_depth_range(cp_drawable_t drawable, float out[2]) {
+    simd_float2 range = cp_drawable_get_depth_range(drawable);
+    memcpy(out, &range, sizeof(range));
+}
+
 // MARK: - ARKit
 
 // Writes the transform from an anchor's space to the origin's into `out`.

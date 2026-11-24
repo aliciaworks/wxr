@@ -169,6 +169,11 @@ impl AppleSession {
                     sys::Float2([range.far, range.near]),
                 );
             }
+            // And what the drawable actually holds now, which is the app's pair when it has one and the layer
+            // configuration's own until then. Read back rather than remembered, because only the drawable
+            // knows the second case - and read after the set above, so the two agree when the app did say.
+            let range = sys::cp_drawable_get_depth_range(self.drawable);
+            self.depth_in_force = Some(depth_range(range.0));
             for index in 0..cp_drawable::texture_count(self.drawable) {
                 self.textures.push(FrameImage {
                     color: cp_drawable::color_texture(self.drawable, index),
@@ -299,5 +304,28 @@ impl AppleSession {
         }
         self.release();
         Ok(())
+    }
+}
+
+/// A drawable's depth pair as the core's, which is the other way round: `CompositorServices` puts the far
+/// plane in `x` and the near one in `y`, so an index is not the field order a reader would guess.
+fn depth_range(pair: [f32; 2]) -> wxr::DepthRange {
+    wxr::DepthRange {
+        near: pair[1],
+        far: pair[0],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Getting this round the wrong way is a projection whose near plane is a kilometre out, and a picture
+    /// of one colour - which is why the pair is read through a function with a name rather than indexed.
+    #[test]
+    fn a_drawable_pair_is_read_far_first() {
+        let range = depth_range([1000.0, 0.1]);
+        assert_eq!(range.near, 0.1);
+        assert_eq!(range.far, 1000.0);
     }
 }

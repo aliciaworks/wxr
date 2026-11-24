@@ -187,6 +187,11 @@ impl wxr::Session for WebXrSession {
         self.apply_depth_range();
     }
 
+    /// What the render state actually holds, which is the browser's pair until an app sets one.
+    fn depth_range(&self) -> Option<wxr::DepthRange> {
+        self.depth_range_impl()
+    }
+
     /// A promise that the picture covers the camera feed, through the same render state; remembered while
     /// `Connecting`, because there is no state to put it on until the session arrives.
     fn set_passthrough_fully_obscured(&mut self, obscured: bool) {

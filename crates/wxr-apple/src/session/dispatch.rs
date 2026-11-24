@@ -90,6 +90,13 @@ impl wxr::Session for AppleSession {
         self.depth_range = Some(range);
     }
 
+    /// The pair the last drawable was using, read back from it at `begin` - which is the app's when it set
+    /// one and the layer configuration's otherwise. Before the first frame the app's request is the best
+    /// answer there is, and before that `None`.
+    fn depth_range(&self) -> Option<wxr::DepthRange> {
+        self.depth_in_force.or(self.depth_range)
+    }
+
     fn set_render_quality(&mut self, level: f32) {
         self.set_render_quality_impl(level);
     }

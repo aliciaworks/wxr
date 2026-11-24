@@ -125,6 +125,9 @@ pub struct AppleSession {
     /// The near and far planes the app draws with, which the compositor is told each frame so that it can
     /// reproject with the depth buffer. `None` until an app says - see `set_depth_range`.
     depth_range: Option<wxr::DepthRange>,
+    /// The pair the last drawable was actually using, read back after the app's was applied - which is the
+    /// layer configuration's own until an app sets one. `None` before the first frame.
+    depth_in_force: Option<wxr::DepthRange>,
     /// What the display shows behind the picture, told by the app rather than by the compositor - see
     /// `set_blend`.
     blend: wxr::Blend,
@@ -196,6 +199,7 @@ impl AppleSession {
             textures: Vec::new(),
             eyes: Vec::new(),
             depth_range: None,
+            depth_in_force: None,
             blend: wxr::Blend::Opaque,
             // Tracking that will not start is a head-locked scene, not a session that failed.
             arkit: ArKit::new(),

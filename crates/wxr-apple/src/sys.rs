@@ -1,8 +1,9 @@
 //! The C functions that neither binding crate declares.
 //!
 //! `objc2-compositor-services` is generated from Apple's headers and binds most of CompositorServices - but
-//! not the four calls this backend needs to place an eye. `cp_view_get_transform`,
-//! `cp_drawable_compute_projection`, `cp_drawable_set_depth_range` and `cp_drawable_set_device_anchor` are
+//! not the five calls this backend needs to place an eye. `cp_view_get_transform`,
+//! `cp_drawable_compute_projection`, `cp_drawable_set_depth_range`, `cp_drawable_get_depth_range` and
+//! `cp_drawable_set_device_anchor` are
 //! real: Apple's own C guide,
 //! [Drawing fully immersive content using Metal](https://developer.apple.com/documentation/compositorservices/drawing-fully-immersive-content-using-metal),
 //! calls them, and WebKit soft-links `cp_view_get_transform` for exactly the reason this file exists. So
@@ -96,6 +97,8 @@ unsafe extern "C" {
     );
     /// Sets a drawable's reverse-Z depth range, the far plane first.
     fn wxr_cp_drawable_set_depth_range(drawable: cp_drawable_t, far: f32, near: f32);
+    /// Writes a drawable's reverse-Z depth range into `out`, the far plane first.
+    fn wxr_cp_drawable_get_depth_range(drawable: cp_drawable_t, out: *mut f32);
 
     /// Writes the transform from an anchor's space to the origin's into `out`.
     fn wxr_ar_anchor_get_origin_from_anchor_transform(anchor: *const c_void, out: *mut f32);
@@ -200,6 +203,19 @@ pub unsafe fn cp_drawable_compute_projection(
 pub unsafe fn cp_drawable_set_depth_range(drawable: cp_drawable_t, depth_range: Float2) {
     // SAFETY: the caller's contract is the shim's.
     unsafe { wxr_cp_drawable_set_depth_range(drawable, depth_range.0[0], depth_range.0[1]) };
+}
+
+/// The near and far planes a drawable is using now, far first - the pair the compositor will reproject this
+/// frame with, which is the app's if it set one and the layer configuration's if it did not.
+///
+/// # Safety
+///
+/// `drawable` must be a live `cp_drawable_t` for the current frame.
+pub unsafe fn cp_drawable_get_depth_range(drawable: cp_drawable_t) -> Float2 {
+    let mut out = [0.0f32; 2];
+    // SAFETY: the caller's contract is the shim's, and `out` is two contiguous `f32`s.
+    unsafe { wxr_cp_drawable_get_depth_range(drawable, out.as_mut_ptr()) };
+    Float2(out)
 }
 
 /// The transform from an anchor's space to the origin's - for a device anchor, where the head is in the
