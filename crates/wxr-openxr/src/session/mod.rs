@@ -231,6 +231,11 @@ impl wxr::Session for OpenXrSession {
         self.profiles_impl(source, out)
     }
 
+    /// The runtime's name for a source in the user's language, which is `xrGetInputSourceLocalizedName`.
+    fn input_source_name(&self, source: wxr::InputId) -> Option<String> {
+        self.input_source_name_impl(source)
+    }
+
     /// A vibration on one source, which is `xrApplyHapticFeedback`. A source with no output path - and every
     /// source without the extension - is `Unsupported` rather than a silent nothing: the app chose to call.
     fn pulse(

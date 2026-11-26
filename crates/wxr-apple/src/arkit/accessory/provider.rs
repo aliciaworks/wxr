@@ -42,6 +42,9 @@ pub(crate) struct Accessories {
     /// Which locations each loaded accessory named, by the address its anchor reports - the accessory both
     /// frameworks know it by, and the key a frame looks a place up with.
     named: HashMap<usize, Named>,
+    /// ARKit's own names for the loaded accessories, by the `GCDevice` each came from - the one place a
+    /// controller has a name a person reads rather than a product category.
+    names: HashMap<usize, String>,
     /// The anchor a prediction is written into, made on the first frame that asks for one: ARKit fills an
     /// anchor of the caller's rather than answering with a fresh one, and a frame predicts one accessory at a
     /// time.
@@ -71,6 +74,7 @@ impl Accessories {
             tracked,
             loaded: Box::leak(Box::new(Mutex::new(Vec::new()))),
             named: HashMap::new(),
+            names: HashMap::new(),
             predicted: None,
         })
     }
@@ -101,11 +105,16 @@ impl Accessories {
         providers: &ar_data_providers_t,
     ) -> Option<&ar_accessory_tracking_provider_t> {
         let fresh = self.take_loaded();
-        for (accessory, named) in &fresh {
+        for ready in &fresh {
             // SAFETY: both collections are live, and each accessory is a `+1` this call now owns.
-            unsafe { ar_accessories_t::add_accessory(&self.tracked, accessory) };
-            self.named
-                .insert(Retained::as_ptr(accessory).cast::<()>() as usize, *named);
+            unsafe { ar_accessories_t::add_accessory(&self.tracked, &ready.accessory) };
+            self.named.insert(
+                Retained::as_ptr(&ready.accessory).cast::<()>() as usize,
+                ready.named,
+            );
+            if let Some(name) = &ready.name {
+                self.names.insert(ready.device, name.clone());
+            }
         }
         match &self.provider {
             // Nothing has loaded yet, so there is no set to configure a provider with.
@@ -186,7 +195,7 @@ impl Accessories {
     /// Turn every address a load callback stored back into the object it is the address of.
     ///
     /// The mailbox is emptied, so each `+1` comes back exactly once however many frames it took to arrive.
-    fn take_loaded(&self) -> Vec<(Retained<ar_accessory_t>, Named)> {
+    fn take_loaded(&self) -> Vec<Ready> {
         let loaded = std::mem::take(
             &mut *self
                 .loaded
@@ -195,14 +204,36 @@ impl Accessories {
         );
         loaded
             .into_iter()
-            .filter_map(|Loaded { accessory, named }| {
+            .filter_map(|loaded| {
                 // SAFETY: each address is one `Retained::into_raw` from the callback, turned back here on
                 // the thread that owns the set and never twice.
-                unsafe { Retained::from_raw(accessory as *mut ar_accessory_t) }
-                    .map(|accessory| (accessory, named))
+                unsafe { Retained::from_raw(loaded.accessory as *mut ar_accessory_t) }.map(
+                    |accessory| Ready {
+                        accessory,
+                        named: loaded.named,
+                        device: loaded.device,
+                        name: loaded.name,
+                    },
+                )
             })
             .collect()
     }
+
+    /// ARKit's name for the accessory behind a controller, when that controller has loaded one and the
+    /// accessory named itself.
+    pub(crate) fn name(&self, device: usize) -> Option<&str> {
+        self.names.get(&device).map(String::as_str)
+    }
+}
+
+/// A loaded accessory now owned by the session's thread, with what ARKit said about it.
+struct Ready {
+    accessory: Retained<ar_accessory_t>,
+    named: Named,
+    /// The `GCDevice` the load was asked for, as the address a source is handed out under.
+    device: usize,
+    /// ARKit's own name for the accessory, copied while it was live.
+    name: Option<String>,
 }
 
 /// One loaded accessory on its way to the session's thread: the object itself, as an address, and what ARKit
@@ -211,6 +242,10 @@ struct Loaded {
     /// The `+1` address of the accessory.
     accessory: usize,
     named: Named,
+    /// The `GCDevice` the load was asked for, as the address a source is handed out under.
+    device: usize,
+    /// ARKit's own name for the accessory, copied while it was live.
+    name: Option<String>,
 }
 
 /// Which of the core's two named locations an accessory has.
@@ -317,7 +352,7 @@ unsafe fn location(
 /// accessory that is live for the call or absent on a failed load.
 unsafe extern "C-unwind" fn loaded(
     context: *mut c_void,
-    _device: &ProtocolObject<dyn GCDevice>,
+    device: &ProtocolObject<dyn GCDevice>,
     successful: bool,
     _error: Option<&ar_error_t>,
     accessory: Option<&ar_accessory_t>,
@@ -337,11 +372,17 @@ unsafe extern "C-unwind" fn loaded(
     // SAFETY: the accessory was live for the call above, and it is still live here: this only reads the
     // names it reports, which are a property of the accessory and not a frame's state.
     let named = unsafe { Named::of(&accessory) };
+    // SAFETY: the accessory is live for the call, and the name is copied out of ARKit's own string rather
+    // than held past it.
+    let name = unsafe { sys::ar_accessory_get_name(Retained::as_ptr(&accessory).cast()) };
     slot.lock()
         .expect("the accessory mailbox is only written by a callback that cannot panic")
         .push(Loaded {
             accessory: Retained::into_raw(accessory) as usize,
             named,
+            // The same address a source is handed out under: `collect` finds the device this way.
+            device: std::ptr::from_ref(device).cast::<c_void>() as usize,
+            name,
         });
 }
 

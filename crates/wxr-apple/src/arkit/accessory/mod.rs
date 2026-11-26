@@ -141,6 +141,12 @@ impl ArKit {
         accessories.provider(&self._session, &self._providers);
         accessories.poses(at)
     }
+
+    /// The name ARKit has for the accessory behind a controller, which is the display name a person reads -
+    /// a product category names a model, and this is what the system says the thing is.
+    pub(crate) fn accessory_name(&self, device: usize) -> Option<&str> {
+        self.accessories.as_ref()?.name(device)
+    }
 }
 
 /// Where a controller is and how it moves, in the space being reported in.

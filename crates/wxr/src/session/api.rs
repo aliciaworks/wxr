@@ -258,27 +258,24 @@ pub trait Session: Any {
     /// [`Frame::reset`] says - asking twice is two answers, and a call that cannot locate leaves neither.
     fn views(&mut self, space: ReferenceSpace, out: &mut Frame) -> Result<(), Error>;
 
-    /// Fill in the part of one view's picture the display shows, and let an empty mask mean the whole view.
-    /// `view` indexes the frame's views, which is what [`Event::VisibilityMaskChanged`] carries; the mask is in
-    /// that eye's view space on the plane `z = -1`, as [VisibilityMask] describes. A session without
-    /// [`Features::VISIBILITY_MASK`] says [`Error::Unsupported`] rather than a mask claiming the whole view.
+    /// Fill in the part of one view the display shows, in that eye's view space on the plane `z = -1`, as
+    /// [VisibilityMask] describes. An empty mask means the whole view, and a session without
+    /// [`Features::VISIBILITY_MASK`] says [`Error::Unsupported`] rather than claiming one.
     fn visibility_mask(&mut self, _view: usize, out: &mut VisibilityMask) -> Result<(), Error> {
         out.clear();
         Err(Error::Unsupported("visibility masks".into()))
     }
 
-    /// Fill in what the user is holding, in the space given. Emptied first, so what it holds is this frame's
-    /// sources rather than the session's history; empty by default, because a runtime with no controllers bound
-    /// has nothing to report rather than having failed.
+    /// Fill in what the user is holding, in the space given, emptied first so it is this frame's sources and
+    /// not the session's history; empty by default, because a runtime with no controllers bound has not failed.
     fn inputs(&mut self, _space: ReferenceSpace, out: &mut Vec<InputSource>) -> Result<(), Error> {
         out.clear();
         Ok(())
     }
 
-    /// Fill in a hand's skeleton, if the source has one and the runtime is tracking it. WebXR's
-    /// `XRFrame.getJointPose`, asked once for the whole hand rather than once per joint. A source with no
-    /// skeleton says so with `InputSource::hand`, and a hand half out of view has joints that are not tracked:
-    /// both are an empty [`Hand`].
+    /// Fill in a hand's skeleton, if the source has one and the runtime tracks it - WebXR's
+    /// `XRFrame.getJointPose`, asked once for the whole hand. A source with no skeleton says so with
+    /// `InputSource::hand`, and a hand half out of view has untracked joints: both are an empty [`Hand`].
     fn hand(
         &mut self,
         _source: InputId,
@@ -289,21 +286,26 @@ pub trait Session: Any {
         Ok(())
     }
 
-    /// The runtime's own name, or names, for what a source is - WebXR's `XRInputSource.profiles`. The first is
-    /// the profile in use and the rest are fallbacks, most specific first. The strings belong to the runtime:
-    /// WebXR uses its registry's names (`"meta-quest-touch-plus"`), OpenXR the path
-    /// `xrGetCurrentInteractionProfile` answers with, and a platform that only names a product names that.
-    /// Empty when the session never handed the source out or has no name - the same "no name" the other
-    /// list-shaped answers give, and what to check before drawing a model of a controller.
+    /// The runtime's own name, or names, for what a source is - WebXR's `XRInputSource.profiles`, first in use
+    /// and the rest fallbacks, most specific first. The strings belong to the runtime: WebXR's registry names,
+    /// the path `xrGetCurrentInteractionProfile` answers, or a product category. Empty when the session never
+    /// handed the source out or has no name - what to check before drawing a model of a controller.
     fn profiles(&mut self, _source: InputId, out: &mut Vec<String>) -> Result<(), Error> {
         out.clear();
         Ok(())
     }
 
-    /// Make a source buzz: `intensity` from `0` to `1`, for `duration` - WebXR's `GamepadHapticActuator.pulse`,
-    /// and the one shape every platform with an actuator can be asked for. A *request*, like
-    /// [`set_foveation`](Session::set_foveation): intensity is clamped rather than refused, and a platform
-    /// that cannot reach its hardware says [`Error::Unsupported`]. [`InputSource::haptics`] is cheaper still.
+    /// What the runtime calls a source, in the player's own language, for putting on screen - a prompt that
+    /// names a controller, a settings row. Not [`profiles`](Session::profiles), which is the machine name a
+    /// model is chosen by; this is the name a person reads. `None` for a source this session never handed out
+    /// and for a runtime with no such name - WebXR has only profiles and an opaque `Gamepad.id`.
+    fn input_source_name(&self, _source: InputId) -> Option<String> {
+        None
+    }
+
+    /// Make a source buzz: `intensity` from `0` to `1`, for `duration` - WebXR's `GamepadHapticActuator.pulse`.
+    /// A *request* like [`set_foveation`](Session::set_foveation), so intensity is clamped; a platform that
+    /// cannot reach the hardware says [`Error::Unsupported`], and [`InputSource::haptics`] is the cheaper ask.
     fn pulse(
         &mut self,
         _source: InputId,
@@ -314,17 +316,15 @@ pub trait Session: Any {
     }
 
     /// Stop a source's vibration before its `duration` runs out - WebXR's `GamepadHapticActuator.reset` and
-    /// OpenXR's `xrStopHapticFeedback`. The other half of [`pulse`](Session::pulse), and a call of its own
-    /// because a duration is a guess: the app learns it was wrong. An id never handed out and a source with
-    /// no actuator answer [`Error::Unsupported`], as [`pulse`](Session::pulse) does; one not buzzing is `Ok(())`.
+    /// OpenXR's `xrStopHapticFeedback`, and the other half of [`pulse`](Session::pulse): a call of its own
+    /// because a duration is a guess. `Unsupported` for no actuator, `Ok(())` for one not buzzing.
     fn stop_pulse(&mut self, _source: InputId) -> Result<(), Error> {
         Err(Error::Unsupported("haptics".into()))
     }
 
     /// Play a buffer of haptic samples on a source - WebXR's `GamepadHapticActuator.playPCM` and OpenXR's
-    /// `XR_FB_haptic_pcm`, which are the same idea: the app hands over the waveform instead of describing it
-    /// with an intensity. `samples` are amplitudes in `-1..=1` at `sample_rate` hertz, which is what a
-    /// platform's PCM haptics want and what a browser's `AudioBuffer` carries. A backend without PCM output
+    /// `XR_FB_haptic_pcm`, the same idea: the app hands over the waveform instead of describing it with an
+    /// intensity. `samples` are amplitudes in `-1..=1` at `sample_rate` hertz. A backend without PCM output
     /// answers [`Error::Unsupported`], and a source that cannot be felt is the quiet no-op
     /// [`pulse`](Session::pulse) makes of one. OpenXR's PCM is Meta's extension on top of the vibration one,
     /// so a runtime can have one and not the other.

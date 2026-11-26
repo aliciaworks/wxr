@@ -226,6 +226,15 @@ impl wxr::Session for AppleSession {
         Ok(())
     }
 
+    /// ARKit's name for the accessory behind a controller, which is the one display name this platform has -
+    /// the product category above names a model, and this is what the system calls the thing. A hand has
+    /// none, being a left or a right, and a device ARKit never loaded an accessory for has none either.
+    fn input_source_name(&self, source: wxr::InputId) -> Option<String> {
+        let device = self.controllers.device_address(source)?;
+        let name = self.arkit.as_ref()?.accessory_name(device)?;
+        Some(name.to_owned())
+    }
+
     /// A buzz on a device, which is a Core Haptics pattern played on an engine for it. A source with no
     /// actuator - every hand, and a device GameController says has none - is `Unsupported` rather than a
     /// quiet nothing, the answer `InputSource::haptics` lets a caller avoid asking for; `play_pcm` is not

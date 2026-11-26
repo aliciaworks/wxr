@@ -290,6 +290,9 @@ DEFAULT_IS_ENOUGH = {
     ("wxr-webxr", "set_space_warp"): "synthesis is `XR_FB_space_warp`, an OpenXR extension with no WebXR "
     "counterpart: a page hands the browser a colour image and, if the session has depth sensing, a depth "
     "one - there is no motion-vector image to write and no request that would ask a browser to interpolate",
+    ("wxr-webxr", "input_source_name"): "WebXR has no display name for a source: `profiles` is the model a "
+    "renderer picks geometry by, and `Gamepad.id` is an opaque identifier with the vendor and product codes "
+    "in it rather than a name a person reads - so there is no member to answer with",
     ("wxr-openxr", "interaction_mode"): "only a browser is ever `ScreenSpace`",
     ("wxr-openxr", "authorization"): "OpenXR has no permission model of its own: a runtime that is not "
     "allowed a capability fails the call that asks for it, and there is no status to read before that - the "
@@ -564,6 +567,8 @@ OPENXR_RENAMES = {
     # The one command the generator gives its vendor suffix to rather than stripping it: the method is
     # `Session::get_visibility_mask_khr`, and no other spelling of the command appears.
     "xrGetVisibilityMaskKHR": "get_visibility_mask_khr",
+    # The crate drops the `get` and keeps the rest, which the derived name does not.
+    "xrGetInputSourceLocalizedName": "input_source_localized_name",
 }
 
 

@@ -30,7 +30,9 @@
 //! read from the SDK that has its visionOS C module. What is left here is the calls whose signature
 //! *carries* a `simd` type - a matrix or a vector returned by value, and `objc2`'s translator cannot
 //! express `simd` in a function yet - which is why every one of them crosses the shim below rather than
-//! being declared here. That by-value return is also why the types are `repr(C)` and aligned: Apple
+//! being declared here, and one call the binding refuses: `ar_accessory_get_name` answers with null for an
+//! accessory ARKit has no name for, and the generated method was taught the pointer cannot be null. The
+//! simd return is also why the types are `repr(C)` and aligned: Apple
 //! writes one with SIMD stores into a slot assumed to be sixteen-byte aligned, and a Rust `[[f32; 4]; 4]`
 //! has an alignment of four - a crash waiting for a device, and the sort of thing that is invisible until
 //! it is not.
@@ -143,6 +145,8 @@ unsafe extern "C" {
         correction: isize,
         out: *mut f32,
     );
+    /// An accessory's name, or a null pointer when ARKit has none for it.
+    fn wxr_ar_accessory_get_name(accessory: *const c_void) -> *const std::ffi::c_char;
 }
 
 /// The transform from the view's space to the device's: the eye's own place in device space.
@@ -436,6 +440,31 @@ pub unsafe fn ar_accessory_anchor_get_anchor_from_location_transform_with_correc
         )
     };
     Float4x4(out)
+}
+
+/// The name ARKit gives an accessory, or `None` when it has none.
+///
+/// The header says the pointer may be null, so this crosses the shim rather than calling
+/// [`ar_accessory_t::name`](objc2_ar_kit::ar_accessory_t::name): the generated method was taught the answer
+/// cannot be null and panics on the one the header documents. The string is copied out and belongs to the
+/// caller; ARKit's own copy lives only as long as the accessory.
+///
+/// # Safety
+///
+/// `accessory` must be a live `ar_accessory_t`.
+pub unsafe fn ar_accessory_get_name(accessory: *const c_void) -> Option<String> {
+    // SAFETY: the caller's contract is the shim's.
+    let name = unsafe { wxr_ar_accessory_get_name(accessory) };
+    if name.is_null() {
+        return None;
+    }
+    // SAFETY: a non-null answer is a NUL-terminated string living as long as the accessory, which the caller
+    // promised is live, and it is copied before anything can drop it.
+    Some(
+        unsafe { std::ffi::CStr::from_ptr(name) }
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 #[cfg(test)]

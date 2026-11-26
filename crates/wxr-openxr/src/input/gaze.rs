@@ -62,6 +62,8 @@ pub(super) struct Gaze {
     /// names the action rather than the space.
     action: xr::Action<xr::Posef>,
     space: xr::Space,
+    /// The user path the eyes are on, kept because a name is asked for by path rather than by source.
+    path: xr::Path,
 }
 
 impl Gaze {
@@ -82,7 +84,11 @@ impl Gaze {
         let space = action
             .create_space(session, path, xr::Posef::IDENTITY)
             .map_err(|error| Error::runtime("make the gaze space", error))?;
-        Ok(Self { action, space })
+        Ok(Self {
+            action,
+            space,
+            path,
+        })
     }
 
     /// Tell the runtime what the action means, which is the one component the profile has.
@@ -105,6 +111,14 @@ impl Gaze {
     /// the fixed half of what `Session::profiles` answers.
     pub(super) fn profile_of(&self, source: wxr::InputId) -> Option<&'static str> {
         (source == wxr::InputId::new(ID)).then_some(PROFILE)
+    }
+
+    /// The eyes' user path when `source` is theirs, which a localized name is asked for.
+    ///
+    /// The eyes are the one source that is not a hand and still has a path: a name comes back for a user
+    /// path, and `Hands::user_path` has none for this one.
+    pub(super) fn path_of(&self, source: wxr::InputId) -> Option<xr::Path> {
+        (source == wxr::InputId::new(ID)).then_some(self.path)
     }
 
     /// This frame's source, which is one pose and nothing else.

@@ -20,6 +20,7 @@
 //! [`haptics`].
 
 use std::collections::VecDeque;
+use std::ffi::c_void;
 use std::time::Duration;
 
 use objc2::rc::Retained;
@@ -275,6 +276,17 @@ impl GameControllers {
         // SAFETY: the device is live, and `GCDevice` is a protocol it conforms to - the property is the
         // framework's own answer about its own device.
         out.push(unsafe { known.device.as_gcdevice().productCategory() }.to_string());
+    }
+
+    /// The address ARKit knows a device by, for asking what it says about the accessory behind it.
+    ///
+    /// `None` for an id this session never handed out and for a device that has gone away, which are the
+    /// two answers [`profiles`](Self::profiles) gives nothing for as well.
+    pub fn device_address(&self, id: wxr::InputId) -> Option<usize> {
+        let known = self.known.iter().find(|known| known.id == id)?;
+        known
+            .connected
+            .then(|| std::ptr::from_ref(known.device.as_gcdevice()).cast::<c_void>() as usize)
     }
 
     /// Whether any connected device has an actuator to send to, which is the capability bit.

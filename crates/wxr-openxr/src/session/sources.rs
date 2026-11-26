@@ -64,6 +64,26 @@ impl OpenXrSession {
         Ok(())
     }
 
+    /// The runtime's name for one source, in the user's language, from `xrGetInputSourceLocalizedName` -
+    /// asked for the user path and the interaction profile together, which is the "left" and the "Oculus
+    /// Touch Controller" halves in one string.
+    ///
+    /// A hand's user path comes from the hand and the eyes' from their own, because the eyes are not a hand.
+    /// A source this session never handed out has neither, and a runtime with no name for the path is `None`
+    /// rather than an error: this is a label, and a session that cannot label a controller can still draw one.
+    pub(super) fn input_source_name_impl(&self, source: wxr::InputId) -> Option<String> {
+        let hands = self.hands.as_ref()?;
+        let user = hands
+            .user_path(source)
+            .or_else(|| hands.gaze_path(source))?;
+        let flags = xr::InputSourceLocalizedNameFlags::USER_PATH
+            | xr::InputSourceLocalizedNameFlags::INTERACTION_PROFILE;
+        self.session
+            .input_source_localized_name(user, flags)
+            .ok()
+            .filter(|name| !name.is_empty())
+    }
+
     pub(super) fn hand_impl(
         &mut self,
         source: wxr::InputId,

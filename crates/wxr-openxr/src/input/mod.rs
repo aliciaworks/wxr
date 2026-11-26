@@ -411,6 +411,12 @@ impl Hands {
         }
     }
 
+    /// The eyes' user path when `source` is theirs - the one source that is not a hand and still has a path,
+    /// which is what a localized name is asked for.
+    pub fn gaze_path(&self, source: wxr::InputId) -> Option<xr::Path> {
+        self.gaze.as_ref()?.path_of(source)
+    }
+
     /// A hand's skeleton, from the tracker for it, when the runtime made one.
     pub fn hand(&self, index: usize, base: &xr::Space, time: xr::Time, out: &mut wxr::Hand) {
         out.clear();

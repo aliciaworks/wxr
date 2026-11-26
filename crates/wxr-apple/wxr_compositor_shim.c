@@ -138,3 +138,9 @@ void wxr_ar_accessory_anchor_get_anchor_from_location_transform_with_correction(
                                                                               correction);
     memcpy(out, &transform, sizeof(transform));
 }
+
+// An accessory's name as ARKit gives it, or NULL when it has none - the header allows that, where the
+// generated binding was taught the pointer is never null and would panic on the answer it documents.
+const char *wxr_ar_accessory_get_name(ar_accessory_t accessory) {
+    return ar_accessory_get_name(accessory);
+}
